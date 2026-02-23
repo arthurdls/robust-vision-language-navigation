@@ -1,0 +1,246 @@
+Movement: advance, cross, proceed, progress, move (with distances/angles), navigate, orbit, circle, pass
+Altitude: ascend, climb, descend, lower, take off
+Landing: land at/to/on/toward various sides of objects (sculpture, streetlight, tree, car, person, dog, sun umbrella, etc.)
+Orientation: face/turn toward person/dog, turn left/right by degrees, rotate
+Approach/retreat: get closer, move closer/away/back, back off, withdraw
+Composed: turn and move forward, navigate to a point X meters from an object
+
+Advance past the sculpture from the left side
+Advance toward the dog from the right side
+Advance toward the front vehicle
+Advance toward the front vehicle from the front side
+Advance toward the sun umbrella from the left side
+Approach the front sun umbrella from the front side
+Approach the sunshade from the front side
+Approach the tree from the left side
+Approach the trees ahead from the front side
+Ascend 5.0 meters at 65 degrees
+Ascend to an altitude of 4.0 meters
+Ascend to an altitude of 6.0 meters
+Ascend to an altitude of 8.0 meters
+Back off from the dog ahead
+Back up from the streetlight ahead
+Circle around person with a radius of 2.0 meters in the right direction.
+Circle around person with a radius of 4.0 meters in the right direction.
+Climb 10.0 meters with a 40-degree ascent angle
+Climb 2.0 meters with an 80-degree angle
+Climb 8.0 meters with a 15-degree pitch
+Climb to an altitude of 8.0 meters with an 85-degree ascent angle
+Climb to an altitude of 9.0 meters with a 75-degree ascent angle
+Cross past the dog from the left side
+Cross past the sculpture from the right side
+Cross through the car from the right side
+Descend 3.0 meters with a 60-degree angle
+Descend 4.0 meters
+Descend 9.0 meters at 30 degrees
+Descend 9.0 meters with a 20-degree angle
+Descend to 5.0 meters
+Face the person's direction.
+Face towards the person.
+Face toward the dog.
+Face toward the person.
+Get closer to the dog on the left side
+Get closer to the sculpture ahead
+Get closer to the sun umbrella on the right side
+Go to the trees on the left side
+Head to the dog on the left side
+Head to the tree on the right side
+Head toward the person on the right side
+Land at the front side of the sculpture
+Land at the front side of the streetlight
+Land at the front side of the sun umbrella
+Land at the person on the left side
+Land on the front side of the sun umbrella
+Land on the front side of the trees
+Land on the left side of the sculpture
+Land on the left side of the tree
+Land on the right side of the car
+Land on the right side of the person
+Land on the right side of the sunshade
+Land on the right side of the tree
+Land to the front side of the car
+Land to the front side of the trees
+Land to the left side of the car
+Land to the left side of the streetlight
+Land to the left side of the sun umbrella
+Land to the left side of the tree
+Land to the right side of the car
+Land to the right side of the dog
+Land to the right side of the sculpture
+Land to the right side of the streetlight
+Land to the right side of the tree
+Land toward the front side of the person
+Land toward the left side of the sun umbrella
+Land toward the right side of the streetlight
+Lower 3.0 meters on a 70-degree angle
+Lower 5.0 meters with a 5-degree angle
+Lower altitude by 9.0 meters with a 15-degree descent angle
+Make for the dog from the right side
+Make way to the car from the left side
+Move 10.0 meters to the left at a 35-degree angle
+Move 10.0 meters to the right at a 50-degree angle
+Move 1.0 meters at 5 degrees to the left
+Move 1.0 meters diagonally to the right at a 45-degree angle
+Move 1.0 meters to the left at an 85-degree angle
+Move 1.0 meters to the right at a 55-degree angle
+Move 2.0 meters at 15 degrees to the right
+Move 2.0 meters at 20 degrees to the right
+Move 2.0 meters to the left at a 10-degree angle
+Move 2.0 meters to the left at a 55-degree angle
+Move 2.0 meters to the right at a 20-degree angle
+Move 2.0 meters to the right at a 65-degree angle
+Move 3.0 meters at 40 degrees to the right
+Move 3.0 meters to the left at a 35-degree angle
+Move 3.0 meters to the left at a 70-degree angle
+Move 4.0 meters to the left at a 30-degree angle
+Move 4.0 meters to the right at a 35-degree angle
+Move 4.0 meters to the right at a 70-degree angle
+Move 5.0 meters to the left at a 10-degree angle
+Move 5.0 meters to the left at a 40-degree angle
+Move 5.0 meters to the left at a 50-degree angle
+Move 5.0 meters to the left at a 60-degree angle
+Move 5.0 meters to the left at a 65-degree angle
+Move 5.0 meters to the right at a 50-degree angle
+Move 5.0 meters to the right at a 55-degree angle
+Move 6.0 meters at 5 degrees to the right
+Move 6.0 meters at 90 degrees to the left
+Move 6.0 meters to the left at a 15-degree angle
+Move 6.0 meters to the left at a 35-degree angle
+Move 6.0 meters to the right at a 15-degree angle
+Move 6.0 meters to the right at a 60-degree angle
+Move 7.0 meters at 30 degrees to the left
+Move 7.0 meters to the left at a 50-degree angle
+Move 7.0 meters to the left at a 90-degree angle
+Move 7.0 meters to the right at a 75-degree angle
+Move 8.0 meters 50 degrees leftward
+Move 8.0 meters at 90 degrees to the right
+Move 8.0 meters left at a 65-degree angle
+Move 8.0 meters to the left at a 40-degree angle
+Move 9.0 meters at 65 degrees to the left
+Move 9.0 meters to the left at a 15-degree angle
+Move 9.0 meters to the left at a 35-degree angle
+Move away from the sunshade ahead
+Move away from the trees on the front side
+Move back from the sculpture on the front side
+Move back from the sunshade ahead
+Move backward from the sculpture ahead
+Move closer to the car on the right side
+Move closer to the streetlight ahead
+Move downward 1.0 meters at a 55-degree angle
+Move forward 1.0 meters
+Move forward 5.0 meters
+Move through the car from the left side
+Move to a position 2.0 meters from the dog
+Move to a position 4.0 meters from the person
+Move to a position 4.5 meters from the person
+Move to the car on the right side
+Move toward the streetlight on the right side
+Navigate to a point 2.0 meters away from the dog
+Navigate to a point 2.0 meters away from the person
+Navigate to a point 2.5 meters away from the dog
+Navigate to a point 3.5 meters away from the individual
+Navigate to a point 4.0 meters away from the dog
+Navigate to a point 4.5 meters away from the individual
+Navigate to a point 4.5 meters away from the individual.
+Navigate to a point 5.0 meters away from the individual
+Navigate to the car from the left side
+Need to advance through the trees from the right side
+Need to land toward the front side of the car
+Need to land toward the left side of the person
+Need to land toward the right side of the streetlight
+Need to land toward the right side of the sun umbrella
+Need to make way past the sun umbrella from the right side
+Need to travel through the car from the right side
+Orbit the dog clockwise at a 4.5-meter radius.
+Orbit the dog clockwise at a 6.0-meter radius.
+Orbit the dog to the left with a 3.5-meter radius.
+Orbit the dog to the left with a 5.0-meter radius.
+Orbit the person at a 3.0-meter radius clockwise.
+Orbit the person clockwise at a 2.5-meter radius.
+Orbit the person to the left at a 6.0-meter radius.
+Orbit the person to the right at a 3.0-meter radius.
+Orbit the person to the right at a 5.0-meter radius.
+Pass by the streetlight from the right side
+Pass by the sun umbrella from the right side
+Pass by the trees from the right side
+Please approach the sun umbrella from the right side
+Please cross past the sun umbrella from the left side
+Please go back from the vehicle ahead
+Please go past the car from the left side
+Please go past the person from the right side
+Please go to the person on the front side
+Please land at the dog on the left side
+Please land at the front of the dog
+Please land at the front of the person
+Please land at the left side of the sunshade
+Please land at the sculpture on the left side
+Please land at the sculpture on the right side
+Please make way through the sculpture from the right side
+Please make way through the sun umbrella from the right side
+Please make way to the person from the left side
+Please make way to the sculpture from the right side
+Please navigate through the dog from the right side
+Please navigate through the sun umbrella from the left side
+Please pass through the dog from the left side
+Please proceed toward the sculpture on the front side
+Please proceed toward the streetlight on the right side
+Please progress toward the dog ahead
+Please progress toward the person on the left side
+Please retreat from the trees ahead
+Proceed 6.0 meters towards the 20-degree right direction
+Proceed past the dog from the right side
+Proceed through the person from the left side
+Proceed toward the streetlight on the left side
+Proceed toward the trees on the front side
+Progress past the person from the left side
+Progress past the person from the right side
+Progress past the sculpture from the left side
+Progress through the trees from the left side
+Progress to the person on the right side
+Progress to the sculpture on the right side
+Progress toward the sun umbrella on the left side
+Pull back from the vehicle ahead
+Request to advance past the car from the right side
+Request to advance past the streetlight from the left side
+Request to land to the front side of the streetlight
+Request to land to the left side of the car
+Request to land to the left side of the dog
+Request to land to the left side of the tree
+Request to move through the streetlight from the right side
+Request to move to the person on the left side
+Request to move to the streetlight on the left side
+Request to proceed through the person from the left side
+Request to proceed through the sculpture from the right side
+Request to proceed through the streetlight from the right side
+Request to proceed through the sun umbrella from the left side
+Request to travel past the streetlight from the left side
+Rotate 105 degrees to the right
+Suggest crossing through the car from the left side
+Suggest landing on the right side of the dog
+Suggest landing on the right side of the tree
+Suggest moving past the trees from the left side
+Suggest navigating toward the trees from the right side
+Suggest passing by the streetlight from the left side
+Suggest progressing through the trees from the right side
+Suggest traveling to the sculpture from the left side
+Suggest traveling to the streetlight from the front side
+Take off 3.0 meters
+Travel through the dog from the right side
+Travel through the trees from the left side
+Turn 165 degrees counterclockwise
+Turn 60 degrees clockwise
+Turn clockwise by 90 degrees
+Turn counterclockwise by 135 degrees
+Turn counterclockwise by 165 degrees
+Turn counterclockwise by 180 degrees
+Turn left 90 degrees and move forward 8.0 meters
+Turn left by 105 degrees
+Turn left by 90 degrees
+Turn right 90 degrees and move forward 6.0 meters
+Turn right by 150 degrees
+Turn right by 15 degrees
+Turn right by 30 degrees
+Turn right by 45 degrees
+Turn to the direction of the dog.
+Turn to the direction of the person.
+Withdraw from the person ahead

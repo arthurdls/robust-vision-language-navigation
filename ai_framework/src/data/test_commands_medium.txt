@@ -1,0 +1,192 @@
+
+'Eventually go to Location A, Location B, and Location C, in any order.'?
+{
+    "pi_predicates": {
+        "pi_1": "Go to Location A",
+        "pi_2": "Go to Location B",
+        "pi_3": "Go to Location C"
+    },
+    "ltl_nl_formula": "F pi_1 & F pi_2 & F pi_3"
+};
+
+'Eventually deliver the pen to Location D, but only after you have delivered either Coke 1 or Coke 2 to Location A.'?
+{
+    "pi_predicates": {
+        "pi_1": "Deliver the pen to Location D",
+        "pi_2": "Deliver Coke 1 to Location A",
+        "pi_3": "Deliver Coke 2 to Location A"
+    },
+    "ltl_nl_formula": "F pi_1 & (!pi_1 U (pi_2 | pi_3))"
+};
+
+'Eventually go to the fridge, but only after you have picked up either the apple or the bottle.'?
+{
+    "pi_predicates": {
+        "pi_1": "Go to the fridge",
+        "pi_2": "Pick up the apple",
+        "pi_3": "Pick up the bottle"
+    },
+    "ltl_nl_formula": "F pi_1 & (!pi_1 U (pi_2 | pi_3))"
+};
+
+'Eventually go to Location F, but only after you have visited Location A and Location B.'?
+{
+    "pi_predicates": {
+        "pi_1": "Go to Location F",
+        "pi_2": "Visit Location A",
+        "pi_3": "Visit Location B"
+    },
+    "ltl_nl_formula": "F pi_1 & (!pi_1 U (pi_2 & pi_3))"
+};
+
+'Eventually deliver the pen, but only after you have picked up the apple and picked up the Coke.'?
+{
+    "pi_predicates": {
+        "pi_1": "Deliver the pen",
+        "pi_2": "Pick up the apple",
+        "pi_3": "Pick up the Coke"
+    },
+    "ltl_nl_formula": "F pi_1 & (!pi_1 U (pi_2 & pi_3))"
+};
+
+'Eventually deliver the apple to Location A and the pen to Location D, but the pen must not be delivered until Coke 1 is delivered to Location B.'?
+{
+    "pi_predicates": {
+        "pi_1": "Deliver the apple to Location A",
+        "pi_2": "Deliver the pen to Location D",
+        "pi_3": "Deliver Coke 1 to Location B"
+    },
+    "ltl_nl_formula": "F pi_1 & F pi_2 & (!pi_2 U pi_3)"
+};
+
+'Eventually go to the fridge and inspect the wardrobe, but do not inspect the wardrobe until you have visited Location A.'?
+{
+    "pi_predicates": {
+        "pi_1": "Go to the fridge",
+        "pi_2": "Inspect the wardrobe",
+        "pi_3": "Visit Location A"
+    },
+    "ltl_nl_formula": "F pi_1 & F pi_2 & (!pi_2 U pi_3)"
+};
+
+'Eventually deliver the pen, then the apple, then the Coke.'?
+{
+    "pi_predicates": {
+        "pi_1": "Deliver the pen",
+        "pi_2": "Deliver the apple",
+        "pi_3": "Deliver the Coke"
+    },
+    "ltl_nl_formula": "F pi_3 & (!pi_3 U pi_2) & (!pi_2 U pi_1)"
+};
+
+'Eventually deliver the pen, the apple, and Coke 1, in any order.'?
+{
+    "pi_predicates": {
+        "pi_1": "Deliver pen",
+        "pi_2": "Deliver apple",
+        "pi_3": "Deliver Coke 1"
+    },
+    "ltl_nl_formula": "F pi_1 & F pi_2 & F pi_3"
+};
+
+'Eventually deliver the pen and the apple to Location E, but only after Coke 1 has been delivered to Location D.'?
+{
+    "pi_predicates": {
+        "pi_1": "Deliver the pen to Location E",
+        "pi_2": "Deliver the apple to Location E",
+        "pi_3": "Deliver Coke 1 to Location D"
+    },
+    "ltl_nl_formula": "F pi_1 & F pi_2 & (!pi_1 U pi_3) & (!pi_2 U pi_3)"
+};
+
+'Eventually go to Location A and go to Location B, but only after visiting Location C.'?
+{
+    "pi_predicates": {
+        "pi_1": "Go to Location A",
+        "pi_2": "Go to Location B",
+        "pi_3": "Visit Location C"
+    },
+    "ltl_nl_formula": "F pi_1 & F pi_2 & (!pi_1 U pi_3) & (!pi_2 U pi_3)"
+};
+
+'Eventually deliver the pen or the apple to Location A, but only after you have delivered Coke 1 or Coke 2 to Location B.'?
+{
+    "pi_predicates": {
+        "pi_1": "Deliver the pen to Location A",
+        "pi_2": "Deliver the apple to Location A",
+        "pi_3": "Deliver Coke 1 to Location B",
+        "pi_4": "Deliver Coke 2 to Location B"
+    },
+    "ltl_nl_formula": "F (pi_1 | pi_2) & (!(pi_1 | pi_2) U (pi_3 | pi_4))"
+};
+
+'Eventually go to the fridge or the wardrobe, but only after picking up the bottle or the pen.'?
+{
+    "pi_predicates": {
+        "pi_1": "Go to the fridge",
+        "pi_2": "Go to the wardrobe",
+        "pi_3": "Pick up the bottle",
+        "pi_4": "Pick up the pen"
+    },
+    "ltl_nl_formula": "F (pi_1 | pi_2) & (!(pi_1 | pi_2) U (pi_3 | pi_4))"
+};
+
+'Eventually deliver the pen to A and the apple to B. Do not deliver the pen until Coke 1 is delivered. Do not deliver the apple until Coke 1 is delivered.'?
+{
+    "pi_predicates": {
+        "pi_1": "Deliver the pen to A",
+        "pi_2": "Deliver the apple to B",
+        "pi_3": "Deliver Coke 1"
+    },
+    "ltl_nl_formula": "F pi_1 & F pi_2 & (!pi_1 U pi_3) & (!pi_2 U pi_3)"
+};
+
+'Eventually deliver the pen, the apple, and the Coke. The Coke must be delivered after the apple, and the apple must be delivered after the pen.'?
+{
+    "pi_predicates": {
+        "pi_1": "Deliver the pen",
+        "pi_2": "Deliver the apple",
+        "pi_3": "Deliver the Coke"
+    },
+    "ltl_nl_formula": "F pi_3 & (!pi_3 U pi_2) & (!pi_2 U pi_1)"
+};
+
+'Eventually inspect Location C, but only after delivering the apple to A or delivering the pen to B.'?
+{
+    "pi_predicates": {
+        "pi_1": "Inspect Location C",
+        "pi_2": "Deliver the apple to A",
+        "pi_3": "Deliver the pen to B"
+    },
+    "ltl_nl_formula": "F pi_1 & (!pi_1 U (pi_2 | pi_3))"
+};
+
+'Eventually deliver Coke 2 to the office, but only after delivering Coke 1 to the kitchen and the apple to the fridge.'?
+{
+    "pi_predicates": {
+        "pi_1": "Deliver Coke 2 to office",
+        "pi_2": "Deliver Coke 1 to kitchen",
+        "pi_3": "Deliver the apple to fridge"
+    },
+    "ltl_nl_formula": "F pi_1 & (!pi_1 U (pi_2 & pi_3))"
+};
+
+'Eventually go to Location A and Location B. Do not go to Location B until you have visited Location C.'?
+{
+    "pi_predicates": {
+        "pi_1": "Go to Location A",
+        "pi_2": "Go to Location B",
+        "pi_3": "Visit Location C"
+    },
+    "ltl_nl_formula": "F pi_1 & F pi_2 & (!pi_2 U pi_3)"
+};
+
+'Eventually deliver Coke 1, Coke 2, and the pen. The Coke 2 must be delivered after Coke 1, and pen must be delivered after Coke 2.'?
+{
+    "pi_predicates": {
+        "pi_1": "Deliver Coke 1",
+        "pi_2": "Deliver Coke 2",
+        "pi_3": "Deliver the pen"
+    },
+    "ltl_nl_formula": "F pi_1 & F pi_2 & F pi_3 & (!pi_2 U pi_1) & (!pi_3 U pi_2)"
+};

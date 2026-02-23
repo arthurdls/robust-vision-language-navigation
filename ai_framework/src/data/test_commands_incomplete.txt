@@ -1,0 +1,47 @@
+'First deliver the pen to Location D, but then I am not sure.'?
+{
+    "pi_predicates": {
+        "pi_1": "Deliver the pen to Location D"
+    },
+    "ltl_nl_formula": "F pi_1"
+};
+
+'First, go to Location A, and then... I forgot the rest.'?
+{
+    "pi_predicates": {
+        "pi_1": "Go to Location A"
+    },
+    "ltl_nl_formula": "F pi_1"
+};
+
+'Eventually pick up the pen, and after that... hmm, let me think.'?
+{
+    "pi_predicates": {
+        "pi_1": "Pick up the pen"
+    },
+    "ltl_nl_formula": "F pi_1"
+};
+
+'I need you to deliver Coke 1 to the kitchen, and then... just do that for now.'?
+{
+    "pi_predicates": {
+        "pi_1": "Deliver Coke 1 to the kitchen"
+    },
+    "ltl_nl_formula": "F pi_1"
+};
+
+'Visit the fridge, and then... well, I am not sure about the next step.'?
+{
+    "pi_predicates": {
+        "pi_1": "Visit the fridge"
+    },
+    "ltl_nl_formula": "F pi_1"
+};
+
+'Go to Location C. Actually... no, just go to Location E first and stop.'?
+{
+    "pi_predicates": {
+        "pi_1": "Go to Location E"
+    },
+    "ltl_nl_formula": "F pi_1"
+};

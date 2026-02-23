@@ -1,0 +1,48 @@
+# Conda environment for the simulator and LTL runner (rvln-sim).
+# Usage: conda env create -f rvln-sim_env.yml
+#        conda activate rvln-sim
+# Then:  python scripts/start_openvla_sim.py  (or run_openvla_ltl.py after starting the server)
+#
+# Depends on: OpenVLA server running (rvln-server env), Unreal env in envs/,
+#             and ai_framework/.env_vars for LLM API keys if using LTL/LLM features.
+
+name: rvln-sim
+
+channels:
+  - conda-forge
+  - defaults
+
+dependencies:
+  - python>=3.10,<3.12
+  - pip
+  # LTL planner (Spot library)
+  - spot
+
+  - pip:
+      # UAV-Flow-Eval / gym_unrealcv stack
+      - "gym<0.27"
+      - unrealcv
+      - opencv-python
+      - matplotlib
+      - numpy
+      - scipy
+      - pillow
+      - requests
+      - pynput
+      # ai_framework (LTL/LLM stack)
+      - openai
+      - google-generativeai
+      - huggingface-hub
+      - jinja2
+      - networkx
+      - pandas
+      - pydantic
+      - scikit-learn
+      - sentence-transformers
+      - sympy
+      - tqdm
+      - websockets
+      - beautifulsoup4
+      - tenacity
+      - imageio
+      - imageio-ffmpeg

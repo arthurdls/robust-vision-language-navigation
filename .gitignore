@@ -1,0 +1,10 @@
+
+*__pycache__/
+.old_code/
+*.zip
+*.env*
+envs/UnrealZoo-UE4/Collection_v4_LinuxNoEditor/
+envs/UnrealZoo-UE4/textures/
+results/*
+weights/OpenVLA-UAV/*
+*.safetensors

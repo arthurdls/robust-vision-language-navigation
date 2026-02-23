@@ -1,0 +1,33 @@
+dependencies:
+  # --- System/Conda Level Tools ---
+  - graphviz
+  - pip
+
+  # --- PIP Packages ---
+  - pip:
+      - beautifulsoup4
+      - google-genai
+      - google-generativeai
+      - huggingface-hub
+      - jinja2
+      - networkx
+      # Relaxed numpy to allow solver to find compatible version
+      - numpy 
+      - openai
+      - pandas
+      - pillow
+      - pydantic
+      - requests
+      - scikit-learn
+      - scipy
+      - sentence-transformers
+      - sympy
+      # Relaxed torch/transformers to avoid version conflicts
+      - torch 
+      - transformers
+      - tqdm
+      - triton
+      - websockets
+      - imageio
+      - imageio-ffmpeg
+      - tenacity

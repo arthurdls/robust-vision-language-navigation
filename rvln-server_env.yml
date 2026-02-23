@@ -1,0 +1,33 @@
+# Conda environment for the OpenVLA inference server (rvln-server).
+# Usage: conda env create -f rvln-server_env.yml
+#        conda activate rvln-server
+# Then:  python scripts/start_openvla_server.py
+#
+# Requires a CUDA-capable GPU. flash-attn requires compatible CUDA; if install
+# fails on your machine, you can try installing it separately or the server may
+# need a code change to use a different attn_implementation.
+
+name: rvln-server
+
+channels:
+  - pytorch
+  - nvidia
+  - conda-forge
+  - defaults
+
+dependencies:
+  - python>=3.10,<3.12
+  - pip
+
+  - pip:
+      - numpy
+      - pillow
+      - flask
+      # OpenVLA model stack (versions aligned with UAV-Flow/OpenVLA-UAV/requirements-min.txt)
+      - torch>=2.2.0
+      - torchvision>=0.16.0
+      - transformers==4.40.1
+      - timm==0.9.10
+      - tokenizers==0.19.1
+      # Flash Attention 2 (needs CUDA 11.6+; if install fails, install manually or use a different attn_implementation in server code)
+      - flash-attn

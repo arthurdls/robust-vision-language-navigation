@@ -1,0 +1,27 @@
+'hello'?{};
+
+'I am not sure what to say'?{};
+
+'nothing'?{};
+
+'maybe first do, actually I don't know.'?{};
+
+'How are you today'?{};
+
+'Please wait a moment.'?{};
+
+'Stop.'?{};
+
+'I need you to... actually, nevermind.'?{};
+
+'Can you go to... no, that's wrong.'?{};
+
+'What was I saying'?{};
+
+'I do not have a command.'?{};
+
+'Maybe deliver the apple, or perhaps... I don't know.'?{};
+
+'Forget that.'?{};
+
+'That's all for now.'?{};
