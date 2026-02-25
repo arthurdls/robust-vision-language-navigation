@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 """
-Scout map locations: same environment as run_openvla_ltl.py, but only teleports
-the drone to user-specified global positions so you can observe what different
-positions look like.
+Scout map locations: launch env, skip full reset, then print initial camera
+position and orientation every 2 seconds.
 
 Usage (from repo root):
   python scripts/scout_locations.py
@@ -101,27 +100,6 @@ def _setup_env_and_imports() -> None:
 
     _base_env.UnrealCv_base.remove_agent = _patched_remove_agent
 
-    import gym_unrealcv.envs.track as _track_module
-    import numpy as np
-
-    def _patched_get_tracker_init_point(self, target_pos, distance, direction=None):
-        if direction is None:
-            direction = 2 * np.pi * np.random.sample(1)
-        else:
-            direction = direction % (2 * np.pi)
-        direction = float(np.asarray(direction).flat[0])
-        distance = float(np.asarray(distance).flat[0])
-        dx = float(distance * np.cos(direction))
-        dy = float(distance * np.sin(direction))
-        x = dx + float(np.asarray(target_pos[0]).flat[0])
-        y = dy + float(np.asarray(target_pos[1]).flat[0])
-        z = float(np.asarray(target_pos[2]).flat[0])
-        cam_pos_exp = [x, y, z]
-        yaw = float(direction / np.pi * 180 - 180)
-        return [cam_pos_exp, yaw]
-
-    _track_module.Track.get_tracker_init_point = _patched_get_tracker_init_point
-
 
 def _import_batch():
     """Add paths, chdir to UAV-Flow-Eval, import batch_run_act_all."""
@@ -135,14 +113,6 @@ def _import_batch():
 
     import batch_run_act_all as batch
     return batch
-
-
-def _parse_position(s: str):
-    """Parse 'x, y, z, yaw' into four floats. Raises ValueError if invalid."""
-    parts = [p.strip() for p in s.split(",")]
-    if len(parts) != 4:
-        raise ValueError("Enter exactly 4 numbers: x, y, z, yaw (e.g. 100, 100, 140, 61)")
-    return [float(x) for x in parts]
 
 
 def main():
@@ -170,7 +140,7 @@ def main():
     args = parser.parse_args()
 
     _setup_env_and_imports()
-    batch = _import_batch()
+    _import_batch()
 
     import gym
     from gym_unrealcv.envs.wrappers import time_dilation, configUE, augmentation
@@ -206,10 +176,10 @@ def main():
         loc = env.unwrapped.unrealcv.get_cam_location(initial_cam_id)
         rot = env.unwrapped.unrealcv.get_cam_rotation(initial_cam_id)
         x, y, z = loc
-        roll, yaw, pitch = rot
+        pitch, yaw, roll = rot
         print(
             f"Camera: position=({x:.2f}, {y:.2f}, {z:.2f}), "
-            f"orientation roll={roll:.2f} yaw={yaw:.2f} pitch={pitch:.2f}"
+            f"orientation pitch={pitch:.2f} yaw={yaw:.2f} roll={roll:.2f}"
         )
         time.sleep(2)
     env.close()
