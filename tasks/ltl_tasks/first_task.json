@@ -1,4 +1,4 @@
 {
-  "instruction": "Go to the red building, then turn right, then go to the nearest tree",
-  "initial_pos": [100, 100, 100, 61]
+  "instruction": "First, progress past the trees from the left side. Then continue progress past the trees from the left side. Advance past the streetlight from the left side. Then turn right 90 degrees. Approach the black car and land at the front of the black car",
+  "initial_pos": [-4795.53, 301.72, 349.11, 175.24]
 }
