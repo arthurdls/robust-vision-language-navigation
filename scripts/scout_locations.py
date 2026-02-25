@@ -6,9 +6,14 @@ positions look like.
 
 Usage (from repo root):
   python scripts/scout_locations.py
-  # Then at the prompt enter: 100, 100, 140, 61   (x, y, z, yaw)
-  # Or: -600, -1270, 128, 61
-  # Enter q or quit to exit.
+  # Forward: w
+  # Backward: s
+  # Left: a
+  # Right: d
+  # Ascend: e
+  # Descend: c
+  # Yaw left: left arrow
+  # Yaw right: right arrow
 """
 
 import argparse
@@ -26,6 +31,10 @@ _DOWNTOWN_ENV_ID = "UnrealTrack-DowntownWest-ContinuousColor-v0"
 
 DEFAULT_TIME_DILATION = 10
 DEFAULT_SEED = 0
+
+
+class _StopAfterRemoveAgents(Exception):
+    """Raised after set_population (remove agents) so we skip the rest of reset and enter the while loop."""
 
 
 def _load_env_vars() -> None:
@@ -79,27 +88,16 @@ def _setup_env_and_imports() -> None:
     _misc.get_settingpath = _get_settingpath
 
     import gym_unrealcv.envs.base_env as _base_env
-    _REMOVE_AGENT_WAIT_TIMEOUT_S = 10.0
-    _REMOVE_AGENT_WAIT_SLEEP_S = 0.2
 
     def _patched_remove_agent(self, name):
+        """Update in-memory state only; skip Unreal destroy_obj so we don't wait, then enter the main loop."""
         agent_index = self.player_list.index(name)
         self.player_list.remove(name)
-        last_cam_list = self.cam_list
         self.cam_list = self.remove_cam(name)
         self.action_space.pop(agent_index)
         self.observation_space.pop(agent_index)
-        self.unrealcv.destroy_obj(name)
         self.agents.pop(name)
-        st_time = time.time()
-        time.sleep(1)
-        print("waiting for remove agent {}...".format(name))
-        while self.unrealcv.get_camera_num() > len(last_cam_list) + 1:
-            if time.time() - st_time > _REMOVE_AGENT_WAIT_TIMEOUT_S:
-                print("Remove agent wait timed out; continuing.")
-                break
-            time.sleep(_REMOVE_AGENT_WAIT_SLEEP_S)
-        print("Remove finished!")
+        # Intentionally skip: unrealcv.destroy_obj(name) and the wait loop
 
     _base_env.UnrealCv_base.remove_agent = _patched_remove_agent
 
@@ -184,59 +182,36 @@ def main():
     env = configUE.ConfigUEWrapper(env, resolution=(256, 256))
     env = augmentation.RandomPopulationWrapper(env, 2, 2, random_target=False)
     env.seed(int(args.seed))
-    env.reset()
-    env.unwrapped.unrealcv.set_viewport(env.unwrapped.player_list[0])
+
+    # Skip set_population (remove agents) and the rest of reset; go straight to the while loop.
+    _original_set_population = env.unwrapped.set_population
+
+    def _set_population_then_stop(num_agents):
+        raise _StopAfterRemoveAgents()
+
+    env.unwrapped.set_population = _set_population_then_stop
+    try:
+        env.reset()
+    except _StopAfterRemoveAgents:
+        pass
+    env.unwrapped.set_population = _original_set_population
+
+    # Keep the camera at initialization view; do not switch to the drone's camera.
     env.unwrapped.unrealcv.set_phy(env.unwrapped.player_list[0], 0)
 
-    time.sleep(batch.SLEEP_SHORT_S)
-    env.unwrapped.unrealcv.new_obj("bp_character_C", "BP_Character_21", [0, 0, 0])
-    env.unwrapped.unrealcv.set_appearance("BP_Character_21", 0)
-    env.unwrapped.unrealcv.set_obj_rotation("BP_Character_21", [0, 0, 0])
-    time.sleep(batch.SLEEP_SHORT_S)
-    env.unwrapped.unrealcv.new_obj("BP_BaseCar_C", "BP_Character_22", [1000, 0, 0])
-    env.unwrapped.unrealcv.set_appearance("BP_Character_22", 2)
-    env.unwrapped.unrealcv.set_obj_rotation("BP_Character_22", [0, 0, 0])
-    env.unwrapped.unrealcv.set_phy("BP_Character_22", 0)
-    time.sleep(batch.SLEEP_SHORT_S)
-
-    # Initial teleport so view is defined (optional default)
-    env.unwrapped.unrealcv.set_obj_location(
-        env.unwrapped.player_list[0], [0.0, 0.0, 100.0]
-    )
-    env.unwrapped.unrealcv.set_rotation(env.unwrapped.player_list[0], -180)
-    batch.set_cam(env)
-    time.sleep(batch.SLEEP_AFTER_RESET_S)
-
-    print("Scout locations (same env as run_openvla_ltl). Enter: x, y, z, yaw")
-    print("Example: 100, 100, 140, 61   or   -600, -1270, 128, 61")
-    print("Quit: q or quit")
-    print()
+    # Initial camera is the env's third/top-view camera (cam_id[0]).
+    initial_cam_id = env.unwrapped.cam_id[0]
 
     while True:
-        try:
-            line = input("x, y, z, yaw> ").strip()
-        except EOFError:
-            break
-        if not line:
-            continue
-        if line.lower() in ("q", "quit"):
-            break
-        try:
-            x, y, z, yaw = _parse_position(line)
-        except ValueError as e:
-            print(e)
-            continue
-
-        env.unwrapped.unrealcv.set_obj_location(
-            env.unwrapped.player_list[0], [x, y, z]
+        loc = env.unwrapped.unrealcv.get_cam_location(initial_cam_id)
+        rot = env.unwrapped.unrealcv.get_cam_rotation(initial_cam_id)
+        x, y, z = loc
+        roll, yaw, pitch = rot
+        print(
+            f"Camera: position=({x:.2f}, {y:.2f}, {z:.2f}), "
+            f"orientation roll={roll:.2f} yaw={yaw:.2f} pitch={pitch:.2f}"
         )
-        env.unwrapped.unrealcv.set_rotation(
-            env.unwrapped.player_list[0], yaw - 180
-        )
-        batch.set_cam(env)
-        time.sleep(0.2)
-        print("Teleported to ({}, {}, {}), yaw={}".format(x, y, z, yaw))
-
+        time.sleep(2)
     env.close()
     print("Done.")
 
