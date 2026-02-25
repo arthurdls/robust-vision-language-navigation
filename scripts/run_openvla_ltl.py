@@ -343,27 +343,10 @@ def _setup_env_and_imports():
     _misc.get_settingpath = _get_settingpath
 
     import gym_unrealcv.envs.base_env as _base_env
-    _REMOVE_AGENT_WAIT_TIMEOUT_S = 10.0
-    _REMOVE_AGENT_WAIT_SLEEP_S = 0.2
 
     def _patched_remove_agent(self, name):
-        agent_index = self.player_list.index(name)
-        self.player_list.remove(name)
-        last_cam_list = self.cam_list
-        self.cam_list = self.remove_cam(name)
-        self.action_space.pop(agent_index)
-        self.observation_space.pop(agent_index)
-        self.unrealcv.destroy_obj(name)
-        self.agents.pop(name)
-        st_time = time.time()
-        time.sleep(1)
-        print("waiting for remove agent {}...".format(name))
-        while self.unrealcv.get_camera_num() > len(last_cam_list) + 1:
-            if time.time() - st_time > _REMOVE_AGENT_WAIT_TIMEOUT_S:
-                print("Remove agent wait timed out; continuing.")
-                break
-            time.sleep(_REMOVE_AGENT_WAIT_SLEEP_S)
-        print("Remove finished!")
+        """No-op: do not remove agents (e.g. at start of run)."""
+        pass
 
     _base_env.UnrealCv_base.remove_agent = _patched_remove_agent
 
