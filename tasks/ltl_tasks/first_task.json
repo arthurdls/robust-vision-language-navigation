@@ -1,4 +1,4 @@
 {
-  "instruction": "First, progress past the trees from the left side. Then continue progress past the trees from the left side. Advance past the streetlight from the left side. Then turn right 90 degrees. Approach the black car and land at the front of the black car",
+  "instruction": "First move closer to the tree on the left side. Then progress past the trees from the left side. Then progress past the trees from the right side. Then progress past the trees from the left side. Then, move forward 10.0 meters. Then, navigate past the structure from the left side. Then Turn right 90 degrees. Then, turn toward the black car. Then, move closer to the black car. Finally, land in front of the black car.",
   "initial_pos": [-4795.53, 301.72, 349.11, 175.24]
 }
