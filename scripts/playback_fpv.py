@@ -8,6 +8,7 @@ Supports:
 
 Usage (from repo root):
   python scripts/playback_fpv.py results/ltl_results/run_2026_02_23_03_17_00/
+  python scripts/playback_fpv.py results/ltl_results/run_2026_02_27_12_07_21/ --save-video
   python scripts/playback_fpv.py results
   python scripts/playback_fpv.py --pattern "*.png"
 
@@ -84,6 +85,11 @@ def main():
         default=10.0,
         help="Frames per second when using --video (default: 10).",
     )
+    parser.add_argument(
+        "--save-video",
+        action="store_true",
+        help="Save the run as an MP4 video (written to <results_dir>/playback.mp4).",
+    )
     args = parser.parse_args()
 
     results_dir = args.results_dir
@@ -120,6 +126,23 @@ def main():
         sys.exit(1)
 
     import cv2
+
+    if args.save_video:
+        out_path = results_path / "playback.mp4"
+        first = cv2.imread(files[0])
+        if first is None:
+            print(f"Error: could not read first frame {files[0]}", file=sys.stderr)
+            sys.exit(1)
+        h, w = first.shape[:2]
+        fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+        writer = cv2.VideoWriter(str(out_path), fourcc, args.fps, (w, h))
+        for path in files:
+            img = cv2.imread(path)
+            if img is not None:
+                writer.write(img)
+        writer.release()
+        print(f"Saved video to {out_path}")
+        sys.exit(0)
 
     delay_ms = int(1000 / args.fps) if args.video else 0
     print(f"Found {len(files)} images in {results_dir}")
