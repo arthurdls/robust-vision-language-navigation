@@ -345,8 +345,13 @@ def _setup_env_and_imports():
     import gym_unrealcv.envs.base_env as _base_env
 
     def _patched_remove_agent(self, name):
-        """No-op: do not remove agents (e.g. at start of run)."""
-        pass
+        """Update env state so set_population() loop terminates; skip Unreal destroy_obj to avoid removing agents from the scene."""
+        agent_index = self.player_list.index(name)
+        self.player_list.remove(name)
+        self.cam_list = self.remove_cam(name)
+        self.action_space.pop(agent_index)
+        self.observation_space.pop(agent_index)
+        self.agents.pop(name)
 
     _base_env.UnrealCv_base.remove_agent = _patched_remove_agent
 
