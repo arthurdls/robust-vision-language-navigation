@@ -16,6 +16,8 @@ Usage (from repo root):
   python scripts/run_openvla_ltl.py --task first_task.json
   # All tasks in tasks/ltl_tasks/
   python scripts/run_openvla_ltl.py --run_all_tasks
+  # Skip camera selection and use default camera:
+  python scripts/run_openvla_ltl.py --task first_task.json --use-default-cam
 """
 
 import argparse
@@ -197,7 +199,7 @@ def _interactive_camera_select(
     try:
         import cv2
     except ImportError:
-        logger.error("--camera-select requires opencv-python (cv2). Install with: pip install opencv-python")
+        logger.error("Camera select requires opencv-python (cv2). Install with: pip install opencv-python")
         sys.exit(1)
 
     initial_pos = _normalize_initial_pos(initial_pos)
@@ -792,9 +794,9 @@ def main():
         help="Enable goal adherence monitor (off by default). When on, verifies subgoals when model says done and runs periodic full-goal checks.",
     )
     parser.add_argument(
-        "--camera-select",
+        "--use-default-cam",
         action="store_true",
-        help="Stop before the main loop; cycle through each camera and select which one to use for OpenVLA and saving to disk (requires display and opencv-python).",
+        help="Use the default drone camera (ID %d) and skip interactive camera selection." % DRONE_CAM_ID,
     )
     args = parser.parse_args()
 
@@ -854,9 +856,9 @@ def main():
     goal_monitor_model = args.goal_monitor_model or args.llm_model
     goal_monitor = GoalAdherenceMonitor(model=goal_monitor_model)
 
-    # Optional: stop before main loop and interactively select which camera to use
+    # By default run interactive camera select; skip when --use-default-cam
     drone_cam_id = DRONE_CAM_ID
-    if args.camera_select:
+    if not args.use_default_cam:
         logger.info("Camera selection: stopping before main loop. Use the window to pick the camera for OpenVLA and saving.")
         drone_cam_id = _interactive_camera_select(env, tasks[0]["initial_pos"], batch)
 
