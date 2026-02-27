@@ -9,6 +9,7 @@ OpenVLA REPL: same simulation setup as run_openvla_ltl, then an interactive REPL
 - When the action finishes, "ACTION COMPLETE" is printed (or "Action aborted." if Ctrl+C), and the REPL continues.
 - 'where' (or 'location', 'pos', 'pose') prints current position/orientation (x, y, z, yaw).
 - 'pos x,y,z,yaw' or 'teleport x,y,z,yaw' teleports the drone to that proprio at any time.
+- 'undo' (or 'u') restores the drone to the position before the last VLA action; multiple undos in a row are supported.
 - Up/Down arrow keys browse through previous actions (history saved to ~/.rvln_openvla_repl_history).
 - The simulator is not closed when the script exits (e.g. on quit).
 
@@ -673,9 +674,11 @@ def main() -> None:
 
     origin_x, origin_y, origin_z, origin_yaw = pos[0], pos[1], pos[2], pos[3]
     current_pose: List[float] = [0.0, 0.0, 0.0, 0.0]
+    # Stack of (x, y, z, yaw) at the start of each VLA action; pop on undo
+    origin_history: List[tuple] = []
 
     print(
-        "REPL: action (natural language) | 'pos x,y,z,yaw' or 'teleport x,y,z,yaw' | 'where' for current pose | 'quit' to exit. Simulator stays open. Up/Down arrows: history."
+        "REPL: action (natural language) | 'pos x,y,z,yaw' or 'teleport x,y,z,yaw' | 'where' for current pose | 'undo' to undo last action | 'quit' to exit. Simulator stays open. Up/Down arrows: history."
     )
     print()
 
@@ -700,6 +703,21 @@ def main() -> None:
                 print("x={}, y={}, z={}, yaw={}".format(pose[0], pose[1], pose[2], pose[3]))
                 continue
 
+            # Undo: restore position to before the last VLA action (can undo multiple times)
+            if line.lower() in ("undo", "u"):
+                if not origin_history:
+                    print("Nothing to undo.")
+                    continue
+                ox, oy, oz, oyaw = origin_history.pop()
+                env.unwrapped.unrealcv.set_obj_location(env.unwrapped.player_list[0], [ox, oy, oz])
+                env.unwrapped.unrealcv.set_rotation(env.unwrapped.player_list[0], oyaw - 180)
+                batch.set_cam(env)
+                time.sleep(0.2)
+                origin_x, origin_y, origin_z, origin_yaw = ox, oy, oz, oyaw
+                current_pose = [0.0, 0.0, 0.0, 0.0]
+                print("Undone. Position: x={}, y={}, z={}, yaw={}".format(ox, oy, oz, oyaw))
+                continue
+
             # Teleport: pos x,y,z,yaw or teleport x,y,z,yaw
             if line.lower().startswith("pos ") or line.lower().startswith("teleport "):
                 prefix = "pos " if line.lower().startswith("pos ") else "teleport "
@@ -719,6 +737,7 @@ def main() -> None:
                 continue
 
             # Run VLA action until small changes 10 steps in a row, or Ctrl+C
+            origin_history.append((origin_x, origin_y, origin_z, origin_yaw))
             batch.reset_model(server_url)
             new_pose, aborted = _run_action_until_done(
                 env,
