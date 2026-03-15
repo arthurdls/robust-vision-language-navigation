@@ -10,6 +10,7 @@ OpenVLA REPL: same simulation setup as run_openvla_ltl, then an interactive REPL
 - 'where' (or 'location', 'pos', 'pose') prints current position/orientation (x, y, z, yaw).
 - 'pos x,y,z,yaw' or 'teleport x,y,z,yaw' teleports the drone to that proprio at any time.
 - 'undo' (or 'u') restores the drone to the position before the last VLA action; multiple undos in a row are supported.
+- 'record' or 'record start' starts saving every frame sent to the VLA under results/repl_results/run_YYYY_MM_DD_HH_MM_SS/; 'record stop' stops and reports how many frames were saved.
 - Up/Down arrow keys browse through previous actions (history saved to ~/.rvln_openvla_repl_history).
 - The simulator is not closed when the script exits (e.g. on quit).
 
@@ -25,8 +26,9 @@ import argparse
 import logging
 import os
 import sys
+from datetime import datetime
 from pathlib import Path
-from typing import Any, List, Optional
+from typing import Any, Dict, List, Optional
 
 # Enable readline for up/down arrow history (Unix; no-op on Windows if readline not installed)
 try:
@@ -54,6 +56,11 @@ DRONE_CAM_ID = 5
 
 # REPL history file (for up/down arrow browsing)
 _REPL_HISTORY_PATH = Path.home() / ".rvln_openvla_repl_history"
+# Directory for REPL recording outputs (frames sent to VLA)
+_REPL_RESULTS_DIR = _REPO_ROOT / "results" / "repl_results"
+
+# Recording state: when "dir" is not None, frames are saved there (frame_000000.png, ...)
+_recording_state: Dict[str, Any] = {"dir": None, "frame_index": 0}
 
 logger = logging.getLogger(__name__)
 
@@ -421,6 +428,17 @@ def _run_one_step(
         logger.warning("No image from drone camera.")
         return None, current_pose
 
+    # Save frame to recording dir when recording is active
+    rec_dir = _recording_state.get("dir")
+    if rec_dir is not None and image is not None:
+        try:
+            import cv2
+            frame_path = rec_dir / "frame_{:06d}.png".format(_recording_state["frame_index"])
+            cv2.imwrite(str(frame_path), image)
+            _recording_state["frame_index"] += 1
+        except Exception as e:
+            logger.debug("Failed to save recorded frame: %s", e)
+
     proprio = _state_for_openvla(current_pose)
     response = batch.send_prediction_request(
         image=Image.fromarray(image),
@@ -678,7 +696,8 @@ def main() -> None:
     origin_history: List[tuple] = []
 
     print(
-        "REPL: action (natural language) | 'pos x,y,z,yaw' or 'teleport x,y,z,yaw' | 'where' for current pose | 'undo' to undo last action | 'quit' to exit. Simulator stays open. Up/Down arrows: history."
+        "REPL: action (natural language) | 'pos x,y,z,yaw' or 'teleport x,y,z,yaw' | 'where' for current pose | "
+        "'record' / 'record start' to start saving VLA frames, 'record stop' to stop | 'undo' to undo last action | 'quit' to exit. Simulator stays open. Up/Down arrows: history."
     )
     print()
 
@@ -696,6 +715,29 @@ def main() -> None:
             if line.lower() in ("quit", "exit", "q"):
                 print("Exiting. Simulator not closed.")
                 break
+
+            # Start recording: save frames sent to VLA under results/repl_results/run_YYYY_MM_DD_HH_MM_SS/
+            if line.lower() in ("record", "record start", "start record"):
+                _REPL_RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+                run_name = "run_" + datetime.now().strftime("%Y_%m_%d_%H_%M_%S")
+                run_dir = _REPL_RESULTS_DIR / run_name
+                run_dir.mkdir(parents=True, exist_ok=True)
+                _recording_state["dir"] = run_dir
+                _recording_state["frame_index"] = 0
+                print("Recording started. Frames will be saved to: {}".format(run_dir))
+                continue
+
+            # Stop recording
+            if line.lower() in ("record stop", "stop record"):
+                if _recording_state["dir"] is None:
+                    print("Not recording.")
+                else:
+                    n = _recording_state["frame_index"]
+                    path = _recording_state["dir"]
+                    _recording_state["dir"] = None
+                    _recording_state["frame_index"] = 0
+                    print("Recording stopped. Saved {} frames to: {}".format(n, path))
+                continue
 
             # Current position/orientation
             if line.lower() in ("where", "location", "pos", "pose"):
