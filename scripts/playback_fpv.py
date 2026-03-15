@@ -4,6 +4,7 @@ Display FPV frames or trajectory plot images from a results directory.
 
 Supports:
 - LTL results: run dir with frames/ subdir (frame_000000.png, ...). Pass the run dir.
+- REPL results: run dir with frame_*.png directly in it (e.g. results/repl_results/run_.../). Pass the run dir.
 - UAV-Flow-Eval: dir with *_2d.png / *_3d.png trajectory plots. Pass that dir.
 
 Usage (from repo root):
@@ -112,15 +113,20 @@ def main():
         files = sorted(frames_dir.glob("*.png"))
         files = [str(p) for p in files]
     else:
-        patterns = [p.strip() for p in args.pattern.split(",")]
-        files = []
-        for pat in patterns:
-            files.extend(glob.glob(os.path.join(results_dir, pat)))
-        files = sorted(set(files))
+        # REPL results: frame_000000.png, frame_000001.png, ... directly in run dir
+        repl_frames = sorted(results_path.glob("frame_*.png"))
+        if repl_frames:
+            files = [str(p) for p in repl_frames]
+        else:
+            patterns = [p.strip() for p in args.pattern.split(",")]
+            files = []
+            for pat in patterns:
+                files.extend(glob.glob(os.path.join(results_dir, pat)))
+            files = sorted(set(files))
 
     if not files:
         print(
-            f"No images found in {results_dir} (looked for frames/*.png or {args.pattern})",
+            f"No images found in {results_dir} (looked for frames/*.png or frame_*.png or {args.pattern})",
             file=sys.stderr,
         )
         sys.exit(1)
