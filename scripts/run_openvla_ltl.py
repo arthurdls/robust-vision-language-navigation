@@ -18,6 +18,10 @@ Usage (from repo root):
   python scripts/run_openvla_ltl.py --run_all_tasks
   # Skip camera selection and use default camera:
   python scripts/run_openvla_ltl.py --task first_task.json --use-default-cam
+  # Interactive: prompt for task name in CLI (no initial task). Use --use-default-cam to skip camera selection:
+  python scripts/run_openvla_ltl.py --interactive --use-default-cam
+  # Or run one task then stay in interactive mode to rerun or run another:
+  python scripts/run_openvla_ltl.py --task third_task.json --interactive --use-default-cam
 """
 
 import argparse
@@ -46,6 +50,9 @@ _DOWNTOWN_ENV_ID = "UnrealTrack-DowntownWest-ContinuousColor-v0"
 # LTL task and result paths
 LTL_TASKS_DIR = _REPO_ROOT / "tasks" / "ltl_tasks"
 LTL_RESULTS_DIR = _REPO_ROOT / "results" / "ltl_results"
+
+# Sentinel for _resolve_task_name_to_task when task file is not found (caller should re-prompt)
+_TASK_NOT_FOUND = object()
 
 DEFAULT_SERVER_PORT = 5007
 DEFAULT_MAX_STEPS = 100
@@ -421,6 +428,7 @@ def run_ltl_control_loop(
     subgoals_out: Optional[List[str]] = None,
     goal_adherence_on: bool = False,
     drone_cam_id: Optional[int] = None,
+    set_cam_at_start: bool = True,
 ) -> None:
     """
     LTL-aware control loop: plan from full_instruction, run subgoals one at a time,
@@ -437,8 +445,9 @@ def run_ltl_control_loop(
     env.unwrapped.unrealcv.set_rotation(
         env.unwrapped.player_list[0], initial_pos[4] - 180
     )
-    batch.set_cam(env)
-    time.sleep(batch.SLEEP_AFTER_RESET_S)
+    if set_cam_at_start:
+        batch.set_cam(env)
+        time.sleep(batch.SLEEP_AFTER_RESET_S)
     cam_id = drone_cam_id if drone_cam_id is not None else DRONE_CAM_ID
     image = _set_drone_cam_and_get_image(env, cam_id)
 
@@ -657,16 +666,49 @@ def _load_task_from_json(path: Path) -> Dict[str, Any]:
     return {"instruction": instruction, "initial_pos": [float(x) for x in initial_pos]}
 
 
+def _resolve_task_name_to_task(cli_input: str) -> Any:
+    """
+    Resolve CLI input to a single task dict for interactive rerun.
+    Returns None if user chose quit (empty, 'quit', 'exit', 'q').
+    Returns _TASK_NOT_FOUND if the task file does not exist (caller should re-prompt).
+    Otherwise returns the task dict from _load_task_from_json.
+    """
+    raw = (cli_input or "").strip()
+    if not raw or raw.lower() in ("quit", "exit", "q"):
+        return None
+    name = raw if raw.endswith(".json") else raw + ".json"
+    path = LTL_TASKS_DIR / name
+    if not path.exists():
+        logger.error("Task file not found: %s", path)
+        return _TASK_NOT_FOUND
+    try:
+        return _load_task_from_json(path)
+    except Exception as e:
+        logger.warning("Failed to load task from %s: %s", path, e)
+        return _TASK_NOT_FOUND
+
+
 def _resolve_tasks(args: argparse.Namespace) -> List[Dict[str, Any]]:
-    """Build list of tasks from -c, --task, or --run_all_tasks (exactly one)."""
+    """Build list of tasks from -c, --task, --run_all_tasks (at most one), or --interactive with no task."""
     cmd = getattr(args, "command", None)
     task_file = getattr(args, "task", None)
     run_all = getattr(args, "run_all_tasks", False)
+    interactive = getattr(args, "interactive", False)
 
     count = sum([1 if cmd else 0, 1 if task_file else 0, 1 if run_all else 0])
-    if count != 1:
+    if count == 0:
+        if interactive:
+            return []
         raise SystemExit(
-            "Exactly one of -c/--command, --task, or --run_all_tasks is required.\n"
+            "Specify a task or use --interactive to enter the task at the prompt.\n"
+            "  -c \"instruction\" [--initial-position x,y,z,yaw]  run one ad-hoc task\n"
+            "  --task first_task.json                           run one task from tasks/ltl_tasks/\n"
+            "  --run_all_tasks                                  run all JSONs in tasks/ltl_tasks/\n"
+            "  --interactive                                    no initial task; prompt for task name in CLI"
+        )
+    if count > 1:
+        raise SystemExit(
+            "At most one of -c/--command, --task, or --run_all_tasks is allowed.\n"
             "  -c \"instruction\" [--initial-position x,y,z,yaw]  run one ad-hoc task (position optional, default: -600,-1270,128,61)\n"
             "  --task first_task.json                           run one task from tasks/ltl_tasks/\n"
             "  --run_all_tasks                                  run all JSONs in tasks/ltl_tasks/"
@@ -698,12 +740,72 @@ def _resolve_tasks(args: argparse.Namespace) -> List[Dict[str, Any]]:
     return tasks
 
 
+def _run_single_task(
+    env: Any,
+    task: Dict[str, Any],
+    batch: Any,
+    planner: Any,
+    goal_monitor: Any,
+    server_url: str,
+    results_base: Path,
+    args: argparse.Namespace,
+    run_name: str,
+    drone_cam_id: int,
+    set_cam_at_start: bool = True,
+) -> Path:
+    """Run one task (LTL loop + save trajectory_log and run_info). Returns run_dir."""
+    instruction = task["instruction"]
+    initial_pos = task["initial_pos"]
+    start_time = datetime.now().strftime("%Y_%m_%d_%H_%M_%S")
+    run_dir = results_base / run_name
+    run_dir.mkdir(parents=True, exist_ok=True)
+
+    batch.reset_model(server_url)
+    logger.info("instruction: %s", instruction)
+
+    trajectory_log: List[Dict[str, Any]] = []
+    subgoals_used: List[str] = []
+
+    run_ltl_control_loop(
+        initial_pos,
+        env,
+        instruction,
+        args.max_steps,
+        trajectory_log,
+        server_url,
+        batch,
+        planner,
+        goal_monitor,
+        batch.reset_model,
+        run_dir=run_dir,
+        subgoals_out=subgoals_used,
+        goal_adherence_on=args.goal_adherence_on,
+        drone_cam_id=drone_cam_id,
+        set_cam_at_start=set_cam_at_start,
+    )
+
+    with open(run_dir / "trajectory_log.json", "w") as f:
+        json.dump(trajectory_log, f, indent=2)
+    end_time = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
+    run_info = {
+        "instruction": instruction,
+        "initial_pos": initial_pos,
+        "start_time": start_time,
+        "end_time": end_time,
+        "subgoals": subgoals_used,
+    }
+    with open(run_dir / "run_info.json", "w") as f:
+        json.dump(run_info, f, indent=2)
+
+    return run_dir
+
+
 def main():
     _load_env_vars()
     parser = argparse.ArgumentParser(
         description="Run OpenVLA with LTL planning and goal adherence monitoring"
     )
-    mode = parser.add_mutually_exclusive_group(required=True)
+    mode = parser.add_mutually_exclusive_group(required=False)
     mode.add_argument(
         "-c",
         "--command",
@@ -798,6 +900,11 @@ def main():
         action="store_true",
         help="Use the default drone camera (ID %d) and skip interactive camera selection." % DRONE_CAM_ID,
     )
+    parser.add_argument(
+        "--interactive",
+        action="store_true",
+        help="Wait for CLI input to run tasks: enter a task name (e.g. third_task or third_task.json), or 'quit' to exit. Can be used alone (no initial task) or after --task/--run_all_tasks.",
+    )
     args = parser.parse_args()
 
     logging.basicConfig(
@@ -860,60 +967,76 @@ def main():
     drone_cam_id = DRONE_CAM_ID
     if not args.use_default_cam:
         logger.info("Camera selection: stopping before main loop. Use the window to pick the camera for OpenVLA and saving.")
-        drone_cam_id = _interactive_camera_select(env, tasks[0]["initial_pos"], batch)
+        initial_pos_for_cam = (
+            tasks[0]["initial_pos"] if tasks
+            else _normalize_initial_pos(_parse_initial_position(DEFAULT_INITIAL_POSITION))
+        )
+        drone_cam_id = _interactive_camera_select(env, initial_pos_for_cam, batch)
 
     for idx, task in enumerate(tasks):
-        instruction = task["instruction"]
-        initial_pos = task["initial_pos"]
-        start_time = datetime.now().strftime("%Y_%m_%d_%H_%M_%S")
-        run_name = "run_{}".format(start_time) if len(tasks) == 1 else "run_{}_{:02d}".format(start_time, idx)
-        run_dir = results_base / run_name
-        run_dir.mkdir(parents=True, exist_ok=True)
-
         logger.info(
             "\n===== Task %d/%d =====",
             idx + 1,
             len(tasks),
         )
-        batch.reset_model(server_url)
-        logger.info("instruction: %s", instruction)
-
-        trajectory_log = []
-        subgoals_used = []
-
-        run_ltl_control_loop(
-            initial_pos,
-            env,
-            instruction,
-            args.max_steps,
-            trajectory_log,
-            server_url,
-            batch,
-            planner,
-            goal_monitor,
-            batch.reset_model,
-            run_dir=run_dir,
-            subgoals_out=subgoals_used,
-            goal_adherence_on=args.goal_adherence_on,
-            drone_cam_id=drone_cam_id,
-        )
-
-        # Write trajectory_log.json and run_info.json
-        with open(run_dir / "trajectory_log.json", "w") as f:
-            json.dump(trajectory_log, f, indent=2)
-        end_time = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
-        run_info = {
-            "instruction": instruction,
-            "initial_pos": initial_pos,
-            "start_time": start_time,
-            "end_time": end_time,
-            "subgoals": subgoals_used,
-        }
-        with open(run_dir / "run_info.json", "w") as f:
-            json.dump(run_info, f, indent=2)
-
-        logger.info("Run saved to %s", run_dir)
+        start_time = datetime.now().strftime("%Y_%m_%d_%H_%M_%S")
+        run_name = "run_{}".format(start_time) if len(tasks) == 1 else "run_{}_{:02d}".format(start_time, idx)
+        try:
+            run_dir = _run_single_task(
+                env,
+                task,
+                batch,
+                planner,
+                goal_monitor,
+                server_url,
+                results_base,
+                args,
+                run_name,
+                drone_cam_id,
+                set_cam_at_start=(idx == 0),
+            )
+            logger.info("Run saved to %s", run_dir)
+        except KeyboardInterrupt:
+            logger.info("Task interrupted.")
+            if args.interactive:
+                break
+            raise
         logger.info("===== Task %d finished =====\n", idx + 1)
+
+    if args.interactive:
+        while True:
+            try:
+                user_input = input(
+                    "Enter task name (e.g. third_task or third_task.json), or 'quit' to exit: "
+                ).strip()
+            except (EOFError, KeyboardInterrupt):
+                logger.info("Exiting interactive loop.")
+                break
+            result = _resolve_task_name_to_task(user_input)
+            if result is None:
+                break
+            if result is _TASK_NOT_FOUND:
+                continue
+            start_time = datetime.now().strftime("%Y_%m_%d_%H_%M_%S")
+            run_name = "run_{}".format(start_time)
+            try:
+                run_dir = _run_single_task(
+                    env,
+                    result,
+                    batch,
+                    planner,
+                    goal_monitor,
+                    server_url,
+                    results_base,
+                    args,
+                    run_name,
+                    drone_cam_id,
+                    set_cam_at_start=False,
+                )
+                logger.info("Run saved to %s", run_dir)
+            except KeyboardInterrupt:
+                logger.info("Task interrupted. Enter another task or 'quit' to exit.")
+                continue
 
     env.close()
 
