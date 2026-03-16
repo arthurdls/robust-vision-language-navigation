@@ -8,3 +8,4 @@ envs/UnrealZoo-UE4/textures/
 results/*
 weights/OpenVLA-UAV/*
 *.safetensors
+goal_adherence_artifacts/*
