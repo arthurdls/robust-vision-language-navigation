@@ -75,19 +75,23 @@ def get_ordered_frames_from_dir(dir_path: Path) -> List[Path]:
 
 def build_frame_grid(
     frame_paths: List[Path],
-    padding_px: int = 4,
+    padding_px: int = 16,
     max_size: int = 2048,
     min_short_side: int = 768,
 ) -> "Image.Image":
     """
     Build a single image grid from ordered frame paths with white padding between cells.
-    Grid fits within max_size x max_size with shortest side >= min_short_side.
+    Grid size is determined by each frame's resolution and padding (max_size and
+    min_short_side are ignored for backward compatibility).
+
+    Formula: width = cols * frame_w + (cols + 1) * padding_px,
+             height = rows * frame_h + (rows + 1) * padding_px.
 
     Args:
         frame_paths: Ordered list of paths to frame images.
-        padding_px: White space between cells and margin around grid (default 4).
-        max_size: Maximum width and height of the grid.
-        min_short_side: Minimum length of the grid's shortest side.
+        padding_px: White space between cells and margin around grid (default 16).
+        max_size: Ignored; kept for backward compatibility.
+        min_short_side: Ignored; kept for backward compatibility.
 
     Returns:
         PIL Image of the grid (RGB).
@@ -106,40 +110,17 @@ def build_frame_grid(
     cols = math.ceil(math.sqrt(K))
     rows = math.ceil(K / cols)
     p = padding_px
-    margin = p
 
-    # Use first frame aspect ratio for all cells
-    w0, h0 = frames[0].size
-    aspect = w0 / h0 if h0 else 1.0
-
-    # Total size: W = cols*cell_w + (cols-1)*p + 2*margin, H = rows*cell_h + (rows-1)*p + 2*margin
-    # cell_w/cell_h = aspect => cell_w = aspect * cell_h
-    # So W = cols*aspect*cell_h + (cols-1)*p + 2*margin, H = rows*cell_h + (rows-1)*p + 2*margin
-    # Constrain: W <= max_size, H <= max_size, min(W,H) >= min_short_side
-    extra_w = (cols - 1) * p + 2 * margin
-    extra_h = (rows - 1) * p + 2 * margin
-
-    # Max cell_h from W and H limits
-    cell_h_from_w = (max_size - extra_w) / (cols * aspect) if cols * aspect else 0
-    cell_h_from_h = (max_size - extra_h) / rows if rows else 0
-    cell_h_max = min(cell_h_from_w, cell_h_from_h)
-
-    # Min cell_h so that min(W,H) >= min_short_side
-    cell_h_min_w = (min_short_side - extra_w) / (cols * aspect) if cols * aspect else 0
-    cell_h_min_h = (min_short_side - extra_h) / rows if rows else 0
-    cell_h_min = max(cell_h_min_w, cell_h_min_h, 1)
-
-    # Use largest feasible cell size
-    cell_h = cell_h_max if cell_h_max >= max(cell_h_min, 1) else max(cell_h_min, 1)
-    cell_w = aspect * cell_h
-    cell_w, cell_h = int(cell_w), int(cell_h)
+    # Cell size = first frame size
+    cell_w, cell_h = frames[0].size
     if cell_w < 1:
         cell_w = 1
     if cell_h < 1:
         cell_h = 1
 
-    W = cols * cell_w + (cols - 1) * p + 2 * margin
-    H = rows * cell_h + (rows - 1) * p + 2 * margin
+    # Grid dimensions: (cols+1) and (rows+1) gaps of padding
+    W = cols * cell_w + (cols + 1) * p
+    H = rows * cell_h + (rows + 1) * p
     W, H = int(W), int(H)
 
     grid = Image.new("RGB", (W, H), (255, 255, 255))
@@ -153,8 +134,8 @@ def build_frame_grid(
         new_w = max(1, int(im_w * scale))
         new_h = max(1, int(im_h * scale))
         im_resized = im.resize((new_w, new_h), Image.Resampling.LANCZOS)
-        x = margin + c * (cell_w + p) + (cell_w - new_w) // 2
-        y = margin + r * (cell_h + p) + (cell_h - new_h) // 2
+        x = p + c * (cell_w + p) + (cell_w - new_w) // 2
+        y = p + r * (cell_h + p) + (cell_h - new_h) // 2
         grid.paste(im_resized, (x, y))
 
     return grid
