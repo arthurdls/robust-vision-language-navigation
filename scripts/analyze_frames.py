@@ -1,5 +1,8 @@
 """
-Goal adherence approach 1.
+Offline diary-based frame analysis tool.
+
+Builds frame grids from saved run directories and queries a VLM for temporal
+analysis or diary-based subtask completion checking.
 """
 
 import argparse
@@ -19,7 +22,7 @@ from goal_adherence_utils import (
     build_frame_grid,
     check_subtask_complete_diary,
     get_ordered_frames_from_dir,
-    query_gpt4o_mini_temporal,
+    query_vlm,
     sample_frames_every_n,
 )
 
@@ -27,7 +30,7 @@ __all__ = [
     "sample_frames_every_n",
     "get_ordered_frames_from_dir",
     "build_frame_grid",
-    "query_gpt4o_mini_temporal",
+    "query_vlm",
     "analyze_temporal_frames",
     "check_subtask_complete_diary",
 ]
@@ -35,7 +38,7 @@ __all__ = [
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="Build frame grid and query gpt-4o-mini for temporal analysis."
+        description="Build frame grid and query a VLM for temporal analysis."
     )
     parser.add_argument(
         "--dir",
@@ -83,8 +86,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "--model",
         type=str,
-        default="gpt-4o-mini",
-        help="OpenAI chat model (default: gpt-4o-mini; use gpt-4o for full model).",
+        default="gpt-4o",
+        help="OpenAI chat model (default: gpt-4o; use gpt-5 for latest model).",
     )
     args = parser.parse_args()
     if args.grid_only is not None:

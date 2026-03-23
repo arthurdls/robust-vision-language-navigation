@@ -1,6 +1,0 @@
-[
-    {"path": "results/repl_results/test_5/go_past_the_first_tree_too_close", "complete_at": null, "subtask": "Go past the first tree"},
-    {"path": "results/repl_results/test_5/go_past_the_first_tree_just_right", "complete_at": 78, "subtask": "Go past the first tree"},
-    {"path": "results/repl_results/test_2/move_past_the_first_streetlight_too_close", "complete_at": null, "subtask": "Move past the first streetlight"},
-    {"path": "results/repl_results/test_2/move_past_the_first_streetlight_just_right", "complete_at": 50, "subtask": "Move past the first streetlight"}
-]
