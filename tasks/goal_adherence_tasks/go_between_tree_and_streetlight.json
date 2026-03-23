@@ -1,0 +1,8 @@
+{
+  "task_name": "go_between_tree_and_streetlight",
+  "subgoal": "Go between the tree and the streetlight",
+  "initial_pos": [0, 0, 0, 0],
+  "max_steps": 200,
+  "diary_check_interval": 10,
+  "notes": ""
+}

@@ -1,0 +1,8 @@
+{
+  "task_name": "turn_right_until_red_car",
+  "subgoal": "Turn right until you see the red car",
+  "initial_pos": [0, 0, 0, 0],
+  "max_steps": 200,
+  "diary_check_interval": 10,
+  "notes": "Start by looking away from both the red and white car"
+}

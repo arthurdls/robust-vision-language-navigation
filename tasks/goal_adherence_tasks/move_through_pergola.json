@@ -1,0 +1,8 @@
+{
+  "task_name": "move_through_pergola",
+  "subgoal": "Move through the pergola between the wooden poles",
+  "initial_pos": [0, 0, 0, 0],
+  "max_steps": 200,
+  "diary_check_interval": 10,
+  "notes": ""
+}

@@ -1,0 +1,8 @@
+{
+  "task_name": "approach_white_building",
+  "subgoal": "Approach the white building",
+  "initial_pos": [0, 0, 0, 0],
+  "max_steps": 200,
+  "diary_check_interval": 10,
+  "notes": "Start from further away"
+}
