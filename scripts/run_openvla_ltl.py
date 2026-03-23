@@ -34,383 +34,49 @@ import time
 from collections import deque
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
-import numpy as np
 from PIL import Image
 
-_REPO_ROOT = Path(__file__).resolve().parent.parent
-_ENV_VARS_FILE = _REPO_ROOT / "ai_framework" / ".env_vars"
-_UAV_FLOW_EVAL = _REPO_ROOT / "UAV-Flow" / "UAV-Flow-Eval"
-_BATCH_SCRIPT = _UAV_FLOW_EVAL / "batch_run_act_all.py"
-_UAV_FLOW_ENVS_OVERLAY = _REPO_ROOT / "config" / "uav_flow_envs"
-_DOWNTOWN_OVERLAY_JSON = _UAV_FLOW_ENVS_OVERLAY / "Track" / "DowntownWest.json"
-_DOWNTOWN_ENV_ID = "UnrealTrack-DowntownWest-ContinuousColor-v0"
+_SCRIPT_DIR = Path(__file__).resolve().parent
+if str(_SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(_SCRIPT_DIR))
 
-# LTL task and result paths
-LTL_TASKS_DIR = _REPO_ROOT / "tasks" / "ltl_tasks"
-LTL_RESULTS_DIR = _REPO_ROOT / "results" / "ltl_results"
+from sim_common import (
+    BATCH_SCRIPT,
+    DEFAULT_INITIAL_POSITION,
+    DEFAULT_SERVER_PORT,
+    DEFAULT_SEED,
+    DEFAULT_TIME_DILATION,
+    DOWNTOWN_ENV_ID,
+    DRONE_CAM_ID,
+    REPO_ROOT,
+    UAV_FLOW_EVAL,
+    apply_action_poses,
+    import_batch_module,
+    interactive_camera_select,
+    load_env_vars,
+    normalize_initial_pos,
+    parse_position,
+    relative_pose_to_world,
+    set_drone_cam_and_get_image,
+    setup_env_and_imports,
+    setup_sim_env,
+    state_for_openvla,
+)
 
-# Sentinel for _resolve_task_name_to_task when task file is not found (caller should re-prompt)
+LTL_TASKS_DIR = REPO_ROOT / "tasks" / "ltl_tasks"
+LTL_RESULTS_DIR = REPO_ROOT / "results" / "ltl_results"
+
 _TASK_NOT_FOUND = object()
 
-DEFAULT_SERVER_PORT = 5007
 DEFAULT_MAX_STEPS = 100
-DEFAULT_TIME_DILATION = 10
-DEFAULT_SEED = 0
-# Default initial position (x,y,z,yaw) when -c is used without --initial-position; supports negative numbers
-DEFAULT_INITIAL_POSITION = "-600, -1270, 128, 61"
 IMAGE_HISTORY_LEN = 10
 GOAL_MONITOR_PERIODIC_STEPS = 30
-# Thresholds for "small movement" to end current subgoal (tighter = smaller deltas required)
 SMALL_DELTA_POS = 3.0
 SMALL_DELTA_YAW = 1.0
-# Drone POV camera ID (determined from probe_cameras.py; used for frames sent to OpenVLA and saved)
-DRONE_CAM_ID = 5
-
-# State format sent to OpenVLA (must match UAV-Flow/UAV-Flow-Eval/batch_run_act_all.py and
-# UAV-Flow/OpenVLA-UAV/vla-scripts/openvla_act.py): [x, y, z, yaw_deg] relative to initial pose.
-# Server expects proprio[-1] in degrees (openvla_act uses np.deg2rad(proprio[-1])).
-PROPRIO_LEN = 4
 
 logger = logging.getLogger(__name__)
-
-
-def _state_for_openvla(current_pose: List[float]) -> np.ndarray:
-    """Format current state for OpenVLA /predict payload (same as UAV-Flow batch_run_act_all).
-
-    Returns a 4-float array [x, y, z, yaw_degrees]. In the LTL loop, current_pose is always
-    relative to the start of the current sub-task and is reset to [0,0,0,0] when advancing.
-    """
-    if len(current_pose) >= PROPRIO_LEN:
-        out = [
-            float(current_pose[0]),
-            float(current_pose[1]),
-            float(current_pose[2]),
-            float(current_pose[3]),
-        ]
-    else:
-        out = [0.0] * PROPRIO_LEN
-        for i in range(min(len(current_pose), PROPRIO_LEN)):
-            out[i] = float(current_pose[i])
-    arr = np.array(out, dtype=np.float32)
-    _verify_proprio_format(arr)
-    return arr
-
-
-def _verify_proprio_format(proprio: np.ndarray) -> None:
-    """Verify proprio is in intended format for OpenVLA: [x, y, z, yaw_deg], 4 floats, yaw in degrees."""
-    assert proprio.shape == (PROPRIO_LEN,), (
-        f"proprio must have length {PROPRIO_LEN} (x, y, z, yaw_deg), got shape {proprio.shape}"
-    )
-    assert proprio.dtype == np.float32, (
-        f"proprio must be float32 for server, got dtype {proprio.dtype}"
-    )
-    assert np.all(np.isfinite(proprio)), (
-        f"proprio must be finite, got {proprio.tolist()}"
-    )
-    # yaw (index 3) is in degrees; server uses np.deg2rad(proprio[-1])
-    logger.debug(
-        "proprio format OK: [x=%.2f, y=%.2f, z=%.2f, yaw_deg=%.2f]",
-        float(proprio[0]), float(proprio[1]), float(proprio[2]), float(proprio[3]),
-    )
-
-
-def _load_env_vars() -> None:
-    """Load ai_framework/.env_vars (export KEY=value lines) into os.environ so API keys are set."""
-    if not _ENV_VARS_FILE.exists():
-        return
-    try:
-        with open(_ENV_VARS_FILE, "r") as f:
-            for line in f:
-                line = line.strip()
-                if not line or not line.startswith("export "):
-                    continue
-                rest = line[7:].strip()  # after "export "
-                if "=" not in rest:
-                    continue
-                key, _, value = rest.partition("=")
-                key = key.strip()
-                value = value.strip()
-                if value.startswith('"') and value.endswith('"'):
-                    value = value[1:-1]
-                elif value.startswith("'") and value.endswith("'"):
-                    value = value[1:-1]
-                if key:
-                    os.environ.setdefault(key, value)
-    except Exception as e:
-        logger.warning("Could not load %s: %s", _ENV_VARS_FILE, e)
-
-
-# ----- Inlined from openvla_loop_helpers -----
-def _transform_to_global(
-    x: float, y: float, initial_yaw: float
-) -> Tuple[float, float]:
-    """Transform relative x,y to global frame given initial yaw (degrees)."""
-    theta = np.radians(initial_yaw)
-    cos_theta = np.cos(theta)
-    sin_theta = np.sin(theta)
-    global_x = x * cos_theta - y * sin_theta
-    global_y = x * sin_theta + y * cos_theta
-    return global_x, global_y
-
-
-def _normalize_angle(angle: float) -> float:
-    """Normalize angle to [-180, 180) degrees."""
-    angle = angle % 360
-    if angle > 180:
-        angle -= 360
-    return angle
-
-
-def _relative_pose_to_world(
-    origin_x: float,
-    origin_y: float,
-    origin_z: float,
-    origin_yaw: float,
-    relative_pose: List[float],
-) -> Tuple[float, float, float, float]:
-    """Convert relative pose [x, y, z, yaw_deg] to world (x, y, z, yaw_deg) given origin."""
-    rx, ry, rz, yaw_deg = relative_pose[0], relative_pose[1], relative_pose[2], relative_pose[3]
-    gx, gy = _transform_to_global(rx, ry, origin_yaw)
-    world_x = origin_x + gx
-    world_y = origin_y + gy
-    world_z = origin_z + rz
-    world_yaw = _normalize_angle(yaw_deg + origin_yaw)
-    return (world_x, world_y, world_z, world_yaw)
-
-
-def _set_cam_at_drone_and_get_image(env: Any, cam_id: int) -> np.ndarray:
-    """Position the given camera at the drone and capture from it."""
-    x, y, z = env.unwrapped.unrealcv.get_obj_location(env.unwrapped.player_list[0])
-    roll, yaw, pitch = env.unwrapped.unrealcv.get_obj_rotation(env.unwrapped.player_list[0])
-    env.unwrapped.unrealcv.set_cam(cam_id, [x, y, z], [roll, pitch, yaw])
-    return env.unwrapped.unrealcv.get_image(cam_id, "lit")
-
-
-def _set_drone_cam_and_get_image(env: Any, cam_id: Optional[int] = None) -> np.ndarray:
-    """Position the drone POV camera at the drone and capture from it (used for OpenVLA input and saved frames)."""
-    return _set_cam_at_drone_and_get_image(env, cam_id if cam_id is not None else DRONE_CAM_ID)
-
-
-def _interactive_camera_select(
-    env: Any,
-    initial_pos: List[float],
-    batch: Any,
-) -> int:
-    """
-    Stop before the main loop: cycle through each camera with the drone at initial_pos,
-    show the view, let user choose which camera to use for OpenVLA and saving.
-    Returns the selected camera ID.
-    """
-    try:
-        import cv2
-    except ImportError:
-        logger.error("Camera select requires opencv-python (cv2). Install with: pip install opencv-python")
-        sys.exit(1)
-
-    initial_pos = _normalize_initial_pos(initial_pos)
-    env.unwrapped.unrealcv.set_obj_location(
-        env.unwrapped.player_list[0], initial_pos[0:3]
-    )
-    env.unwrapped.unrealcv.set_rotation(
-        env.unwrapped.player_list[0], initial_pos[4] - 180
-    )
-    batch.set_cam(env)
-    time.sleep(batch.SLEEP_AFTER_RESET_S)
-
-    n_cams = env.unwrapped.unrealcv.get_camera_num()
-    if n_cams <= 0:
-        logger.error("No cameras available.")
-        sys.exit(1)
-
-    current = 0
-    window_name = "Camera select: n=next, p=prev, s or Enter=select, q or Esc=quit"
-    cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
-
-    while True:
-        img = _set_cam_at_drone_and_get_image(env, current)
-        if img is None:
-            img = np.zeros((256, 256, 3), dtype=np.uint8)
-        # OpenCV uses BGR; image from Unreal may be RGB
-        if img.ndim == 3 and img.shape[2] == 3:
-            display = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
-        else:
-            display = img
-        label = "Camera %d / %d" % (current, n_cams)
-        cv2.putText(
-            display, label, (10, 30),
-            cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2
-        )
-        cv2.imshow(window_name, display)
-        k = cv2.waitKey(0) & 0xFF
-        if k == ord("s") or k == 13 or k == 10:  # s or Enter
-            cv2.destroyAllWindows()
-            logger.info("Selected camera %d for OpenVLA and saving.", current)
-            return current
-        if k == ord("q") or k == 27:  # q or Esc
-            cv2.destroyAllWindows()
-            logger.info("Camera selection cancelled.")
-            sys.exit(0)
-        if k == ord("n"):
-            current = (current + 1) % n_cams
-        elif k == ord("p"):
-            current = (current - 1) % n_cams
-
-
-def _apply_action_poses(
-    env: Any,
-    action_poses: List[Any],
-    initial_x: float,
-    initial_y: float,
-    initial_z: float,
-    initial_yaw: float,
-    set_cam: Callable[[Any], None],
-    trajectory_log: List[Dict[str, Any]],
-    sleep_s: float = 0.1,
-    drone_cam_id: Optional[int] = None,
-) -> Tuple[Optional[np.ndarray], List[float], int]:
-    """
-    Apply action poses in env, update trajectory_log.
-    Returns (image_after_last_pose, current_pose, steps_applied).
-    current_pose is [x, y, z, yaw_deg] relative to initial (UAV-Flow format for OpenVLA).
-    """
-    current_pose: List[float] = [0.0, 0.0, 0.0, 0.0]
-    image = None
-    steps = 0
-
-    for i, action_pose in enumerate(action_poses):
-        if not (
-            isinstance(action_pose, (list, tuple)) and len(action_pose) >= 4
-        ):
-            continue
-        relative_x = float(action_pose[0])
-        relative_y = float(action_pose[1])
-        relative_z = float(action_pose[2])
-        relative_yaw_rad = float(action_pose[3])
-        relative_yaw = float(np.degrees(relative_yaw_rad))
-        relative_yaw = (relative_yaw + 180) % 360 - 180
-
-        global_x, global_y = _transform_to_global(
-            relative_x, relative_y, initial_yaw
-        )
-        absolute_yaw = _normalize_angle(relative_yaw + initial_yaw)
-        absolute_pos = [
-            global_x + initial_x,
-            global_y + initial_y,
-            relative_z + initial_z,
-            absolute_yaw,
-        ]
-
-        env.unwrapped.unrealcv.set_obj_location(
-            env.unwrapped.player_list[0], absolute_pos[:3]
-        )
-        env.unwrapped.unrealcv.set_rotation(
-            env.unwrapped.player_list[0], absolute_pos[3] - 180
-        )
-        set_cam(env)
-
-        current_pose = [relative_x, relative_y, relative_z, relative_yaw]
-        steps += 1
-        trajectory_log.append({
-            "state": [
-                [relative_x, relative_y, relative_z],
-                [0, relative_yaw, 0],
-            ]
-        })
-
-        if i == len(action_poses) - 1:
-            image = _set_drone_cam_and_get_image(env, drone_cam_id)
-
-        time.sleep(sleep_s)
-
-    return image, current_pose, steps
-
-
-def _setup_env_and_imports():
-    """Same as start_openvla_sim: UnrealEnv, path, gym_unrealcv, monkey-patches."""
-    os.environ.setdefault("UnrealEnv", str(_REPO_ROOT / "envs"))
-    uav_eval_str = str(_UAV_FLOW_EVAL)
-    if uav_eval_str in sys.path:
-        sys.path.remove(uav_eval_str)
-    sys.path.insert(0, uav_eval_str)
-
-    for key in list(sys.modules):
-        if key == "gym_unrealcv" or key.startswith("gym_unrealcv."):
-            del sys.modules[key]
-
-    import gym_unrealcv  # noqa: F401
-
-    import gym_unrealcv.envs.utils.misc as _misc
-    _original_get_settingpath = _misc.get_settingpath
-
-    def _get_settingpath(filename):
-        if filename == "Track/DowntownWest.json" and _DOWNTOWN_OVERLAY_JSON.exists():
-            return str(_DOWNTOWN_OVERLAY_JSON)
-        return _original_get_settingpath(filename)
-
-    _misc.get_settingpath = _get_settingpath
-
-    import gym_unrealcv.envs.base_env as _base_env
-
-    def _patched_remove_agent(self, name):
-        """Update env state so set_population() loop terminates; skip Unreal destroy_obj to avoid removing agents from the scene."""
-        agent_index = self.player_list.index(name)
-        self.player_list.remove(name)
-        self.cam_list = self.remove_cam(name)
-        self.action_space.pop(agent_index)
-        self.observation_space.pop(agent_index)
-        self.agents.pop(name)
-
-    _base_env.UnrealCv_base.remove_agent = _patched_remove_agent
-
-    import gym_unrealcv.envs.track as _track_module
-
-    def _patched_get_tracker_init_point(self, target_pos, distance, direction=None):
-        if direction is None:
-            direction = 2 * np.pi * np.random.sample(1)
-        else:
-            direction = direction % (2 * np.pi)
-        direction = float(np.asarray(direction).flat[0])
-        distance = float(np.asarray(distance).flat[0])
-        dx = float(distance * np.cos(direction))
-        dy = float(distance * np.sin(direction))
-        x = dx + float(np.asarray(target_pos[0]).flat[0])
-        y = dy + float(np.asarray(target_pos[1]).flat[0])
-        z = float(np.asarray(target_pos[2]).flat[0])
-        cam_pos_exp = [x, y, z]
-        yaw = float(direction / np.pi * 180 - 180)
-        return [cam_pos_exp, yaw]
-
-    _track_module.Track.get_tracker_init_point = _patched_get_tracker_init_point
-
-
-def _import_batch_and_helpers():
-    """Add paths, chdir to UAV-Flow-Eval, import batch_run_act_all and repo modules."""
-    ai_src = str(_REPO_ROOT / "ai_framework" / "src")
-    if ai_src not in sys.path:
-        sys.path.insert(0, ai_src)
-
-    os.chdir(str(_UAV_FLOW_EVAL))
-    if str(_UAV_FLOW_EVAL) not in sys.path:
-        sys.path.insert(0, str(_UAV_FLOW_EVAL))
-
-    import batch_run_act_all as batch
-
-    from modules.goal_monitor import GoalAdherenceMonitor, GoalMonitorResult
-    from modules.llm_user_interface import LLM_User_Interface
-    from modules.ltl_planner import LTL_Symbolic_Planner
-
-    return batch, LTL_Symbolic_Planner, LLM_User_Interface, GoalAdherenceMonitor, GoalMonitorResult
-
-
-def _normalize_initial_pos(initial_pos: List[float]) -> List[float]:
-    """Ensure initial_pos has at least 5 elements for batch (x,y,z,?,yaw). 4 elements => [x,y,z,yaw] -> [x,y,z,0,yaw]."""
-    if len(initial_pos) >= 5:
-        return list(initial_pos)
-    if len(initial_pos) == 4:
-        return [float(initial_pos[0]), float(initial_pos[1]), float(initial_pos[2]), 0.0, float(initial_pos[3])]
-    raise ValueError("initial_pos must have 4 or 5 elements (x,y,z,yaw or x,y,z,?,yaw)")
 
 
 def run_ltl_control_loop(
@@ -436,7 +102,7 @@ def run_ltl_control_loop(
     If run_dir is set, saves every frame sent to the model under run_dir/frames/.
     """
     full_instruction = full_instruction.strip().lower()
-    initial_pos = _normalize_initial_pos(initial_pos)
+    initial_pos = normalize_initial_pos(initial_pos)
     initial_x, initial_y, initial_z = initial_pos[0:3]
     initial_yaw = initial_pos[4]
     env.unwrapped.unrealcv.set_obj_location(
@@ -449,9 +115,8 @@ def run_ltl_control_loop(
         batch.set_cam(env)
         time.sleep(batch.SLEEP_AFTER_RESET_S)
     cam_id = drone_cam_id if drone_cam_id is not None else DRONE_CAM_ID
-    image = _set_drone_cam_and_get_image(env, cam_id)
+    image = set_drone_cam_and_get_image(env, cam_id)
 
-    # Origin for current subgoal: relative pose is (0,0,0,0) at subgoal start so model gets clean state
     subgoal_origin_x, subgoal_origin_y = initial_x, initial_y
     subgoal_origin_z, subgoal_origin_yaw = initial_z, initial_yaw
     current_pose: List[float] = [0.0, 0.0, 0.0, 0.0]
@@ -466,7 +131,8 @@ def run_ltl_control_loop(
     current_subgoal = planner.get_next_predicate()
     if current_subgoal is None:
         raise RuntimeError(
-            "LTL planning produced no subgoals. Fix the instruction or planner (e.g. ensure predicate descriptions are unique)."
+            "LTL planning produced no subgoals. Fix the instruction or planner "
+            "(e.g. ensure predicate descriptions are unique)."
         )
 
     logger.info("Start LTL control loop. First subgoal: %s", current_subgoal)
@@ -480,7 +146,6 @@ def run_ltl_control_loop(
             logger.warning("No image, ending control loop.")
             break
 
-        # Save every frame sent to the model
         if run_dir is not None and image is not None:
             frames_dir = run_dir / "frames"
             frames_dir.mkdir(parents=True, exist_ok=True)
@@ -492,10 +157,9 @@ def run_ltl_control_loop(
                 logger.debug("Failed to save frame %s: %s", frame_path, e)
             frame_index += 1
 
-        # proprio is relative to current sub-task start (reset to [0,0,0,0] when subgoal advances)
         response = batch.send_prediction_request(
             image=Image.fromarray(image),
-            proprio=_state_for_openvla(current_pose),
+            proprio=state_for_openvla(current_pose),
             instr=(current_subgoal or "").lower(),
             server_url=server_url,
         )
@@ -504,21 +168,21 @@ def run_ltl_control_loop(
             logger.warning("No valid response, ending control.")
             break
 
-        action_poses = response.get("action")
-        if not isinstance(action_poses, list) or len(action_poses) == 0:
+        action_poses_data = response.get("action")
+        if not isinstance(action_poses_data, list) or len(action_poses_data) == 0:
             logger.warning("Response 'action' empty or invalid, stopping.")
             break
 
         try:
-            new_image, current_pose, steps_added = _apply_action_poses(
+            new_image, current_pose, steps_added = apply_action_poses(
                 env,
-                action_poses,
+                action_poses_data,
                 subgoal_origin_x,
                 subgoal_origin_y,
                 subgoal_origin_z,
                 subgoal_origin_yaw,
                 batch.set_cam,
-                trajectory_log,
+                trajectory_log=trajectory_log,
                 sleep_s=0.1,
                 drone_cam_id=cam_id,
             )
@@ -550,8 +214,7 @@ def run_ltl_control_loop(
                 planner.advance_state(current_subgoal)
                 current_subgoal = planner.get_next_predicate()
                 reset_model_fn(server_url)
-                # Reset position state so model gets clean start for next subgoal
-                subgoal_origin_x, subgoal_origin_y, subgoal_origin_z, subgoal_origin_yaw = _relative_pose_to_world(
+                subgoal_origin_x, subgoal_origin_y, subgoal_origin_z, subgoal_origin_yaw = relative_pose_to_world(
                     subgoal_origin_x, subgoal_origin_y, subgoal_origin_z, subgoal_origin_yaw, current_pose
                 )
                 current_pose = [0.0, 0.0, 0.0, 0.0]
@@ -570,7 +233,7 @@ def run_ltl_control_loop(
             planner.advance_state(current_subgoal)
             current_subgoal = planner.get_next_predicate()
             reset_model_fn(server_url)
-            subgoal_origin_x, subgoal_origin_y, subgoal_origin_z, subgoal_origin_yaw = _relative_pose_to_world(
+            subgoal_origin_x, subgoal_origin_y, subgoal_origin_z, subgoal_origin_yaw = relative_pose_to_world(
                 subgoal_origin_x, subgoal_origin_y, subgoal_origin_z, subgoal_origin_yaw, current_pose
             )
             current_pose = [0.0, 0.0, 0.0, 0.0]
@@ -582,7 +245,6 @@ def run_ltl_control_loop(
                 break
             logger.info("Next subgoal: %s", current_subgoal)
 
-        # Optional periodic goal check (only when goal adherence is on); skip if we already advanced
         if not advanced_this_iteration and goal_adherence_on and step_count % GOAL_MONITOR_PERIODIC_STEPS == 0 and step_count > 0:
             result = goal_monitor.check(
                 list(image_history),
@@ -594,7 +256,6 @@ def run_ltl_control_loop(
                 logger.info("Periodic check: full goal achieved.")
                 break
 
-        # When OpenVLA reports done: verify with goal monitor if on, else advance (skip if we already advanced this iteration)
         if not advanced_this_iteration and response.get("done") is True:
             if goal_adherence_on:
                 result = goal_monitor.check(
@@ -609,7 +270,7 @@ def run_ltl_control_loop(
                     planner.advance_state(current_subgoal)
                     current_subgoal = planner.get_next_predicate()
                     reset_model_fn(server_url)
-                    subgoal_origin_x, subgoal_origin_y, subgoal_origin_z, subgoal_origin_yaw = _relative_pose_to_world(
+                    subgoal_origin_x, subgoal_origin_y, subgoal_origin_z, subgoal_origin_yaw = relative_pose_to_world(
                         subgoal_origin_x, subgoal_origin_y, subgoal_origin_z, subgoal_origin_yaw, current_pose
                     )
                     current_pose = [0.0, 0.0, 0.0, 0.0]
@@ -622,15 +283,13 @@ def run_ltl_control_loop(
                         logger.info(
                             "Goal monitor: subgoal not achieved, suggest retry. Continuing with same subgoal."
                         )
-                    # Continue loop with same current_subgoal (retry)
             else:
-                # Goal adherence off: trust model and advance
                 logger.info("Model reported done. Advancing planner (goal adherence off).")
                 subgoals_used.append(current_subgoal)
                 planner.advance_state(current_subgoal)
                 current_subgoal = planner.get_next_predicate()
                 reset_model_fn(server_url)
-                subgoal_origin_x, subgoal_origin_y, subgoal_origin_z, subgoal_origin_yaw = _relative_pose_to_world(
+                subgoal_origin_x, subgoal_origin_y, subgoal_origin_z, subgoal_origin_yaw = relative_pose_to_world(
                     subgoal_origin_x, subgoal_origin_y, subgoal_origin_z, subgoal_origin_yaw, current_pose
                 )
                 current_pose = [0.0, 0.0, 0.0, 0.0]
@@ -638,17 +297,6 @@ def run_ltl_control_loop(
                 if current_subgoal is None:
                     logger.info("No more subgoals. Task complete.")
                     break
-
-
-
-def _parse_initial_position(s: str) -> List[float]:
-    """Parse --initial-position comma-separated string into 4 floats (x,y,z,yaw). Supports negative numbers (e.g. '-600, -1270, 128, 61')."""
-    parts = [p.strip() for p in s.split(",")]
-    if len(parts) != 4:
-        raise ValueError(
-            "--initial-position must be 4 comma-separated numbers: x,y,z,yaw (e.g. -600, -1270, 128, 61)"
-        )
-    return [float(x) for x in parts]
 
 
 def _load_task_from_json(path: Path) -> Dict[str, Any]:
@@ -709,14 +357,14 @@ def _resolve_tasks(args: argparse.Namespace) -> List[Dict[str, Any]]:
     if count > 1:
         raise SystemExit(
             "At most one of -c/--command, --task, or --run_all_tasks is allowed.\n"
-            "  -c \"instruction\" [--initial-position x,y,z,yaw]  run one ad-hoc task (position optional, default: -600,-1270,128,61)\n"
+            "  -c \"instruction\" [--initial-position x,y,z,yaw]  run one ad-hoc task (position optional)\n"
             "  --task first_task.json                           run one task from tasks/ltl_tasks/\n"
             "  --run_all_tasks                                  run all JSONs in tasks/ltl_tasks/"
         )
 
     if cmd is not None:
         initial_pos_str = getattr(args, "initial_position", None) or DEFAULT_INITIAL_POSITION
-        return [{"instruction": cmd.strip().lower(), "initial_pos": _parse_initial_position(initial_pos_str)}]
+        return [{"instruction": cmd.strip().lower(), "initial_pos": parse_position(initial_pos_str)}]
 
     if task_file is not None:
         path = Path(task_file)
@@ -726,7 +374,6 @@ def _resolve_tasks(args: argparse.Namespace) -> List[Dict[str, Any]]:
             raise SystemExit("Task file not found: {}".format(path))
         return [_load_task_from_json(path)]
 
-    # run_all_tasks
     LTL_TASKS_DIR.mkdir(parents=True, exist_ok=True)
     json_files = sorted(glob.glob(str(LTL_TASKS_DIR / "*.json")))
     if not json_files:
@@ -801,7 +448,7 @@ def _run_single_task(
 
 
 def main():
-    _load_env_vars()
+    load_env_vars()
     parser = argparse.ArgumentParser(
         description="Run OpenVLA with LTL planning and goal adherence monitoring"
     )
@@ -811,7 +458,7 @@ def main():
         "--command",
         type=str,
         default=None,
-        help="Natural language instruction (optional --initial-position, default: -600,-1270,128,61)",
+        help="Natural language instruction (optional --initial-position)",
     )
     mode.add_argument(
         "--task",
@@ -830,12 +477,12 @@ def main():
         type=str,
         default=DEFAULT_INITIAL_POSITION,
         metavar="x,y,z,yaw",
-        help="Initial position as comma-separated x,y,z,yaw (supports negatives, e.g. '-600, -1270, 128, 61'). Default: %(default)s",
+        help="Initial position as comma-separated x,y,z,yaw (supports negatives). Default: %(default)s",
     )
     parser.add_argument(
         "-e",
         "--env_id",
-        default=_DOWNTOWN_ENV_ID,
+        default=DOWNTOWN_ENV_ID,
         help="Environment ID",
     )
     parser.add_argument(
@@ -893,7 +540,7 @@ def main():
         dest="goal_adherence_on",
         action="store_true",
         default=False,
-        help="Enable goal adherence monitor (off by default). When on, verifies subgoals when model says done and runs periodic full-goal checks.",
+        help="Enable goal adherence monitor (off by default).",
     )
     parser.add_argument(
         "--use-default-cam",
@@ -903,7 +550,7 @@ def main():
     parser.add_argument(
         "--interactive",
         action="store_true",
-        help="Wait for CLI input to run tasks: enter a task name (e.g. third_task or third_task.json), or 'quit' to exit. Can be used alone (no initial task) or after --task/--run_all_tasks.",
+        help="Wait for CLI input to run tasks: enter a task name, or 'quit' to exit.",
     )
     args = parser.parse_args()
 
@@ -914,64 +561,37 @@ def main():
 
     tasks = _resolve_tasks(args)
 
-    if not _BATCH_SCRIPT.exists():
-        logger.error("batch_run_act_all.py not found at %s", _BATCH_SCRIPT)
+    if not BATCH_SCRIPT.exists():
+        logger.error("batch_run_act_all.py not found at %s", BATCH_SCRIPT)
         sys.exit(1)
 
-    _setup_env_and_imports()
-    (
-        batch,
-        LTL_Symbolic_Planner,
-        LLM_User_Interface,
-        GoalAdherenceMonitor,
-        _,
-    ) = _import_batch_and_helpers()
+    setup_env_and_imports()
+    batch = import_batch_module()
 
-    os.chdir(str(_UAV_FLOW_EVAL))
+    from modules.goal_monitor import GoalAdherenceMonitor
+    from modules.llm_user_interface import LLM_User_Interface
+    from modules.ltl_planner import LTL_Symbolic_Planner
+
+    os.chdir(str(UAV_FLOW_EVAL))
     server_url = "http://127.0.0.1:{}".format(args.server_port) + "/predict"
     results_base = Path(args.results_dir)
     results_base.mkdir(parents=True, exist_ok=True)
 
-    import gym
-    from gym_unrealcv.envs.wrappers import time_dilation, configUE, augmentation
-
-    env = gym.make(args.env_id)
-    if int(args.time_dilation) > 0:
-        env = time_dilation.TimeDilationWrapper(env, int(args.time_dilation))
-    env.unwrapped.agents_category = ["drone"]
-    env = configUE.ConfigUEWrapper(env, resolution=(256, 256))
-    env = augmentation.RandomPopulationWrapper(env, 2, 2, random_target=False)
-    env.seed(int(args.seed))
-    env.reset()
-    env.unwrapped.unrealcv.set_viewport(env.unwrapped.player_list[0])
-    env.unwrapped.unrealcv.set_phy(env.unwrapped.player_list[0], 0)
-    logger.info(env.unwrapped.unrealcv.get_camera_config())
-
-    time.sleep(batch.SLEEP_SHORT_S)
-    env.unwrapped.unrealcv.new_obj("bp_character_C", "BP_Character_21", [0, 0, 0])
-    env.unwrapped.unrealcv.set_appearance("BP_Character_21", 0)
-    env.unwrapped.unrealcv.set_obj_rotation("BP_Character_21", [0, 0, 0])
-    time.sleep(batch.SLEEP_SHORT_S)
-    env.unwrapped.unrealcv.new_obj("BP_BaseCar_C", "BP_Character_22", [1000, 0, 0])
-    env.unwrapped.unrealcv.set_appearance("BP_Character_22", 2)
-    env.unwrapped.unrealcv.set_obj_rotation("BP_Character_22", [0, 0, 0])
-    env.unwrapped.unrealcv.set_phy("BP_Character_22", 0)
-    time.sleep(batch.SLEEP_SHORT_S)
+    env = setup_sim_env(args.env_id, int(args.time_dilation), int(args.seed), batch)
 
     llm_interface = LLM_User_Interface(model=args.llm_model)
     planner = LTL_Symbolic_Planner(llm_interface)
     goal_monitor_model = args.goal_monitor_model or args.llm_model
     goal_monitor = GoalAdherenceMonitor(model=goal_monitor_model)
 
-    # By default run interactive camera select; skip when --use-default-cam
     drone_cam_id = DRONE_CAM_ID
     if not args.use_default_cam:
-        logger.info("Camera selection: stopping before main loop. Use the window to pick the camera for OpenVLA and saving.")
+        logger.info("Camera selection: stopping before main loop. Use the window to pick the camera.")
         initial_pos_for_cam = (
             tasks[0]["initial_pos"] if tasks
-            else _normalize_initial_pos(_parse_initial_position(DEFAULT_INITIAL_POSITION))
+            else normalize_initial_pos(parse_position(DEFAULT_INITIAL_POSITION))
         )
-        drone_cam_id = _interactive_camera_select(env, initial_pos_for_cam, batch)
+        drone_cam_id = interactive_camera_select(env, initial_pos_for_cam, batch)
 
     for idx, task in enumerate(tasks):
         logger.info(

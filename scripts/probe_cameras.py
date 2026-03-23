@@ -12,7 +12,6 @@ OpenVLA server must be running: python scripts/start_openvla_server.py
 
 import argparse
 import logging
-import os
 import sys
 import time
 from pathlib import Path
@@ -21,21 +20,31 @@ from typing import Any, List
 import numpy as np
 from PIL import Image
 
-_REPO_ROOT = Path(__file__).resolve().parent.parent
-_PROBE_RESULTS_DIR = _REPO_ROOT / "probe_results"
-_DEFAULT_INITIAL_POSITION = "-600, -1270, 128, 61"
+_SCRIPT_DIR = Path(__file__).resolve().parent
+if str(_SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(_SCRIPT_DIR))
+
+from sim_common import (
+    BATCH_SCRIPT,
+    DEFAULT_INITIAL_POSITION,
+    REPO_ROOT,
+    apply_action_poses,
+    import_batch_module,
+    load_env_vars,
+    normalize_initial_pos,
+    parse_position,
+    set_drone_cam_and_get_image,
+    setup_env_and_imports,
+    setup_sim_env,
+)
+
+_PROBE_RESULTS_DIR = REPO_ROOT / "probe_results"
 
 logger = logging.getLogger(__name__)
 
 
-def _parse_initial_position(s: str) -> List[float]:
-    parts = [p.strip() for p in s.split(",")]
-    if len(parts) != 4:
-        raise ValueError("--initial-position must be 4 numbers: x,y,z,yaw")
-    return [float(x) for x in parts]
-
-
 def main() -> None:
+    load_env_vars()
     parser = argparse.ArgumentParser(description="Probe all cameras while running a basic command.")
     parser.add_argument(
         "--instruction",
@@ -44,8 +53,8 @@ def main() -> None:
     )
     parser.add_argument(
         "--initial-position",
-        default=_DEFAULT_INITIAL_POSITION,
-        help="Initial pose x,y,z,yaw (default: %s)" % _DEFAULT_INITIAL_POSITION,
+        default=DEFAULT_INITIAL_POSITION,
+        help="Initial pose x,y,z,yaw (default: %s)" % DEFAULT_INITIAL_POSITION,
     )
     parser.add_argument(
         "--num_steps",
@@ -77,49 +86,18 @@ def main() -> None:
         format="[%(levelname)s] %(asctime)s - %(name)s - %(message)s",
     )
 
-    # Paths and imports (same as run_openvla_ltl)
-    _UAV_FLOW_EVAL = _REPO_ROOT / "UAV-Flow" / "UAV-Flow-Eval"
-    _BATCH_SCRIPT = _UAV_FLOW_EVAL / "batch_run_act_all.py"
-    _DOWNTOWN_OVERLAY_JSON = _REPO_ROOT / "config" / "uav_flow_envs" / "Track" / "DowntownWest.json"
-
-    if not _BATCH_SCRIPT.exists():
-        logger.error("batch_run_act_all.py not found at %s", _BATCH_SCRIPT)
+    if not BATCH_SCRIPT.exists():
+        logger.error("batch_run_act_all.py not found at %s", BATCH_SCRIPT)
         sys.exit(1)
 
-    # Setup env and imports (from run_openvla_ltl)
-    import run_openvla_ltl as rtl
+    setup_env_and_imports()
+    batch = import_batch_module()
 
-    rtl._setup_env_and_imports()
-    batch, _, _, _, _ = rtl._import_batch_and_helpers()
-
-    os.chdir(str(_UAV_FLOW_EVAL))
     server_url = "http://127.0.0.1:{}".format(args.server_port) + "/predict"
 
-    import gym
-    from gym_unrealcv.envs.wrappers import time_dilation, configUE, augmentation
+    env = setup_sim_env(args.env_id, 0, args.seed, batch)
 
-    env = gym.make(args.env_id)
-    env.unwrapped.agents_category = ["drone"]
-    env = configUE.ConfigUEWrapper(env, resolution=(256, 256))
-    env = augmentation.RandomPopulationWrapper(env, 2, 2, random_target=False)
-    env.seed(args.seed)
-    env.reset()
-    env.unwrapped.unrealcv.set_viewport(env.unwrapped.player_list[0])
-    env.unwrapped.unrealcv.set_phy(env.unwrapped.player_list[0], 0)
-    logger.info(env.unwrapped.unrealcv.get_camera_config())
-
-    time.sleep(batch.SLEEP_SHORT_S)
-    env.unwrapped.unrealcv.new_obj("bp_character_C", "BP_Character_21", [0, 0, 0])
-    env.unwrapped.unrealcv.set_appearance("BP_Character_21", 0)
-    env.unwrapped.unrealcv.set_obj_rotation("BP_Character_21", [0, 0, 0])
-    time.sleep(batch.SLEEP_SHORT_S)
-    env.unwrapped.unrealcv.new_obj("BP_BaseCar_C", "BP_Character_22", [1000, 0, 0])
-    env.unwrapped.unrealcv.set_appearance("BP_Character_22", 2)
-    env.unwrapped.unrealcv.set_obj_rotation("BP_Character_22", [0, 0, 0])
-    env.unwrapped.unrealcv.set_phy("BP_Character_22", 0)
-    time.sleep(batch.SLEEP_SHORT_S)
-
-    initial_pos = rtl._normalize_initial_pos(_parse_initial_position(args.initial_position))
+    initial_pos = normalize_initial_pos(parse_position(args.initial_position))
     initial_x, initial_y, initial_z = initial_pos[0:3]
     initial_yaw = initial_pos[4]
 
@@ -149,9 +127,8 @@ def main() -> None:
             except Exception as e:
                 logger.warning("Camera %d frame %d: %s", cam_id, step, e)
 
-    # Initial frames (step 0)
     save_all_cameras(0)
-    image = rtl._set_drone_cam_and_get_image(env)
+    image = set_drone_cam_and_get_image(env)
     current_pose = [0.0, 0.0, 0.0, 0.0]
     trajectory_log: List[Any] = []
 
@@ -176,7 +153,7 @@ def main() -> None:
             break
 
         try:
-            new_image, current_pose, _ = rtl._apply_action_poses(
+            new_image, current_pose, _ = apply_action_poses(
                 env,
                 action_poses,
                 initial_x,
@@ -184,7 +161,7 @@ def main() -> None:
                 initial_z,
                 initial_yaw,
                 batch.set_cam,
-                trajectory_log,
+                trajectory_log=trajectory_log,
                 sleep_s=0.1,
             )
         except Exception as e:
