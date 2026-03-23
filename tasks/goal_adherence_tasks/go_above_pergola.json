@@ -1,7 +1,7 @@
 {
   "task_name": "go_above_pergola",
   "subgoal": "Go above the pergola",
-  "initial_pos": [0, 0, 0, 0],
+  "initial_pos": [2217, -1183, 415, 12],
   "max_steps": 200,
   "diary_check_interval": 10,
   "notes": ""
