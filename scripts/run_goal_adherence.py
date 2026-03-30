@@ -165,6 +165,13 @@ def _run_single_ga(
         current_instruction = subgoal
 
     current_pose: List[float] = [0.0, 0.0, 0.0, 0.0]
+    # openvla_pose_origin: when the instruction changes (override / supervisor
+    # command), OpenVLA expects poses to start from zero for the new instruction.
+    # We snapshot current_pose at that moment and subtract it before feeding
+    # state_for_openvla, so the model sees a fresh [0,0,0,0] start.  The diary
+    # monitor still receives the original subtask-relative current_pose so that
+    # displacement tracking stays consistent across the whole run.
+    openvla_pose_origin: List[float] = [0.0, 0.0, 0.0, 0.0]
     last_pose: Optional[List[float]] = None
     small_count = 0
     trajectory_log: List[Dict[str, Any]] = []
@@ -199,23 +206,34 @@ def _run_single_ga(
                 stop_reason = "llm_stopped"
                 total_steps = step
                 break
-            if result.action == "override" and result.new_instruction:
+            if result.new_instruction:
+                # Any new instruction from the monitor (override, command, etc.)
+                # resets OpenVLA's pose origin so the model sees a fresh [0,0,0,0]
+                # start. The diary still tracks the subtask-relative displacement.
                 logger.info(
-                    "LLM override at step %d: '%s' -> '%s'",
-                    step, current_instruction, result.new_instruction,
+                    "LLM %s at step %d: '%s' -> '%s'",
+                    result.action, step,
+                    current_instruction, result.new_instruction,
                 )
                 override_history.append({
                     "step": step,
+                    "type": result.action,
                     "old_instruction": current_instruction,
                     "new_instruction": result.new_instruction,
                     "reasoning": result.reasoning,
                 })
                 current_instruction = result.new_instruction
+                openvla_pose_origin = list(current_pose)
+                batch.reset_model(server_url)
 
         # --- Send instruction to OpenVLA ---
+        # Pose relative to the current instruction's origin (reset on override).
+        openvla_pose = [
+            c - o for c, o in zip(current_pose, openvla_pose_origin)
+        ]
         response = batch.send_prediction_request(
             image=Image.fromarray(image),
-            proprio=state_for_openvla(current_pose),
+            proprio=state_for_openvla(openvla_pose),
             instr=current_instruction.strip().lower(),
             server_url=server_url,
         )
@@ -294,19 +312,20 @@ def _run_single_ga(
                     stop_reason = "llm_stopped"
                     break
 
-                if conv_result.action == "command" and conv_result.new_instruction:
+                if conv_result.new_instruction:
                     logger.info(
-                        "Supervisor command at step %d: '%s'",
-                        step, conv_result.new_instruction,
+                        "Supervisor %s at step %d: '%s'",
+                        conv_result.action, step, conv_result.new_instruction,
                     )
                     override_history.append({
                         "step": step,
-                        "type": "supervisor_command",
+                        "type": f"convergence_{conv_result.action}",
                         "old_instruction": current_instruction,
                         "new_instruction": conv_result.new_instruction,
                         "reasoning": conv_result.reasoning,
                     })
                     current_instruction = conv_result.new_instruction
+                    openvla_pose_origin = list(current_pose)
                     small_count = 0
                     last_pose = None
                     batch.reset_model(server_url)
