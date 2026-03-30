@@ -344,6 +344,7 @@ class LiveDiaryMonitor:
 
         pct = float(parsed.get("completion_percentage", self._last_completion_pct))
         pct = max(0.0, min(1.0, pct))
+        pct = max(pct, self._last_completion_pct)
         self._last_completion_pct = pct
 
         if parsed.get("complete", False) or parsed.get("diagnosis") == "complete":
@@ -468,6 +469,7 @@ class LiveDiaryMonitor:
         parsed = self._parse_json_response(response)
         pct = float(parsed.get("completion_percentage", self._last_completion_pct))
         pct = max(0.0, min(1.0, pct))
+        pct = max(pct, self._last_completion_pct)
 
         if parsed.get("complete", False):
             return DiaryCheckResult(
