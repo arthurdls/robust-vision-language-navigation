@@ -103,6 +103,8 @@ Tests individual subgoal completion (not full long-horizon plans). For each task
   `python scripts/run_goal_adherence.py --run-all --runs 5`
 - **Custom max corrections (default: 10):**  
   `python scripts/run_goal_adherence.py --run-all --max-corrections 15`
+- **LLM-assisted runs only (skip baseline `no_llm_run_*`):**  
+  `python scripts/run_goal_adherence.py --run-all --llm-only`
 
 ### Task JSON schema (tasks/goal_adherence_tasks/)
 
