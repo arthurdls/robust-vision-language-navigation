@@ -387,6 +387,7 @@ def _run_task_experiments(
     save_mp4: bool = False,
     mp4_fps: float = 10.0,
     llm_only: bool = False,
+    override_runs: bool = False,
 ) -> None:
     """Run experiments for one task (baseline, LLM, or both)."""
     task_name = task["task_name"]
@@ -397,6 +398,9 @@ def _run_task_experiments(
         for run_idx in range(1, runs_per_condition + 1):
             run_name = f"no_llm_run_{run_idx:02d}"
             run_dir = task_dir / run_name
+            if not override_runs and (run_dir / "run_info.json").exists():
+                logger.info("Skipping %s / %s (already exists)", task_name, run_name)
+                continue
             logger.info("Running %s / %s", task_name, run_name)
             info = _run_single_ga(
                 env, task, batch, server_url, run_dir,
@@ -413,6 +417,9 @@ def _run_task_experiments(
     for run_idx in range(1, runs_per_condition + 1):
         run_name = f"llm_run_{run_idx:02d}"
         run_dir = task_dir / run_name
+        if not override_runs and (run_dir / "run_info.json").exists():
+            logger.info("Skipping %s / %s (already exists)", task_name, run_name)
+            continue
         logger.info("Running %s / %s", task_name, run_name)
         info = _run_single_ga(
             env, task, batch, server_url, run_dir,
@@ -526,6 +533,11 @@ def main():
         action="store_true",
         help="Skip baseline (no_llm) runs; only run llm_run_* trials.",
     )
+    parser.add_argument(
+        "--override-runs",
+        action="store_true",
+        help="Re-run experiments even if results already exist (default: skip existing).",
+    )
     args = parser.parse_args()
 
     logging.basicConfig(
@@ -585,6 +597,7 @@ def main():
                 save_mp4=args.save_mp4,
                 mp4_fps=args.mp4_fps,
                 llm_only=args.llm_only,
+                override_runs=args.override_runs,
             )
         except KeyboardInterrupt:
             logger.info("Interrupted during task %s.", task["task_name"])
