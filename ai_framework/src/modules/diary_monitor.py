@@ -82,12 +82,21 @@ to be achieved (e.g., the target is now clearly visible, the drone has reached t
 landmark), immediately signal completion to stop the drone. Do not wait for the drone to
 keep moving -- stopping promptly prevents overshoot.
 
+PROACTIVE CORRECTION: Do not wait until the drone has gone far off course to intervene.
+If you notice the drone drifting sideways, climbing/descending when it should not, or
+beginning to pass the target, issue a corrective override immediately — small early
+corrections are far better than large late ones. In particular, diagnose overshoot as
+soon as visual evidence suggests the drone is starting to move past the goal (e.g., the
+target is shifting behind the camera or shrinking) rather than waiting until the target
+is no longer visible. Acting early keeps corrections small and recoverable.
+
 When issuing corrective commands:
 - Use short, imperative drone instructions drawn from the vocabulary below.
 - If the drone stopped too early (subgoal not yet achieved), issue commands to
   continue toward the goal.
 - If the drone overshot (went past the goal), issue reversal commands to undo
   the overshoot.
+- Prefer issuing a correction now over waiting to see if the drone self-corrects.
 - You may issue multiple corrections in sequence until satisfied.
 
 DRONE COMMAND VOCABULARY (use these forms for corrective_instruction):
@@ -141,9 +150,12 @@ object (no markdown fences):
   are highly confident the subtask is fully complete — use at most 0.95 if the
   result looks close but you are not certain.
 - "on_track": true if the drone is making progress toward the subgoal.
-- "overshot": true if the drone went past the goal.
-- "corrective_instruction": if off-track or overshot, a short imperative drone
-  command to fix it; null otherwise."""
+- "overshot": true if the drone is beginning to move past the goal — flag this
+  early (e.g., target shifting behind the camera or shrinking) rather than
+  waiting until the target is completely out of view.
+- "corrective_instruction": if off-track, overshot, or drifting, issue a short
+  imperative drone command to fix it NOW. Prefer small early corrections over
+  large late ones. null only when on_track is true and progress is satisfactory."""
 
 CONVERGENCE_PROMPT_TEMPLATE = """\
 Subgoal: {subgoal}
