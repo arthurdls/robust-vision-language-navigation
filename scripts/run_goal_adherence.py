@@ -16,13 +16,23 @@ Control loop (simpler than LTL -- no subgoal decomposition):
      - Run SubgoalConverter to extract the OpenVLA instruction from the subgoal
      - Every diary_check_interval steps call LiveDiaryMonitor.on_frame():
        * stop  -> subgoal complete, end run
-       * override -> replace OpenVLA instruction until next checkpoint
+       * override -> replace OpenVLA instruction (only resets VLA model and
+         pose origin when the instruction actually changes; repeated overrides
+         with the same instruction are logged but do not disrupt the trajectory)
        * continue -> keep going
      - On convergence: call LiveDiaryMonitor.on_convergence():
        * complete -> end run
-       * stopped_short -> supervisor issues corrective command, resume
-       * overshot -> supervisor issues reversal command, resume
+       * stopped_short / overshot -> supervisor issues corrective command,
+         always resets VLA model and pose origin (drone has stopped and needs
+         a fresh start), then resumes
        * correction cycle repeats up to max_corrections times
+
+  Coordinate frame handling:
+     OpenVLA receives proprio relative to the current instruction's origin
+     (zeroed on instruction change). Its action_poses are translated back to
+     the subtask frame before being passed to apply_action_poses, which
+     expects positions relative to the subtask's initial_pos. This prevents
+     the drone from teleporting when instructions change mid-run.
 
 Usage (from repo root):
   python scripts/run_goal_adherence.py --task turn_right_until_red_car.json
@@ -208,13 +218,15 @@ def _run_single_ga(
                 total_steps = step
                 break
             if result.new_instruction:
-                # Any new instruction from the monitor (override, command, etc.)
-                # resets OpenVLA's pose origin so the model sees a fresh [0,0,0,0]
-                # start. The diary still tracks the subtask-relative displacement.
+                instruction_changed = (
+                    result.new_instruction.strip().lower()
+                    != current_instruction.strip().lower()
+                )
                 logger.info(
-                    "LLM %s at step %d: '%s' -> '%s'",
+                    "LLM %s at step %d: '%s' -> '%s' (changed=%s)",
                     result.action, step,
                     current_instruction, result.new_instruction,
+                    instruction_changed,
                 )
                 override_history.append({
                     "step": step,
@@ -224,10 +236,11 @@ def _run_single_ga(
                     "reasoning": result.reasoning,
                 })
                 current_instruction = result.new_instruction
-                openvla_pose_origin = list(current_pose)
-                small_count = 0
-                last_pose = None
-                batch.reset_model(server_url)
+                if instruction_changed:
+                    openvla_pose_origin = list(current_pose)
+                    small_count = 0
+                    last_pose = None
+                    batch.reset_model(server_url)
 
         # --- Send instruction to OpenVLA ---
         # Pose relative to the current instruction's origin (reset on override).
@@ -339,9 +352,14 @@ def _run_single_ga(
                     break
 
                 if conv_result.new_instruction:
+                    instruction_changed = (
+                        conv_result.new_instruction.strip().lower()
+                        != current_instruction.strip().lower()
+                    )
                     logger.info(
-                        "Supervisor %s at step %d: '%s'",
-                        conv_result.action, step, conv_result.new_instruction,
+                        "Supervisor %s at step %d: '%s' (changed=%s)",
+                        conv_result.action, step,
+                        conv_result.new_instruction, instruction_changed,
                     )
                     override_history.append({
                         "step": step,
