@@ -137,7 +137,7 @@ object (no markdown fences):
   "complete": true/false,
   "completion_percentage": 0.0 to 1.0,
   "on_track": true/false,
-  "overshot": true/false,
+  "should_override": true/false,
   "corrective_instruction": "..." or null
 }}
 
@@ -150,12 +150,15 @@ object (no markdown fences):
   are highly confident the subtask is fully complete — use at most 0.95 if the
   result looks close but you are not certain.
 - "on_track": true if the drone is making progress toward the subgoal.
-- "overshot": true if the drone is beginning to move past the goal — flag this
-  early (e.g., target shifting behind the camera or shrinking) rather than
-  waiting until the target is completely out of view.
-- "corrective_instruction": if off-track, overshot, or drifting, issue a short
-  imperative drone command to fix it NOW. Prefer small early corrections over
-  large late ones. null only when on_track is true and progress is satisfactory."""
+- "should_override": true if the drone's current instruction is no longer
+  appropriate and should be replaced — e.g., the drone is overshooting, drifting
+  off course, or needs a different manoeuvre. Flag this early (e.g., target
+  shifting behind the camera or shrinking) rather than waiting until the
+  situation is unrecoverable. Prefer small early corrections over large late
+  ones.
+- "corrective_instruction": when should_override is true, a short imperative
+  drone command to replace the current instruction. null when should_override is
+  false and progress is satisfactory."""
 
 CONVERGENCE_PROMPT_TEMPLATE = """\
 Subgoal: {subgoal}
@@ -480,23 +483,13 @@ class LiveDiaryMonitor:
                 completion_pct=pct,
             )
 
-        if parsed.get("overshot", False):
-            corrective = parsed.get("corrective_instruction") or "turn around slowly"
-            return DiaryCheckResult(
-                action="override",
-                new_instruction=corrective,
-                reasoning=f"Overshot detected. Raw: {response}",
-                diary_entry=diary_entry,
-                completion_pct=pct,
-            )
-
-        if not parsed.get("on_track", True):
+        if parsed.get("should_override", False):
             corrective = parsed.get("corrective_instruction") or ""
             if corrective:
                 return DiaryCheckResult(
                     action="override",
                     new_instruction=corrective,
-                    reasoning=f"Off-track. Raw: {response}",
+                    reasoning=f"Override requested. Raw: {response}",
                     diary_entry=diary_entry,
                     completion_pct=pct,
                 )
