@@ -2,8 +2,12 @@
 """
 Display FPV frames or trajectory plot images from a results directory.
 
+Also exports save_run_directory_mp4 and write_frames_to_mp4 for encoding the same
+frame layouts to MP4 (mp4v fourcc), e.g. from experiment runners.
+
 Supports:
 - LTL results: run dir with frames/ subdir (frame_000000.png, ...). Pass the run dir.
+  ``frame_conv_*.png`` (convergence snapshots) are skipped for playback and --save-video.
 - REPL results: run dir with frame_*.png directly in it (e.g. results/repl_results/run_.../). Pass the run dir.
 - UAV-Flow-Eval: dir with *_2d.png / *_3d.png trajectory plots. Pass that dir.
 
@@ -21,12 +25,115 @@ Controls:
 
 import argparse
 import glob
+import logging
 import os
 import sys
 from pathlib import Path
+from typing import List, Optional, Sequence, Union
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 _DEFAULT_RESULTS = _REPO_ROOT / "results"
+
+logger = logging.getLogger(__name__)
+
+
+def is_primary_timeline_frame(path: Union[str, Path]) -> bool:
+    """True if *path* is a main-sequence frame (excludes goal-adherence convergence snapshots)."""
+    name = Path(path).name
+    return not name.startswith("frame_conv_")
+
+
+def iter_run_frame_paths(run_dir: Path) -> List[Path]:
+    """Return sorted PNG paths for a run directory (same discovery as CLI).
+
+    Prefers ``run_dir/frames/*.png`` (goal adherence, LTL), else ``run_dir/frame_*.png`` (REPL).
+    Omits ``frame_conv_*.png`` (convergence snapshots; not part of the step timeline).
+    """
+    run_dir = Path(run_dir)
+    frames_sub = run_dir / "frames"
+    if frames_sub.is_dir():
+        paths = sorted(frames_sub.glob("*.png"))
+        return [p for p in paths if is_primary_timeline_frame(p)]
+    repl = sorted(run_dir.glob("frame_*.png"))
+    return [p for p in repl if is_primary_timeline_frame(p)]
+
+
+def write_frames_to_mp4(
+    frame_paths: Sequence[Union[str, Path]],
+    out_path: Path,
+    *,
+    fps: float = 10.0,
+    fourcc: str = "mp4v",
+) -> Path:
+    """Encode image sequence to MP4 using OpenCV (same codec as ``--save-video``).
+
+    Parameters
+    ----------
+    frame_paths
+        Ordered list of image paths (typically PNG).
+    out_path
+        Output ``.mp4`` path (parent directory is created if needed).
+    fps
+        Frame rate.
+    fourcc
+        Four-character codec. Default ``mp4v`` matches MPEG-4 Part 2 in an MP4
+        container; widely supported by OpenCV builds and media players.
+    """
+    import cv2
+
+    paths = [Path(p) for p in frame_paths]
+    if not paths:
+        raise ValueError("frame_paths is empty")
+
+    out_path = Path(out_path)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+
+    first = cv2.imread(str(paths[0]))
+    if first is None:
+        raise OSError(f"could not read first frame: {paths[0]}")
+
+    h, w = first.shape[:2]
+    cc = cv2.VideoWriter_fourcc(*fourcc)
+    writer = cv2.VideoWriter(str(out_path), cc, float(fps), (w, h))
+    if not writer.isOpened():
+        writer.release()
+        raise OSError(f"VideoWriter could not open {out_path} (codec={fourcc!r})")
+
+    try:
+        for p in paths:
+            img = cv2.imread(str(p))
+            if img is None:
+                logger.warning("Skipping unreadable frame: %s", p)
+                continue
+            if img.shape[1] != w or img.shape[0] != h:
+                img = cv2.resize(img, (w, h), interpolation=cv2.INTER_AREA)
+            writer.write(img)
+    finally:
+        writer.release()
+
+    return out_path
+
+
+def save_run_directory_mp4(
+    run_dir: Path,
+    *,
+    out_name: str = "playback.mp4",
+    fps: float = 10.0,
+    fourcc: str = "mp4v",
+) -> Optional[Path]:
+    """Write ``run_dir / out_name`` from frames under *run_dir* (goal adherence / LTL / REPL layout).
+
+    Returns the output path, or ``None`` if no frames were found.
+    """
+    run_dir = Path(run_dir)
+    paths = iter_run_frame_paths(run_dir)
+    if not paths:
+        logger.warning("No frames found under %s; skipping MP4.", run_dir)
+        return None
+    out_path = run_dir / out_name
+    write_frames_to_mp4(paths, out_path, fps=fps, fourcc=fourcc)
+    logger.info("Saved video to %s", out_path)
+    return out_path
 
 
 def _find_results_dir():
@@ -111,12 +218,12 @@ def main():
     frames_dir = results_path / "frames"
     if frames_dir.is_dir():
         files = sorted(frames_dir.glob("*.png"))
-        files = [str(p) for p in files]
+        files = [str(p) for p in files if is_primary_timeline_frame(p)]
     else:
         # REPL results: frame_000000.png, frame_000001.png, ... directly in run dir
         repl_frames = sorted(results_path.glob("frame_*.png"))
         if repl_frames:
-            files = [str(p) for p in repl_frames]
+            files = [str(p) for p in repl_frames if is_primary_timeline_frame(p)]
         else:
             patterns = [p.strip() for p in args.pattern.split(",")]
             files = []
@@ -131,24 +238,17 @@ def main():
         )
         sys.exit(1)
 
-    import cv2
-
     if args.save_video:
         out_path = results_path / "playback.mp4"
-        first = cv2.imread(files[0])
-        if first is None:
-            print(f"Error: could not read first frame {files[0]}", file=sys.stderr)
+        try:
+            write_frames_to_mp4(files, out_path, fps=args.fps)
+        except (OSError, ValueError) as e:
+            print(f"Error: {e}", file=sys.stderr)
             sys.exit(1)
-        h, w = first.shape[:2]
-        fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-        writer = cv2.VideoWriter(str(out_path), fourcc, args.fps, (w, h))
-        for path in files:
-            img = cv2.imread(path)
-            if img is not None:
-                writer.write(img)
-        writer.release()
         print(f"Saved video to {out_path}")
         sys.exit(0)
+
+    import cv2
 
     delay_ms = int(1000 / args.fps) if args.video else 0
     print(f"Found {len(files)} images in {results_dir}")

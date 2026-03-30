@@ -29,6 +29,7 @@ Usage (from repo root):
   python scripts/run_goal_adherence.py --run-all
   python scripts/run_goal_adherence.py --task turn_right_until_red_car.json --model gpt-5
   python scripts/run_goal_adherence.py --run-all --llm-only   # skip no_llm runs
+  python scripts/run_goal_adherence.py --task X.json --save-mp4   # also write playback.mp4
 """
 
 import argparse
@@ -71,6 +72,8 @@ from sim_common import (
 _AI_SRC = str(REPO_ROOT / "ai_framework" / "src")
 if _AI_SRC not in sys.path:
     sys.path.insert(0, _AI_SRC)
+
+import playback_fpv
 
 from modules.diary_monitor import LiveDiaryMonitor
 from modules.subgoal_converter import SubgoalConverter
@@ -115,6 +118,8 @@ def _run_single_ga(
     model: str,
     drone_cam_id: int,
     max_corrections: int = DEFAULT_MAX_CORRECTIONS,
+    save_mp4: bool = False,
+    mp4_fps: float = 10.0,
 ) -> Dict[str, Any]:
     """Run one goal adherence trial. Returns run_info dict."""
     subgoal = task["subgoal"]
@@ -324,6 +329,15 @@ def _run_single_ga(
     with open(run_dir / "trajectory_log.json", "w") as f:
         json.dump(trajectory_log, f, indent=2)
 
+    playback_mp4: Optional[Path] = None
+    if save_mp4:
+        try:
+            playback_mp4 = playback_fpv.save_run_directory_mp4(
+                run_dir, fps=mp4_fps,
+            )
+        except Exception as e:
+            logger.warning("Could not write playback.mp4 under %s: %s", run_dir, e)
+
     run_info: Dict[str, Any] = {
         "task_config": task,
         "mode": "llm" if use_llm else "no_llm",
@@ -334,6 +348,7 @@ def _run_single_ga(
         "instruction_overrides": override_history,
         "corrections_used": monitor.corrections_used if monitor else 0,
         "last_completion_pct": monitor.last_completion_pct if monitor else None,
+        "playback_mp4": str(playback_mp4) if playback_mp4 else None,
         "start_time": start_ts,
         "end_time": end_ts,
     }
@@ -369,6 +384,8 @@ def _run_task_experiments(
     drone_cam_id: int,
     runs_per_condition: int,
     max_corrections: int,
+    save_mp4: bool = False,
+    mp4_fps: float = 10.0,
     llm_only: bool = False,
 ) -> None:
     """Run experiments for one task (baseline, LLM, or both)."""
@@ -385,6 +402,8 @@ def _run_task_experiments(
                 env, task, batch, server_url, run_dir,
                 use_llm=False, model=model, drone_cam_id=drone_cam_id,
                 max_corrections=max_corrections,
+                save_mp4=save_mp4,
+                mp4_fps=mp4_fps,
             )
             logger.info(
                 "  %s: %d steps, stop_reason=%s",
@@ -399,6 +418,8 @@ def _run_task_experiments(
             env, task, batch, server_url, run_dir,
             use_llm=True, model=model, drone_cam_id=drone_cam_id,
             max_corrections=max_corrections,
+            save_mp4=save_mp4,
+            mp4_fps=mp4_fps,
         )
         logger.info(
             "  %s: %d steps, stop_reason=%s",
@@ -444,6 +465,17 @@ def main():
         type=int,
         default=DEFAULT_MAX_CORRECTIONS,
         help=f"Max supervisor corrections per LLM run (default: {DEFAULT_MAX_CORRECTIONS}).",
+    )
+    parser.add_argument(
+        "--save-mp4",
+        action="store_true",
+        help="After each run, encode frames/ to playback.mp4 (same codec as scripts/playback_fpv.py --save-video).",
+    )
+    parser.add_argument(
+        "--mp4-fps",
+        type=float,
+        default=10.0,
+        help="Frame rate for --save-mp4 (default: 10).",
     )
     parser.add_argument(
         "-e",
@@ -550,6 +582,8 @@ def main():
                 env, task, batch, server_url, results_base,
                 args.model, drone_cam_id, args.runs,
                 args.max_corrections,
+                save_mp4=args.save_mp4,
+                mp4_fps=args.mp4_fps,
                 llm_only=args.llm_only,
             )
         except KeyboardInterrupt:
