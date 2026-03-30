@@ -36,6 +36,7 @@ import argparse
 import glob
 import json
 import logging
+import math
 import os
 import sys
 import time
@@ -224,6 +225,8 @@ def _run_single_ga(
                 })
                 current_instruction = result.new_instruction
                 openvla_pose_origin = list(current_pose)
+                small_count = 0
+                last_pose = None
                 batch.reset_model(server_url)
 
         # --- Send instruction to OpenVLA ---
@@ -250,6 +253,29 @@ def _run_single_ga(
             stop_reason = "empty_action"
             total_steps = step
             break
+
+        # Translate action_poses from OpenVLA's frame back to the subtask frame.
+        # OpenVLA predicted targets relative to its zeroed origin; apply_action_poses
+        # expects positions relative to the subtask's initial_pos.  We add
+        # openvla_pose_origin (the subtask-relative pose at the time of the last
+        # instruction change) so the coordinate frames align.  When there has been
+        # no override, openvla_pose_origin is [0,0,0,0] and this is a no-op.
+        # Note: x/y/z are in the same units (cm) in both frames, but yaw in
+        # action_poses is radians while openvla_pose_origin stores degrees.
+        if any(o != 0.0 for o in openvla_pose_origin):
+            yaw_origin_rad = math.radians(openvla_pose_origin[3])
+            reframed_poses = []
+            for pose in action_poses:
+                if isinstance(pose, (list, tuple)) and len(pose) >= 4:
+                    reframed_poses.append([
+                        float(pose[0]) + openvla_pose_origin[0],
+                        float(pose[1]) + openvla_pose_origin[1],
+                        float(pose[2]) + openvla_pose_origin[2],
+                        float(pose[3]) + yaw_origin_rad,
+                    ])
+                else:
+                    reframed_poses.append(pose)
+            action_poses = reframed_poses
 
         try:
             new_image, current_pose, steps_added = apply_action_poses(
