@@ -63,8 +63,10 @@ General completion criteria:
 
 DISPLACEMENT COORDINATES: Each diary entry includes the drone's current position
 [x, y, z, yaw] relative to the start of the subtask. x is forward/backward,
-y is left/right, z is altitude, and yaw is heading in degrees. Use these to
-reason about the drone's spatial progress toward the subgoal.
+y is left/right, z is altitude — all in centimeters (e.g., 100.0 means the drone
+has moved 100 cm = 1 m from its starting position along that axis). yaw is the
+heading change in degrees from the initial heading. Use these to reason about the
+drone's spatial progress toward the subgoal.
 
 Judge based on the progression of visual evidence across the diary, not a single frame.
 
@@ -74,13 +76,24 @@ landmark), immediately signal completion to stop the drone. Do not wait for the 
 keep moving -- stopping promptly prevents overshoot.
 
 When issuing corrective commands:
-- Use short, imperative drone instructions (e.g., "turn right", "move forward",
-  "turn left slightly").
+- Use short, imperative drone instructions drawn from the vocabulary below.
 - If the drone stopped too early (subgoal not yet achieved), issue commands to
   continue toward the goal.
-- If the drone overshot (went past the goal), issue reversal commands in natural
-  language (e.g., "turn left slightly", "move backward") to undo the overshoot.
-- You may issue multiple corrections in sequence until satisfied."""
+- If the drone overshot (went past the goal), issue reversal commands to undo
+  the overshoot.
+- You may issue multiple corrections in sequence until satisfied.
+
+DRONE COMMAND VOCABULARY (use these forms for corrective_instruction):
+- Movement: advance, cross, proceed, move forward/backward, navigate, pass
+  (with optional distances or angles).
+- Altitude: ascend, climb, descend, lower, take off.
+- Landing: land at/to/on/toward a landmark (e.g., "land near the tree",
+  "land to the left of the car").
+- Orientation: face/turn toward a target, turn left/right by degrees, rotate.
+- Approach/retreat: get closer, move closer, move away, move back, back off,
+  withdraw.
+- Composed: "turn left and move forward", "navigate to a point 5 meters from
+  the building"."""
 
 LOCAL_PROMPT_TEMPLATE = """\
 The subgoal is: {subgoal}
