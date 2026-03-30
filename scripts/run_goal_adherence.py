@@ -16,10 +16,13 @@ Control loop (simpler than LTL -- no subgoal decomposition):
      - Run SubgoalConverter to extract the OpenVLA instruction from the subgoal
      - Every diary_check_interval steps call LiveDiaryMonitor.on_frame():
        * stop  -> subgoal complete, end run
+       * override -> replace OpenVLA instruction until next checkpoint
        * continue -> keep going
-     - When small-delta convergence is detected, instead of stopping the run,
-       scale the position deltas of OpenVLA outputs to keep the drone moving.
-       Only the LLM monitor's stop signal ends the run.
+     - On convergence: call LiveDiaryMonitor.on_convergence():
+       * complete -> end run
+       * stopped_short -> supervisor issues corrective command, resume
+       * overshot -> supervisor issues reversal command, resume
+       * correction cycle repeats up to max_corrections times
 
 Usage (from repo root):
   python scripts/run_goal_adherence.py --task turn_right_until_red_car.json
@@ -78,8 +81,7 @@ GA_RESULTS_DIR = REPO_ROOT / "results" / "goal_adherence_results"
 RUNS_PER_CONDITION = 3
 SMALL_DELTA_POS = 3.0
 SMALL_DELTA_YAW = 1.0
-DEFAULT_SCALE_FACTOR = 10.0
-DEFAULT_SCALE_TRIGGER_STEPS = 10
+DEFAULT_MAX_CORRECTIONS = 10
 
 logger = logging.getLogger(__name__)
 
@@ -112,8 +114,7 @@ def _run_single_ga(
     use_llm: bool,
     model: str,
     drone_cam_id: int,
-    scale_factor: float = DEFAULT_SCALE_FACTOR,
-    scale_trigger_steps: int = DEFAULT_SCALE_TRIGGER_STEPS,
+    max_corrections: int = DEFAULT_MAX_CORRECTIONS,
 ) -> Dict[str, Any]:
     """Run one goal adherence trial. Returns run_info dict."""
     subgoal = task["subgoal"]
@@ -153,6 +154,7 @@ def _run_single_ga(
             check_interval=check_interval,
             model=model,
             artifacts_dir=diary_artifacts,
+            max_corrections=max_corrections,
         )
     else:
         current_instruction = subgoal
@@ -160,8 +162,8 @@ def _run_single_ga(
     current_pose: List[float] = [0.0, 0.0, 0.0, 0.0]
     last_pose: Optional[List[float]] = None
     small_count = 0
-    is_scaling = False
     trajectory_log: List[Dict[str, Any]] = []
+    override_history: List[Dict[str, Any]] = []
     stop_reason = "max_steps"
     total_steps = 0
     origin_x, origin_y, origin_z = initial_pos[0], initial_pos[1], initial_pos[2]
@@ -186,12 +188,24 @@ def _run_single_ga(
 
         # --- Diary monitor checkpoint (LLM runs only) ---
         if monitor is not None:
-            result = monitor.on_frame(frame_path)
+            result = monitor.on_frame(frame_path, displacement=list(current_pose))
             if result.action == "stop":
                 logger.info("LLM stop at step %d: %s", step, result.reasoning)
                 stop_reason = "llm_stopped"
                 total_steps = step
                 break
+            if result.action == "override" and result.new_instruction:
+                logger.info(
+                    "LLM override at step %d: '%s' -> '%s'",
+                    step, current_instruction, result.new_instruction,
+                )
+                override_history.append({
+                    "step": step,
+                    "old_instruction": current_instruction,
+                    "new_instruction": result.new_instruction,
+                    "reasoning": result.reasoning,
+                })
+                current_instruction = result.new_instruction
 
         # --- Send instruction to OpenVLA ---
         response = batch.send_prediction_request(
@@ -214,24 +228,6 @@ def _run_single_ga(
             total_steps = step
             break
 
-        # --- Scale position deltas when in scaling mode (LLM runs only) ---
-        if is_scaling and last_pose is not None:
-            scaled_poses = []
-            for pose in action_poses:
-                if isinstance(pose, (list, tuple)) and len(pose) >= 4:
-                    dx = float(pose[0]) - last_pose[0]
-                    dy = float(pose[1]) - last_pose[1]
-                    dz = float(pose[2]) - last_pose[2]
-                    scaled_poses.append([
-                        last_pose[0] + dx * scale_factor,
-                        last_pose[1] + dy * scale_factor,
-                        last_pose[2] + dz * scale_factor,
-                        pose[3],
-                    ])
-                else:
-                    scaled_poses.append(pose)
-            action_poses = scaled_poses
-
         try:
             new_image, current_pose, steps_added = apply_action_poses(
                 env,
@@ -253,29 +249,70 @@ def _run_single_ga(
 
         total_steps = step + 1
 
-        # --- Small-delta detection and scaling toggle ---
+        # --- Convergence detection ---
+        converged = False
         if last_pose is not None:
             diffs = [abs(a - b) for a, b in zip(current_pose, last_pose)]
-            pos_small = all(d < SMALL_DELTA_POS for d in diffs[:3])
-            yaw_small = diffs[3] < SMALL_DELTA_YAW
-
-            if pos_small and yaw_small:
+            if (
+                all(d < SMALL_DELTA_POS for d in diffs[:3])
+                and diffs[3] < SMALL_DELTA_YAW
+            ):
                 small_count += 1
             else:
                 small_count = 0
-                if is_scaling:
-                    logger.info("Scaling OFF at step %d (raw deltas large again).", step)
-                    is_scaling = False
+            if small_count >= batch.ACTION_SMALL_STEPS:
+                converged = True
+        last_pose = list(current_pose)
 
-            if monitor is not None and small_count >= scale_trigger_steps and not is_scaling:
-                logger.info("Scaling ON at step %d (small deltas for %d steps).", step, small_count)
-                is_scaling = True
-                small_count = 0
-            elif monitor is None and small_count >= scale_trigger_steps:
+        if converged:
+            if monitor is not None:
+                conv_frame = set_drone_cam_and_get_image(env, cam_id)
+                if conv_frame is not None:
+                    conv_path = frames_dir / f"frame_conv_{step:06d}.png"
+                    try:
+                        import cv2
+                        cv2.imwrite(str(conv_path), conv_frame)
+                    except Exception:
+                        conv_path = frame_path
+                else:
+                    conv_path = frame_path
+
+                conv_result = monitor.on_convergence(
+                    conv_path, displacement=list(current_pose),
+                )
+
+                if conv_result.action == "stop":
+                    logger.info(
+                        "Subgoal complete on convergence at step %d: %s",
+                        step, conv_result.reasoning,
+                    )
+                    stop_reason = "llm_stopped"
+                    break
+
+                if conv_result.action == "command" and conv_result.new_instruction:
+                    logger.info(
+                        "Supervisor command at step %d: '%s'",
+                        step, conv_result.new_instruction,
+                    )
+                    override_history.append({
+                        "step": step,
+                        "type": "supervisor_command",
+                        "old_instruction": current_instruction,
+                        "new_instruction": conv_result.new_instruction,
+                        "reasoning": conv_result.reasoning,
+                    })
+                    current_instruction = conv_result.new_instruction
+                    small_count = 0
+                    last_pose = None
+                    batch.reset_model(server_url)
+                else:
+                    logger.info("Convergence at step %d (supervisor gave no command).", step)
+                    stop_reason = "convergence"
+                    break
+            else:
                 logger.info("Convergence at step %d (no LLM).", step)
                 stop_reason = "convergence"
                 break
-        last_pose = list(current_pose)
 
         step += 1
     else:
@@ -294,6 +331,8 @@ def _run_single_ga(
         "instruction_sent": converted_instruction if use_llm else subgoal,
         "total_steps": total_steps,
         "stop_reason": stop_reason,
+        "instruction_overrides": override_history,
+        "corrections_used": monitor.corrections_used if monitor else 0,
         "last_completion_pct": monitor.last_completion_pct if monitor else None,
         "start_time": start_ts,
         "end_time": end_ts,
@@ -304,6 +343,8 @@ def _run_single_ga(
     if monitor is not None:
         diary_summary = {
             "diary": monitor.diary,
+            "override_history": override_history,
+            "corrections_used": monitor.corrections_used,
             "last_completion_pct": monitor.last_completion_pct,
             "stop_reason": stop_reason,
             "total_steps": total_steps,
@@ -327,8 +368,7 @@ def _run_task_experiments(
     model: str,
     drone_cam_id: int,
     runs_per_condition: int,
-    scale_factor: float,
-    scale_trigger_steps: int,
+    max_corrections: int,
     llm_only: bool = False,
 ) -> None:
     """Run experiments for one task (baseline, LLM, or both)."""
@@ -344,8 +384,7 @@ def _run_task_experiments(
             info = _run_single_ga(
                 env, task, batch, server_url, run_dir,
                 use_llm=False, model=model, drone_cam_id=drone_cam_id,
-                scale_factor=scale_factor,
-                scale_trigger_steps=scale_trigger_steps,
+                max_corrections=max_corrections,
             )
             logger.info(
                 "  %s: %d steps, stop_reason=%s",
@@ -359,8 +398,7 @@ def _run_task_experiments(
         info = _run_single_ga(
             env, task, batch, server_url, run_dir,
             use_llm=True, model=model, drone_cam_id=drone_cam_id,
-            scale_factor=scale_factor,
-            scale_trigger_steps=scale_trigger_steps,
+            max_corrections=max_corrections,
         )
         logger.info(
             "  %s: %d steps, stop_reason=%s",
@@ -402,16 +440,10 @@ def main():
         help=f"Number of runs per condition (default: {RUNS_PER_CONDITION}).",
     )
     parser.add_argument(
-        "--scale-factor",
-        type=float,
-        default=DEFAULT_SCALE_FACTOR,
-        help=f"Multiplier for position deltas when output scaling is active (default: {DEFAULT_SCALE_FACTOR}).",
-    )
-    parser.add_argument(
-        "--scale-trigger-steps",
+        "--max-corrections",
         type=int,
-        default=DEFAULT_SCALE_TRIGGER_STEPS,
-        help=f"Consecutive small-delta steps before scaling activates (default: {DEFAULT_SCALE_TRIGGER_STEPS}).",
+        default=DEFAULT_MAX_CORRECTIONS,
+        help=f"Max supervisor corrections per LLM run (default: {DEFAULT_MAX_CORRECTIONS}).",
     )
     parser.add_argument(
         "-e",
@@ -517,7 +549,7 @@ def main():
             _run_task_experiments(
                 env, task, batch, server_url, results_base,
                 args.model, drone_cam_id, args.runs,
-                args.scale_factor, args.scale_trigger_steps,
+                args.max_corrections,
                 llm_only=args.llm_only,
             )
         except KeyboardInterrupt:

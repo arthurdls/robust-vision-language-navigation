@@ -1,9 +1,13 @@
 """
-Live diary-based subgoal completion monitor.
+Live diary-based subgoal completion monitor with supervisor capabilities.
 
 Every N steps during normal execution: builds a local 2-frame grid
-(what changed?) and a global sampled grid (is the subgoal complete?),
-tracks estimated completion percentage, and returns stop / continue.
+(what changed?) and a global sampled grid (is the subgoal complete?
+is the drone on-track?), tracks estimated completion percentage and
+displacement, and returns stop / continue / override / command.
+
+On convergence (drone stops): evaluates whether the subgoal is truly
+complete or whether corrective commands should be issued to OpenVLA.
 """
 
 import json
@@ -27,7 +31,8 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class DiaryCheckResult:
-    action: str           # "continue" or "stop"
+    action: str           # "continue", "stop", "override", or "command"
+    new_instruction: str  # populated when action is "override" or "command"
     reasoning: str
     diary_entry: str      # latest diary entry (what changed)
     completion_pct: float = 0.0  # latest estimated completion percentage
@@ -38,9 +43,10 @@ class DiaryCheckResult:
 # ---------------------------------------------------------------------------
 
 GENERAL_SYSTEM_PROMPT = """\
-You are a subgoal completion monitor for an autonomous drone.
+You are a subgoal completion monitor and supervisor for an autonomous drone.
 You evaluate whether a single navigation/visual subgoal has been achieved based
 on the drone's first-person video frames and a running diary of observed changes.
+When the drone stops prematurely or overshoots, you issue corrective commands.
 
 General completion criteria:
 - MOVEMENT subgoals ("move past X", "go between X and Y"): complete when visual
@@ -55,12 +61,26 @@ General completion criteria:
 - TRAVERSAL subgoals ("move through X"): complete when the drone has passed through
   the described structure and it is no longer directly ahead.
 
+DISPLACEMENT COORDINATES: Each diary entry includes the drone's current position
+[x, y, z, yaw] relative to the start of the subtask. x is forward/backward,
+y is left/right, z is altitude, and yaw is heading in degrees. Use these to
+reason about the drone's spatial progress toward the subgoal.
+
 Judge based on the progression of visual evidence across the diary, not a single frame.
 
 STOPPING: If the diary and visual evidence show the subgoal has been achieved or is about
 to be achieved (e.g., the target is now clearly visible, the drone has reached the
 landmark), immediately signal completion to stop the drone. Do not wait for the drone to
-keep moving -- stopping promptly prevents overshoot."""
+keep moving -- stopping promptly prevents overshoot.
+
+When issuing corrective commands:
+- Use short, imperative drone instructions (e.g., "turn right", "move forward",
+  "turn left slightly").
+- If the drone stopped too early (subgoal not yet achieved), issue commands to
+  continue toward the goal.
+- If the drone overshot (went past the goal), issue reversal commands in natural
+  language (e.g., "turn left slightly", "move backward") to undo the overshoot.
+- You may issue multiple corrections in sequence until satisfied."""
 
 LOCAL_PROMPT_TEMPLATE = """\
 The subgoal is: {subgoal}
@@ -72,6 +92,7 @@ GLOBAL_PROMPT_TEMPLATE = """\
 Subgoal: {subgoal}
 
 Previous estimated completion: {prev_completion_pct}
+Current displacement from start: [x, y, z, yaw] = {displacement}
 
 Diary of changes observed so far:
 {diary}
@@ -81,13 +102,49 @@ in temporal order), respond with EXACTLY ONE JSON object (no markdown fences):
 
 {{
   "complete": true/false,
-  "completion_percentage": 0.0 to 1.0
+  "completion_percentage": 0.0 to 1.0,
+  "on_track": true/false,
+  "overshot": true/false,
+  "corrective_instruction": "..." or null
 }}
 
 - "complete": true if the subgoal is achieved.
 - "completion_percentage": your best estimate of how close the subgoal is to
   completion (0.0 = not started, 1.0 = complete). This should be informed by
-  but not necessarily equal to the previous estimate."""
+  but not necessarily equal to the previous estimate.
+- "on_track": true if the drone is making progress toward the subgoal.
+- "overshot": true if the drone went past the goal.
+- "corrective_instruction": if off-track or overshot, a short imperative drone
+  command to fix it; null otherwise."""
+
+CONVERGENCE_PROMPT_TEMPLATE = """\
+Subgoal: {subgoal}
+
+Previous estimated completion: {prev_completion_pct}
+Current displacement from start: [x, y, z, yaw] = {displacement}
+
+Diary of changes observed so far:
+{diary}
+
+The drone has stopped moving. Given the diary and the latest frame, is the
+subgoal complete? If not, did the drone stop short or overshoot?
+
+Respond with EXACTLY ONE JSON object (no markdown fences):
+
+{{
+  "complete": true/false,
+  "completion_percentage": 0.0 to 1.0,
+  "diagnosis": "stopped_short" or "overshot" or "complete",
+  "corrective_instruction": "..." or null
+}}
+
+- "complete": true if the subgoal is fully achieved.
+- "completion_percentage": your best estimate of how close the subgoal is to
+  completion (0.0 = not started, 1.0 = complete).
+- "diagnosis": "complete" if done, "stopped_short" if the drone needs to keep
+  going, "overshot" if the drone went past the goal.
+- "corrective_instruction": if not complete, a short imperative drone command
+  to fix it; null if complete."""
 
 
 # ---------------------------------------------------------------------------
@@ -95,12 +152,21 @@ in temporal order), respond with EXACTLY ONE JSON object (no markdown fences):
 # ---------------------------------------------------------------------------
 
 class LiveDiaryMonitor:
-    """Real-time diary-based subgoal completion monitor.
+    """Real-time diary-based subgoal completion monitor with supervisor capabilities.
 
     Designed to monitor a SINGLE subgoal (one predicate from the LTL planner).
-    Every N steps: builds local 2-frame grid, builds global sampled grid
-    (capped at 9 frames for a 3x3 layout), maintains running diary with
-    completion percentage estimates, and returns stop/continue.
+    Operates in two modes:
+
+    1. PASSIVE MONITORING (during normal execution):
+       Every N steps: builds local 2-frame grid, builds global sampled grid
+       (capped at 9 frames for a 3x3 layout), maintains running diary with
+       displacement and completion percentage, and returns stop/continue/override.
+
+    2. SUPERVISOR MODE (when drone converges / stops prematurely):
+       When the control loop detects convergence but the subgoal is not complete,
+       the monitor takes over and issues corrective commands directly to OpenVLA
+       until the subgoal is achieved, a max correction budget is exhausted, or
+       the monitor determines the subgoal was overshot and issues a reversal.
     """
 
     MAX_GLOBAL_FRAMES = 9
@@ -111,18 +177,21 @@ class LiveDiaryMonitor:
         check_interval: int,
         model: str = "gpt-4o",
         artifacts_dir: Optional[Path] = None,
-        **kwargs: Any,
+        max_corrections: int = 10,
     ):
         self._subgoal = subgoal
         self._check_interval = check_interval
         self._model = model
         self._artifacts_dir = artifacts_dir
+        self._max_corrections = max_corrections
 
         self._llm: BaseLLM = self._make_llm(model)
         self._frame_paths: List[Path] = []
         self._diary: List[str] = []
         self._step = 0
+        self._corrections_used = 0
         self._last_completion_pct: float = 0.0
+        self._last_displacement: List[float] = [0.0, 0.0, 0.0, 0.0]
         self._temp_dir: Optional[str] = None
 
     # ------------------------------------------------------------------
@@ -138,29 +207,126 @@ class LiveDiaryMonitor:
         return self._step
 
     @property
+    def corrections_used(self) -> int:
+        return self._corrections_used
+
+    @property
     def last_completion_pct(self) -> float:
         return self._last_completion_pct
 
-    def on_frame(self, frame_image_or_path: Union[np.ndarray, Path, str]) -> DiaryCheckResult:
+    def on_frame(
+        self,
+        frame_image_or_path: Union[np.ndarray, Path, str],
+        displacement: Optional[List[float]] = None,
+    ) -> DiaryCheckResult:
         """Process one frame during normal execution.
 
         On non-checkpoint steps returns action="continue" with empty diary_entry.
         On checkpoint steps (every check_interval) runs two LLM queries and
         returns the assessed action.
+
+        Parameters
+        ----------
+        frame_image_or_path : frame as numpy array or path to saved image
+        displacement : [x, y, z, yaw] relative to subtask start position
         """
         path = self._save_frame(frame_image_or_path)
         self._frame_paths.append(path)
         self._step += 1
 
+        if displacement is not None:
+            self._last_displacement = list(displacement)
+
         if self._step % self._check_interval != 0 or self._step < self._check_interval:
             return DiaryCheckResult(
                 action="continue",
+                new_instruction="",
                 reasoning="",
                 diary_entry="",
                 completion_pct=self._last_completion_pct,
             )
 
         return self._run_checkpoint()
+
+    def on_convergence(
+        self,
+        latest_frame: Union[np.ndarray, Path, str],
+        displacement: Optional[List[float]] = None,
+    ) -> DiaryCheckResult:
+        """Called when the control loop detects the drone has stopped (convergence).
+
+        Evaluates whether the subgoal is truly complete or if corrective commands
+        are needed. Returns 'stop' if complete, 'command' with a corrective
+        instruction if not.
+        """
+        path = self._save_frame(latest_frame)
+        if not self._frame_paths or self._frame_paths[-1] != path:
+            self._frame_paths.append(path)
+
+        if displacement is not None:
+            self._last_displacement = list(displacement)
+
+        if self._corrections_used >= self._max_corrections:
+            logger.warning(
+                "Max corrections (%d) exhausted. Ending run.",
+                self._max_corrections,
+            )
+            return DiaryCheckResult(
+                action="stop",
+                new_instruction="",
+                reasoning=f"Max corrections ({self._max_corrections}) exhausted.",
+                diary_entry="",
+                completion_pct=self._last_completion_pct,
+            )
+
+        disp_str = self._format_displacement()
+        diary_blob = "\n".join(self._diary) if self._diary else "(no diary entries yet)"
+        prompt = CONVERGENCE_PROMPT_TEMPLATE.format(
+            subgoal=self._subgoal,
+            diary=diary_blob,
+            prev_completion_pct=self._last_completion_pct,
+            displacement=disp_str,
+        )
+
+        response = query_vlm(
+            build_frame_grid([path]),
+            f"{GENERAL_SYSTEM_PROMPT}\n\n{prompt}",
+            llm=self._llm,
+        )
+
+        self._save_convergence_artifact(response, prompt)
+
+        parsed = self._parse_json_response(response)
+
+        pct = float(parsed.get("completion_percentage", self._last_completion_pct))
+        pct = max(0.0, min(1.0, pct))
+        self._last_completion_pct = pct
+
+        if parsed.get("complete", False) or parsed.get("diagnosis") == "complete":
+            return DiaryCheckResult(
+                action="stop",
+                new_instruction="",
+                reasoning=f"Subgoal complete on convergence. Raw: {response}",
+                diary_entry="",
+                completion_pct=pct,
+            )
+
+        corrective = parsed.get("corrective_instruction") or ""
+        if not corrective:
+            diagnosis = parsed.get("diagnosis", "stopped_short")
+            if diagnosis == "overshot":
+                corrective = "turn around slowly"
+            else:
+                corrective = "continue forward"
+
+        self._corrections_used += 1
+        return DiaryCheckResult(
+            action="command",
+            new_instruction=corrective,
+            reasoning=f"Convergence diagnosis: {parsed.get('diagnosis', 'unknown')}. Raw: {response}",
+            diary_entry="",
+            completion_pct=pct,
+        )
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -171,6 +337,10 @@ class LiveDiaryMonitor:
         if model.startswith("gemini"):
             return LLMFactory.create("gemini", model=model)
         return LLMFactory.create("openai", model=model)
+
+    def _format_displacement(self) -> str:
+        d = self._last_displacement
+        return f"[{d[0]:.1f}, {d[1]:.1f}, {d[2]:.1f}, {d[3]:.1f}]"
 
     def _save_frame(self, frame: Any) -> Path:
         if isinstance(frame, (str, Path)):
@@ -200,7 +370,8 @@ class LiveDiaryMonitor:
             f"{GENERAL_SYSTEM_PROMPT}\n\n{prompt_local}",
             llm=self._llm,
         )
-        diary_entry = f"Steps {step - n}-{step}: {change_text}"
+        disp_str = self._format_displacement()
+        diary_entry = f"Steps {step - n}-{step} [pos: {disp_str}]: {change_text}"
         self._diary.append(diary_entry)
 
         # --- Global query: assess progress ---
@@ -208,6 +379,7 @@ class LiveDiaryMonitor:
         if not sampled:
             return DiaryCheckResult(
                 action="continue",
+                new_instruction="",
                 reasoning="No sampled frames for global grid.",
                 diary_entry=diary_entry,
                 completion_pct=self._last_completion_pct,
@@ -221,6 +393,7 @@ class LiveDiaryMonitor:
             subgoal=self._subgoal,
             diary=diary_blob,
             prev_completion_pct=self._last_completion_pct,
+            displacement=disp_str,
         )
 
         response_global = query_vlm(
@@ -252,14 +425,37 @@ class LiveDiaryMonitor:
         if parsed.get("complete", False):
             return DiaryCheckResult(
                 action="stop",
+                new_instruction="",
                 reasoning=f"Subgoal complete. Raw: {response}",
                 diary_entry=diary_entry,
                 completion_pct=pct,
             )
 
+        if parsed.get("overshot", False):
+            corrective = parsed.get("corrective_instruction") or "turn around slowly"
+            return DiaryCheckResult(
+                action="override",
+                new_instruction=corrective,
+                reasoning=f"Overshot detected. Raw: {response}",
+                diary_entry=diary_entry,
+                completion_pct=pct,
+            )
+
+        if not parsed.get("on_track", True):
+            corrective = parsed.get("corrective_instruction") or ""
+            if corrective:
+                return DiaryCheckResult(
+                    action="override",
+                    new_instruction=corrective,
+                    reasoning=f"Off-track. Raw: {response}",
+                    diary_entry=diary_entry,
+                    completion_pct=pct,
+                )
+
         return DiaryCheckResult(
             action="continue",
-            reasoning=f"In progress ({pct:.0%}). Raw: {response}",
+            new_instruction="",
+            reasoning=f"On track ({pct:.0%}). Raw: {response}",
             diary_entry=diary_entry,
             completion_pct=pct,
         )
@@ -311,3 +507,12 @@ class LiveDiaryMonitor:
         diary_blob = "\n".join(self._diary)
         (cp_dir / "diary.txt").write_text(diary_blob)
 
+    def _save_convergence_artifact(self, response: str, prompt: str) -> None:
+        if self._artifacts_dir is None:
+            return
+        conv_dir = self._artifacts_dir / f"convergence_{self._corrections_used:03d}"
+        conv_dir.mkdir(parents=True, exist_ok=True)
+        (conv_dir / "prompt.txt").write_text(f"{GENERAL_SYSTEM_PROMPT}\n\n{prompt}")
+        (conv_dir / "response.txt").write_text(response)
+        diary_blob = "\n".join(self._diary)
+        (conv_dir / "diary.txt").write_text(diary_blob)
