@@ -8,6 +8,19 @@ displacement, and returns stop / continue / override / command.
 
 On convergence (drone stops): evaluates whether the subgoal is truly
 complete or whether corrective commands should be issued to OpenVLA.
+
+Key behaviours:
+  - Completion percentage is monotonically non-decreasing: the code clamps
+    each new estimate to be >= the previous one, regardless of what the LLM
+    returns.  This ensures diary entries never show a regression.
+  - The global prompt asks the LLM for a ``should_override`` flag (rather
+    than separate overshot / off-track flags).  When true and a
+    corrective_instruction is provided, the runner replaces the current
+    OpenVLA instruction.
+  - The system prompt emphasises completion strictness (never mark complete
+    unless highly confident, cap at 0.95 when uncertain) and proactive
+    correction (flag overshoot early, prefer small corrections over large
+    late ones).
 """
 
 import json
@@ -91,7 +104,10 @@ target is shifting behind the camera or shrinking) rather than waiting until the
 is no longer visible. Acting early keeps corrections small and recoverable.
 
 When issuing corrective commands:
-- Use short, imperative drone instructions drawn from the vocabulary below.
+- Use short, imperative drone instructions with a CONCRETE DISTANCE in meters.
+  Prefer SMALL movements (under 1.0 meters per axis) so the drone can be
+  re-evaluated frequently. Use the displacement data to estimate how far the
+  drone needs to move.
 - If the drone stopped too early (subgoal not yet achieved), issue commands to
   continue toward the goal.
 - If the drone overshot (went past the goal), issue reversal commands to undo
@@ -100,15 +116,17 @@ When issuing corrective commands:
 - You may issue multiple corrections in sequence until satisfied.
 
 DRONE COMMAND VOCABULARY (use these forms for corrective_instruction):
-- Movement: advance, cross, proceed, move forward/backward, navigate, pass
-  (with optional distances or angles).
-- Altitude: ascend, climb, descend, lower, take off.
-- Landing: land at/to/on/toward a landmark (e.g., "land near the tree",
+- Movement: "move forward X meters", "move backward X meters", "advance X meters",
+  "proceed X meters", "navigate X meters".
+- Altitude: "ascend X meters", "climb X meters", "descend X meters",
+  "lower X meters", "take off".
+- Landing: "land at/to/on/toward a landmark" (e.g., "land near the tree",
   "land to the left of the car").
-- Orientation: face/turn toward a target, turn left/right by degrees, rotate.
-- Approach/retreat: get closer, move closer, move away, move back, back off,
-  withdraw.
-- Composed: "turn left and move forward", "navigate to a point 5 meters from
+- Orientation: "turn left/right X degrees", "face toward [target]", "rotate X
+  degrees".
+- Approach/retreat: "move closer X meters", "move away X meters",
+  "move back X meters", "back off X meters".
+- Composed: "turn left and move forward", "navigate to a point X meters from
   the building"."""
 
 LOCAL_PROMPT_TEMPLATE = """\
