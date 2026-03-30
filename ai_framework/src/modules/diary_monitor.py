@@ -110,8 +110,12 @@ Current displacement from start: [x, y, z, yaw] = {displacement}
 Diary of changes observed so far:
 {diary}
 
-Based on the diary and the grid of sampled frames (left to right, top to bottom,
-in temporal order), respond with EXACTLY ONE JSON object (no markdown fences):
+The grid shows up to the 9 most recent sampled frames (left to right, top to
+bottom, in temporal order). If there are more than 9 diary entries, earlier frames
+are no longer visible in the grid — rely on the diary text for that history.
+
+Based on the diary and the grid of sampled frames, respond with EXACTLY ONE JSON
+object (no markdown fences):
 
 {{
   "complete": true/false,
