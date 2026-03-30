@@ -357,7 +357,10 @@ class LiveDiaryMonitor:
 
     def _format_displacement(self) -> str:
         d = self._last_displacement
-        return f"[{d[0]:.1f}, {d[1]:.1f}, {d[2]:.1f}, {d[3]:.1f}]"
+        return (
+            f"[forward: {d[0]:.1f} cm, right: {d[1]:.1f} cm, "
+            f"altitude: {d[2]:.1f} cm, yaw: {d[3]:.1f}°]"
+        )
 
     def _save_frame(self, frame: Any) -> Path:
         if isinstance(frame, (str, Path)):
@@ -388,7 +391,7 @@ class LiveDiaryMonitor:
             llm=self._llm,
         )
         disp_str = self._format_displacement()
-        diary_entry = f"Steps {step - n}-{step} [pos: {disp_str}]: {change_text}"
+        diary_entry = f"Steps {step - n}-{step} {disp_str}: {change_text}"
         self._diary.append(diary_entry)
 
         # --- Global query: assess progress ---
