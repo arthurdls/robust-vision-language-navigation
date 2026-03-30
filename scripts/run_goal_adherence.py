@@ -15,7 +15,7 @@ Control loop (simpler than LTL -- no subgoal decomposition):
   4. With LLM (diary-assisted):
      - Run SubgoalConverter to extract the OpenVLA instruction from the subgoal
      - Every diary_check_interval steps call LiveDiaryMonitor.on_frame():
-       * stop  -> subgoal complete, end run
+       * stop  -> subgoal complete, end run (always honoured)
        * override -> replace OpenVLA instruction (only resets VLA model and
          pose origin when the instruction actually changes; repeated overrides
          with the same instruction are logged but do not disrupt the trajectory)
@@ -26,6 +26,16 @@ Control loop (simpler than LTL -- no subgoal decomposition):
          always resets VLA model and pose origin (drone has stopped and needs
          a fresh start), then resumes
        * correction cycle repeats up to max_corrections times
+
+  Correction suppression:
+     While a corrective instruction is being executed (in_correction flag),
+     checkpoint overrides are suppressed — the LLM still runs and the diary
+     is updated, but the instruction is not swapped mid-correction. This
+     prevents the VLA from being repeatedly reset before it can finish
+     executing a correction. Overrides are only suppressed at checkpoints;
+     stop signals are always honoured. On convergence (drone stops), the
+     supervisor can issue a new correction (stays in_correction) or declare
+     complete (clears in_correction).
 
   Coordinate frame handling:
      OpenVLA receives proprio relative to the current instruction's origin
@@ -187,6 +197,7 @@ def _run_single_ga(
     small_count = 0
     trajectory_log: List[Dict[str, Any]] = []
     override_history: List[Dict[str, Any]] = []
+    in_correction = False
     stop_reason = "max_steps"
     total_steps = 0
     origin_x, origin_y, origin_z = initial_pos[0], initial_pos[1], initial_pos[2]
@@ -218,29 +229,44 @@ def _run_single_ga(
                 total_steps = step
                 break
             if result.new_instruction:
-                instruction_changed = (
-                    result.new_instruction.strip().lower()
-                    != current_instruction.strip().lower()
-                )
-                logger.info(
-                    "LLM %s at step %d: '%s' -> '%s' (changed=%s)",
-                    result.action, step,
-                    current_instruction, result.new_instruction,
-                    instruction_changed,
-                )
-                override_history.append({
-                    "step": step,
-                    "type": result.action,
-                    "old_instruction": current_instruction,
-                    "new_instruction": result.new_instruction,
-                    "reasoning": result.reasoning,
-                })
-                current_instruction = result.new_instruction
-                if instruction_changed:
-                    openvla_pose_origin = list(current_pose)
-                    small_count = 0
-                    last_pose = None
-                    batch.reset_model(server_url)
+                if in_correction:
+                    logger.info(
+                        "LLM %s at step %d suppressed (in_correction): '%s'",
+                        result.action, step, result.new_instruction,
+                    )
+                    override_history.append({
+                        "step": step,
+                        "type": result.action,
+                        "old_instruction": current_instruction,
+                        "new_instruction": result.new_instruction,
+                        "reasoning": result.reasoning,
+                        "suppressed": True,
+                    })
+                else:
+                    instruction_changed = (
+                        result.new_instruction.strip().lower()
+                        != current_instruction.strip().lower()
+                    )
+                    logger.info(
+                        "LLM %s at step %d: '%s' -> '%s' (changed=%s)",
+                        result.action, step,
+                        current_instruction, result.new_instruction,
+                        instruction_changed,
+                    )
+                    override_history.append({
+                        "step": step,
+                        "type": result.action,
+                        "old_instruction": current_instruction,
+                        "new_instruction": result.new_instruction,
+                        "reasoning": result.reasoning,
+                    })
+                    current_instruction = result.new_instruction
+                    if instruction_changed:
+                        in_correction = True
+                        openvla_pose_origin = list(current_pose)
+                        small_count = 0
+                        last_pose = None
+                        batch.reset_model(server_url)
 
         # --- Send instruction to OpenVLA ---
         # Pose relative to the current instruction's origin (reset on override).
@@ -348,6 +374,7 @@ def _run_single_ga(
                         "Subgoal complete on convergence at step %d: %s",
                         step, conv_result.reasoning,
                     )
+                    in_correction = False
                     stop_reason = "llm_stopped"
                     break
 
@@ -369,12 +396,14 @@ def _run_single_ga(
                         "reasoning": conv_result.reasoning,
                     })
                     current_instruction = conv_result.new_instruction
+                    in_correction = True
                     openvla_pose_origin = list(current_pose)
                     small_count = 0
                     last_pose = None
                     batch.reset_model(server_url)
                 else:
                     logger.info("Convergence at step %d (supervisor gave no command).", step)
+                    in_correction = False
                     stop_reason = "convergence"
                     break
             else:
@@ -411,6 +440,7 @@ def _run_single_ga(
         "instruction_overrides": override_history,
         "corrections_used": monitor.corrections_used if monitor else 0,
         "last_completion_pct": monitor.last_completion_pct if monitor else None,
+        "in_correction_at_end": in_correction,
         "playback_mp4": str(playback_mp4) if playback_mp4 else None,
         "start_time": start_ts,
         "end_time": end_ts,
