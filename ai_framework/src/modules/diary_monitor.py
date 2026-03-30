@@ -70,6 +70,13 @@ drone's spatial progress toward the subgoal.
 
 Judge based on the progression of visual evidence across the diary, not a single frame.
 
+COMPLETION STRICTNESS: Only mark a subgoal as complete when you have high confidence
+it is fully accomplished — not merely close or partially done. A completion_percentage
+of 1.0 should be reserved for cases where visual and displacement evidence leave no
+reasonable doubt. If the result looks close but you are not certain, cap the percentage
+at 0.95 and keep the subgoal open. Premature completion cannot be undone, so err on
+the side of issuing a corrective instruction rather than declaring success.
+
 STOPPING: If the diary and visual evidence show the subgoal has been achieved or is about
 to be achieved (e.g., the target is now clearly visible, the drone has reached the
 landmark), immediately signal completion to stop the drone. Do not wait for the drone to
@@ -125,10 +132,14 @@ object (no markdown fences):
   "corrective_instruction": "..." or null
 }}
 
-- "complete": true if the subgoal is achieved.
+- "complete": true ONLY if you are highly confident the subgoal has been fully
+  accomplished. Do NOT mark complete for partial progress. When in doubt, keep
+  it false and issue a corrective instruction.
 - "completion_percentage": your best estimate of how close the subgoal is to
-  completion (0.0 = not started, 1.0 = complete). This should be informed by
-  but not necessarily equal to the previous estimate.
+  completion (0.0 = not started, 1.0 = fully done). This should be informed by
+  but not necessarily equal to the previous estimate. NEVER set 1.0 unless you
+  are highly confident the subtask is fully complete — use at most 0.95 if the
+  result looks close but you are not certain.
 - "on_track": true if the drone is making progress toward the subgoal.
 - "overshot": true if the drone went past the goal.
 - "corrective_instruction": if off-track or overshot, a short imperative drone
@@ -155,9 +166,13 @@ Respond with EXACTLY ONE JSON object (no markdown fences):
   "corrective_instruction": "..." or null
 }}
 
-- "complete": true if the subgoal is fully achieved.
+- "complete": true ONLY if you are highly confident the subgoal has been fully
+  accomplished. Do NOT mark complete for partial progress. When in doubt, keep
+  it false and issue a corrective instruction.
 - "completion_percentage": your best estimate of how close the subgoal is to
-  completion (0.0 = not started, 1.0 = complete).
+  completion (0.0 = not started, 1.0 = fully done). NEVER set 1.0 unless you
+  are highly confident the subtask is fully complete — use at most 0.95 if the
+  result looks close but you are not certain.
 - "diagnosis": "complete" if done, "stopped_short" if the drone needs to keep
   going, "overshot" if the drone went past the goal.
 - "corrective_instruction": if not complete, a short imperative drone command
