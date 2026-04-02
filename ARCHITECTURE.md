@@ -283,6 +283,60 @@ Loads the fine-tuned OpenVLA-UAV model, serves Flask HTTP endpoints:
 - `POST /predict`: Takes base64 image + proprio + instruction, returns action poses
 - `POST /reset`: Resets model state (added on top of the original server)
 
+### 4.8 OpenVLA input/output format
+
+The prompt sent to the OpenVLA model has the form:
+
+```
+In: Current State: {x},{y},{z},{yaw}, What action should the uav take to {instruction}?
+Out:
+```
+
+Where `{x},{y},{z},{yaw}` is the proprio (position relative to the current
+instruction's origin, rounded to 1 decimal place) and `{instruction}` is the
+current OpenVLA instruction (lowercased).
+
+The model returns a **raw predicted action** as a 4-element vector
+`[dx, dy, dz, dyaw]` in the drone's body frame, where `dx`/`dy`/`dz` are
+position deltas (meters) and `dyaw` is a heading delta (radians). The server
+rotates this from the body frame back to the global frame before returning it.
+
+**Example trace** (from a live "turn right until red car" run):
+
+```
+# After a /reset, proprio starts at [0,0,0,0]:
+Prompt: Current State: 0.0,0.0,0.0,0.0, ... to continue turning right?
+Raw predicted action: [[0.101  0.127  0.0  0.052]]    ← small forward + yaw
+
+# Proprio accumulates as the drone moves:
+Prompt: Current State: 0.1,0.1,0.0,3.0, ... to continue turning right?
+Raw predicted action: [[0.101  0.127  0.0  0.052]]
+
+Prompt: Current State: 0.2,0.3,0.0,6.0, ... to continue turning right?
+Raw predicted action: [[0.101  0.127  0.0  0.052]]
+
+# After ~5 steps the yaw saturates at 14.9° and dyaw drops to 0:
+Prompt: Current State: 0.4,0.7,0.0,14.9, ... to continue turning right?
+Raw predicted action: [[0.101  0.127  0.0  0.0]]      ← yaw stops, only drift
+
+# Action stays identical for many steps (model has converged):
+Prompt: Current State: 0.8,1.6,0.0,14.9, ... to continue turning right?
+Raw predicted action: [[0.101  0.127  0.0  0.0]]
+
+# The diary monitor detects the stall, issues a /reset with new instruction:
+POST /reset
+Prompt: Current State: 0.0,0.0,0.0,0.0, ... to turn right slightly?
+Raw predicted action: [[0.101  0.127  0.0  0.052]]    ← yaw resumes after reset
+```
+
+Key observations from the trace:
+- The model tends to produce **near-identical outputs** for consecutive inputs
+  with the same instruction, causing pose stall and triggering convergence.
+- After a `/reset` + instruction change, the proprio resets to `[0,0,0,0]` and
+  the model may produce different action dynamics (e.g., yaw component returns).
+- The raw action magnitudes are small (~0.1 m forward, ~0.05 rad yaw per step),
+  resulting in gradual, incremental movement.
+
 ---
 
 ## 5. Coordinate Frames
