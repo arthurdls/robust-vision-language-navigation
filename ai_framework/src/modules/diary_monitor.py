@@ -75,11 +75,11 @@ DISPLACEMENT: [x, y, z, yaw] relative to subtask start. x/y are fixed to the
 initial heading (x = forward, y = lateral at start). z = altitude. Meters.
 yaw = heading change in degrees.
 
-DURING NORMAL FLIGHT — your primary job is to detect completion:
-- Focus on whether the subgoal is complete. If so, set "complete" to true.
-- The "should_override" and "corrective_instruction" fields are for diagnostics
-  only during flight — corrections are only applied when the drone stops.
-- Let the drone execute its instruction without interference.
+DURING NORMAL FLIGHT — your primary job is to detect completion and problems:
+- If the subgoal is complete, set "complete" to true.
+- If the drone is actively making things worse (e.g., moving away from the target,
+  overshooting), set "should_stop" to true so it can be corrected.
+- Otherwise, let the drone execute its instruction without interference.
 
 WHEN THE DRONE STOPS (convergence corrections):
 - Decide if the subgoal is complete, stopped short, or overshot.
@@ -119,25 +119,18 @@ object (no markdown fences):
   "complete": true/false,
   "completion_percentage": 0.0 to 1.0,
   "on_track": true/false,
-  "should_override": true/false,
-  "corrective_instruction": "..." or null
+  "should_stop": true/false
 }}
 
 - "complete": true ONLY if you are highly confident the subgoal has been fully
-  accomplished. Do NOT mark complete for partial progress. When in doubt, keep
-  it false and issue a corrective instruction.
+  accomplished. Do NOT mark complete for partial progress.
 - "completion_percentage": your best estimate of how close the subgoal is to
-  completion (0.0 = not started, 1.0 = fully done). This should be informed by
-  but not necessarily equal to the previous estimate. NEVER set 1.0 unless you
-  are highly confident the subtask is fully complete — use at most 0.95 if the
-  result looks close but you are not certain.
+  completion (0.0 = not started, 1.0 = fully done). NEVER set 1.0 unless you
+  are highly confident — use at most 0.95 when unsure.
 - "on_track": true if the drone is making any progress toward the subgoal.
-- "should_override": almost always false. Only true when the drone is moving AWAY
-  from the target or making zero progress for multiple checkpoints. Slow or
-  single-axis progress is normal, not a reason to override.
-- "corrective_instruction": a single-action drone command when should_override
-  is true (not compound — e.g., "move forward 1.0 meters", not "ascend and move
-  forward"). null otherwise."""
+- "should_stop": true only if the drone is actively making things worse (e.g.,
+  overshooting, moving away from target). The drone will be stopped and a
+  correction issued. Do NOT set true for slow progress."""
 
 CONVERGENCE_PROMPT_TEMPLATE = """\
 Subgoal: {subgoal}
@@ -174,19 +167,10 @@ Respond with EXACTLY ONE JSON object (no markdown fences):
   result looks close but you are not certain.
 - "diagnosis": "complete" if done, "stopped_short" if the drone needs to keep
   going, "overshot" if the drone went past the goal.
-- "corrective_instruction": if not complete, a single-action drone command to
-  fix the biggest gap (not compound — one action per correction). null if
-  complete."""
+- "corrective_instruction": REQUIRED if not complete — a single-action drone
+  command to fix the biggest gap (not compound — one action per correction).
+  null only if complete."""
 
-CONVERGENCE_FALLBACK_PROMPT = """\
-The drone has stopped and the subgoal is NOT yet complete.
-Subgoal: {subgoal}
-Current displacement from start: [x, y, z, yaw] = {displacement}
-
-Based on the frames shown, what single short imperative drone command should
-be executed next to make progress toward the subgoal? Reply with ONLY the
-command string (e.g. "turn right 30 degrees", "move forward 2 meters"),
-nothing else."""
 
 
 # ---------------------------------------------------------------------------
@@ -393,22 +377,29 @@ class LiveDiaryMonitor:
 
         corrective = parsed.get("corrective_instruction") or ""
         if not corrective:
-            fallback_prompt = CONVERGENCE_FALLBACK_PROMPT.format(
-                subgoal=self._subgoal,
-                displacement=disp_str,
+            logger.warning(
+                "Convergence response missing corrective_instruction, retrying."
             )
-            fallback_response = query_vlm(
-                grid, fallback_prompt, llm=self._llm,
-                system_prompt=GENERAL_SYSTEM_PROMPT,
+            response = query_vlm(
+                grid, prompt, llm=self._llm, system_prompt=GENERAL_SYSTEM_PROMPT,
             )
             self._vlm_calls += 1
-            self._save_fallback_artifact(fallback_prompt, fallback_response)
-            corrective = fallback_response.strip().strip('"').strip("'")
-            logger.info(
-                "Convergence fallback VLM query returned: '%s'", corrective,
-            )
+            parsed_retry = self._parse_json_response(response)
+            if parsed_retry.get("complete", False) or parsed_retry.get("diagnosis") == "complete":
+                pct_r = float(parsed_retry.get("completion_percentage", pct))
+                pct_r = max(0.0, min(1.0, pct_r))
+                self._last_completion_pct = pct_r
+                self._high_water_mark = max(self._high_water_mark, pct_r)
+                return DiaryCheckResult(
+                    action="stop",
+                    new_instruction="",
+                    reasoning=f"Subgoal complete on convergence (retry). Raw: {response}",
+                    diary_entry="",
+                    completion_pct=pct_r,
+                )
+            corrective = (parsed_retry.get("corrective_instruction") or "").strip()
             if not corrective:
-                logger.warning("Fallback VLM query also returned no instruction.")
+                logger.error("Convergence retry also returned no instruction.")
                 return DiaryCheckResult(
                     action="stop",
                     new_instruction="",
@@ -559,16 +550,14 @@ class LiveDiaryMonitor:
                 completion_pct=pct,
             )
 
-        if parsed.get("should_override", False):
-            corrective = parsed.get("corrective_instruction") or ""
-            if corrective:
-                return DiaryCheckResult(
-                    action="override",
-                    new_instruction=corrective,
-                    reasoning=f"Override requested. Raw: {response}",
-                    diary_entry=diary_entry,
-                    completion_pct=pct,
-                )
+        if parsed.get("should_stop", False):
+            return DiaryCheckResult(
+                action="force_converge",
+                new_instruction="",
+                reasoning=f"Stop requested for correction. Raw: {response}",
+                diary_entry=diary_entry,
+                completion_pct=pct,
+            )
 
         return DiaryCheckResult(
             action="continue",
@@ -651,12 +640,3 @@ class LiveDiaryMonitor:
         diary_blob = "\n".join(self._diary)
         (conv_dir / "diary.txt").write_text(diary_blob)
 
-    def _save_fallback_artifact(self, prompt: str, response: str) -> None:
-        if self._artifacts_dir is None:
-            return
-        conv_dir = self._artifacts_dir / f"convergence_{self._corrections_used:03d}"
-        conv_dir.mkdir(parents=True, exist_ok=True)
-        (conv_dir / "fallback_prompt.txt").write_text(
-            f"{GENERAL_SYSTEM_PROMPT}\n\n{prompt}"
-        )
-        (conv_dir / "fallback_response.txt").write_text(response)

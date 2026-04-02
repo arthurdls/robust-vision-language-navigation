@@ -15,17 +15,17 @@ Control loop (simpler than LTL -- no subgoal decomposition):
   4. With LLM (diary-assisted):
      - Run SubgoalConverter to extract the OpenVLA instruction from the subgoal
      - Every diary_check_interval steps call LiveDiaryMonitor.on_frame():
-       * stop  -> subgoal complete, end run (always honoured)
-       * override -> logged but NOT applied (checkpoint overrides are disabled;
-         the VLM monitors and detects completion/overshoot but does not replace
-         the instruction during flight)
+       * stop  -> subgoal complete, end run
+       * force_converge -> VLM detected a problem (e.g., overshoot), forces
+         convergence so on_convergence can issue a correction
        * continue -> keep going
-     - On convergence (drone stops): call LiveDiaryMonitor.on_convergence():
+     - On convergence (drone stops naturally OR forced by VLM):
+       call LiveDiaryMonitor.on_convergence():
        * complete -> end run
        * stopped_short / overshot -> supervisor issues corrective command,
          resets VLA model and pose origin, then resumes
        * correction cycle repeats up to max_corrections times
-     All instruction replacement happens at convergence, never mid-flight.
+     No instruction replacement happens mid-flight — only at convergence.
 
   Coordinate frame handling:
      OpenVLA receives proprio relative to the current instruction's origin
@@ -196,6 +196,7 @@ def _run_single_ga(
     origin_yaw = initial_pos[4]
     start_ts = datetime.now().isoformat()
 
+    result = None
     step = 0
     while step < max_steps:
         batch.set_cam(env)
@@ -227,18 +228,14 @@ def _run_single_ga(
                 stop_reason = "llm_stopped"
                 total_steps = step
                 break
-            if result.new_instruction:
+            if result.action == "force_converge":
                 logger.info(
-                    "LLM %s at step %d logged (checkpoint overrides disabled): '%s'",
-                    result.action, step, result.new_instruction,
+                    "LLM force_converge at step %d: %s", step, result.reasoning,
                 )
                 override_history.append({
                     "step": step,
-                    "type": result.action,
-                    "old_instruction": current_instruction,
-                    "new_instruction": result.new_instruction,
+                    "type": "force_converge",
                     "reasoning": result.reasoning,
-                    "suppressed": True,
                 })
 
         # --- Send instruction to OpenVLA ---
@@ -311,7 +308,11 @@ def _run_single_ga(
         total_steps = step + 1
 
         # --- Convergence detection ---
-        converged = False
+        converged = (
+            monitor is not None
+            and result is not None
+            and result.action == "force_converge"
+        )
         steps_since_correction = step - last_correction_step
         if (
             last_pose is not None
