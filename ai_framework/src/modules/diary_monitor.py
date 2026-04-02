@@ -10,9 +10,8 @@ On convergence (drone stops): evaluates whether the subgoal is truly
 complete or whether corrective commands should be issued to OpenVLA.
 
 Key behaviours:
-  - Completion percentage is monotonically non-decreasing: the code clamps
-    each new estimate to be >= the previous one, regardless of what the LLM
-    returns.  This ensures diary entries never show a regression.
+  - Completion percentage is reported as-is from the LLM (no clamping).
+    A separate high-water mark tracks the peak value for analysis.
   - The global prompt asks the LLM for a ``should_override`` flag (rather
     than separate overshot / off-track flags).  When true and a
     corrective_instruction is provided, the runner replaces the current
@@ -25,6 +24,7 @@ Key behaviours:
 
 import json
 import logging
+import shutil
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
@@ -56,78 +56,43 @@ class DiaryCheckResult:
 # ---------------------------------------------------------------------------
 
 GENERAL_SYSTEM_PROMPT = """\
-You are a subgoal completion monitor and supervisor for an autonomous drone.
-You evaluate whether a single navigation/visual subgoal has been achieved based
-on the drone's first-person video frames and a running diary of observed changes.
-When the drone stops prematurely or overshoots, you issue corrective commands.
+You are a completion monitor for an autonomous drone executing a single subgoal.
+You watch first-person video frames and a running diary to decide whether the
+subgoal is done, and issue corrections when the drone stops prematurely.
 
-General completion criteria:
-- MOVEMENT subgoals ("move past X", "go between X and Y"): complete when visual
-  evidence shows the drone has reached or passed the described spatial relationship
-  relative to the landmark.
-- APPROACH subgoals ("approach X", "get close to X"): complete when the target
-  occupies a large portion of the frame and appears close.
-- VISUAL SEARCH subgoals ("turn until you see X"): complete when the target object
-  is clearly visible in the drone's field of view.
-- ALTITUDE subgoals ("go above X"): complete when the scene perspective shows the
-  drone is above the target (target visible below).
-- TRAVERSAL subgoals ("move through X"): complete when the drone has passed through
-  the described structure and it is no longer directly ahead.
+COMPLETION CRITERIA — mark complete only with high confidence:
+- MOVEMENT ("move past X"): drone has passed the landmark.
+- BETWEEN ("go between X and Y"): drone is positioned between both landmarks.
+- APPROACH ("approach X"): target fills a large portion of the frame.
+- VISUAL SEARCH ("turn until you see X"): target is clearly visible.
+- ABOVE ("go above X"): target is visible below — requires being positioned
+  over the target, not just at a higher altitude.
+- BELOW ("go below X"): target is visible above.
+- TRAVERSAL ("move through X"): drone has passed through the structure.
+Never set completion_percentage to 1.0 unless certain. Cap at 0.95 when unsure.
 
-DISPLACEMENT COORDINATES: Each diary entry includes the drone's current position
-[x, y, z, yaw] relative to the start of the subtask. x is forward/backward,
-y is left/right, z is altitude — all in centimeters (e.g., 100.0 means the drone
-has moved 100 cm = 1 m from its starting position along that axis). yaw is the
-heading change in degrees from the initial heading. Use these to reason about the
-drone's spatial progress toward the subgoal.
+DISPLACEMENT: [x, y, z, yaw] relative to subtask start. x/y are fixed to the
+initial heading (x = forward, y = lateral at start). z = altitude. Meters.
+yaw = heading change in degrees.
 
-Judge based on the progression of visual evidence across the diary, not a single frame.
+DURING NORMAL FLIGHT — your primary job is to detect completion and overshoot:
+- Set should_override to FALSE unless the drone is moving AWAY from the target
+  or making zero progress over multiple checkpoints. The drone often makes progress
+  on one axis before another — this is normal, not a failure.
+- If the target is shrinking or shifting behind the camera (overshoot), override.
+- Otherwise, let the drone execute its instruction.
 
-COMPLETION STRICTNESS: Only mark a subgoal as complete when you have high confidence
-it is fully accomplished — not merely close or partially done. A completion_percentage
-of 1.0 should be reserved for cases where visual and displacement evidence leave no
-reasonable doubt. If the result looks close but you are not certain, cap the percentage
-at 0.95 and keep the subgoal open. Premature completion cannot be undone, so err on
-the side of issuing a corrective instruction rather than declaring success.
-
-STOPPING: If the diary and visual evidence show the subgoal has been achieved or is about
-to be achieved (e.g., the target is now clearly visible, the drone has reached the
-landmark), immediately signal completion to stop the drone. Do not wait for the drone to
-keep moving -- stopping promptly prevents overshoot.
-
-PROACTIVE CORRECTION: Do not wait until the drone has gone far off course to intervene.
-If you notice the drone drifting sideways, climbing/descending when it should not, or
-beginning to pass the target, issue a corrective override immediately — small early
-corrections are far better than large late ones. In particular, diagnose overshoot as
-soon as visual evidence suggests the drone is starting to move past the goal (e.g., the
-target is shifting behind the camera or shrinking) rather than waiting until the target
-is no longer visible. Acting early keeps corrections small and recoverable.
-
-When issuing corrective commands:
-- Use short, imperative drone instructions with a CONCRETE DISTANCE in meters.
-  Prefer SMALL movements (under 1.0 meters per axis) so the drone can be
-  re-evaluated frequently. Use the displacement data to estimate how far the
-  drone needs to move.
-- If the drone stopped too early (subgoal not yet achieved), issue commands to
-  continue toward the goal.
-- If the drone overshot (went past the goal), issue reversal commands to undo
-  the overshoot.
-- Prefer issuing a correction now over waiting to see if the drone self-corrects.
-- You may issue multiple corrections in sequence until satisfied.
-
-DRONE COMMAND VOCABULARY (use these forms for corrective_instruction):
-- Movement: "move forward X meters", "move backward X meters", "advance X meters",
-  "proceed X meters", "navigate X meters".
-- Altitude: "ascend X meters", "climb X meters", "descend X meters",
-  "lower X meters", "take off".
-- Landing: "land at/to/on/toward a landmark" (e.g., "land near the tree",
-  "land to the left of the car").
-- Orientation: "turn left/right X degrees", "face toward [target]", "rotate X
-  degrees".
-- Approach/retreat: "move closer X meters", "move away X meters",
-  "move back X meters", "back off X meters".
-- Composed: "turn left and move forward", "navigate to a point X meters from
-  the building"."""
+WHEN THE DRONE STOPS (convergence corrections):
+- Decide if the subgoal is complete, stopped short, or overshot.
+- Issue ONE single-action corrective command — the drone cannot execute compound
+  instructions like "ascend and move forward". Pick the single axis that is the
+  biggest bottleneck right now; the other axes will be addressed in subsequent
+  correction cycles. The diary highlights the most visually obvious changes,
+  which may not reflect the real bottleneck — check displacement data and think
+  about what the subgoal actually requires.
+- Retreat commands must reference the target object (e.g., "move back from the
+  [object]") — the drone does not understand bare "move backward X meters".
+- Keep corrections small (under 1.0 meters) for frequent re-evaluation."""
 
 LOCAL_PROMPT_TEMPLATE = """\
 The subgoal is: {subgoal}
@@ -167,16 +132,13 @@ object (no markdown fences):
   but not necessarily equal to the previous estimate. NEVER set 1.0 unless you
   are highly confident the subtask is fully complete — use at most 0.95 if the
   result looks close but you are not certain.
-- "on_track": true if the drone is making progress toward the subgoal.
-- "should_override": true if the drone's current instruction is no longer
-  appropriate and should be replaced — e.g., the drone is overshooting, drifting
-  off course, or needs a different manoeuvre. Flag this early (e.g., target
-  shifting behind the camera or shrinking) rather than waiting until the
-  situation is unrecoverable. Prefer small early corrections over large late
-  ones.
-- "corrective_instruction": when should_override is true, a short imperative
-  drone command to replace the current instruction. null when should_override is
-  false and progress is satisfactory."""
+- "on_track": true if the drone is making any progress toward the subgoal.
+- "should_override": almost always false. Only true when the drone is moving AWAY
+  from the target or making zero progress for multiple checkpoints. Slow or
+  single-axis progress is normal, not a reason to override.
+- "corrective_instruction": a single-action drone command when should_override
+  is true (not compound — e.g., "move forward 1.0 meters", not "ascend and move
+  forward"). null otherwise."""
 
 CONVERGENCE_PROMPT_TEMPLATE = """\
 Subgoal: {subgoal}
@@ -187,8 +149,13 @@ Current displacement from start: [x, y, z, yaw] = {displacement}
 Diary of changes observed so far:
 {diary}
 
-The drone has stopped moving. Given the diary and the latest frame, is the
-subgoal complete? If not, did the drone stop short or overshoot?
+The drone has stopped moving. The grid shows up to the 9 most recent sampled
+frames (left to right, top to bottom, in temporal order). If there are more
+than 9 diary entries, earlier frames are no longer visible in the grid — rely
+on the diary text for that history.
+
+Given the diary and the sampled frames, is the subgoal complete? If not, did
+the drone stop short or overshoot?
 
 Respond with EXACTLY ONE JSON object (no markdown fences):
 
@@ -208,8 +175,19 @@ Respond with EXACTLY ONE JSON object (no markdown fences):
   result looks close but you are not certain.
 - "diagnosis": "complete" if done, "stopped_short" if the drone needs to keep
   going, "overshot" if the drone went past the goal.
-- "corrective_instruction": if not complete, a short imperative drone command
-  to fix it; null if complete."""
+- "corrective_instruction": if not complete, a single-action drone command to
+  fix the biggest gap (not compound — one action per correction). null if
+  complete."""
+
+CONVERGENCE_FALLBACK_PROMPT = """\
+The drone has stopped and the subgoal is NOT yet complete.
+Subgoal: {subgoal}
+Current displacement from start: [x, y, z, yaw] = {displacement}
+
+Based on the frames shown, what single short imperative drone command should
+be executed next to make progress toward the subgoal? Reply with ONLY the
+command string (e.g. "turn right 30 degrees", "move forward 2 meters"),
+nothing else."""
 
 
 # ---------------------------------------------------------------------------
@@ -255,7 +233,10 @@ class LiveDiaryMonitor:
         self._diary: List[str] = []
         self._step = 0
         self._corrections_used = 0
+        self._parse_failures = 0
+        self._vlm_calls = 0
         self._last_completion_pct: float = 0.0
+        self._high_water_mark: float = 0.0
         self._last_displacement: List[float] = [0.0, 0.0, 0.0, 0.0]
         self._temp_dir: Optional[str] = None
 
@@ -278,6 +259,18 @@ class LiveDiaryMonitor:
     @property
     def last_completion_pct(self) -> float:
         return self._last_completion_pct
+
+    @property
+    def high_water_mark(self) -> float:
+        return self._high_water_mark
+
+    @property
+    def parse_failures(self) -> int:
+        return self._parse_failures
+
+    @property
+    def vlm_calls(self) -> int:
+        return self._vlm_calls
 
     def on_frame(
         self,
@@ -353,20 +346,42 @@ class LiveDiaryMonitor:
             displacement=disp_str,
         )
 
+        sampled = sample_frames_every_n(self._frame_paths, self._check_interval)
+        if not sampled or sampled[-1] != path:
+            sampled.append(path)
+        sampled = sampled[-self.MAX_GLOBAL_FRAMES:]
+
+        grid = build_frame_grid(sampled)
         response = query_vlm(
-            build_frame_grid([path]),
-            f"{GENERAL_SYSTEM_PROMPT}\n\n{prompt}",
-            llm=self._llm,
+            grid, prompt, llm=self._llm, system_prompt=GENERAL_SYSTEM_PROMPT,
         )
+        self._vlm_calls += 1
 
         self._save_convergence_artifact(response, prompt)
 
         parsed = self._parse_json_response(response)
+        if not parsed:
+            self._parse_failures += 1
+            logger.warning(
+                "Convergence JSON parse failed (attempt 1), retrying. Raw: %s",
+                response[:200],
+            )
+            response = query_vlm(
+                grid, prompt, llm=self._llm, system_prompt=GENERAL_SYSTEM_PROMPT,
+            )
+            self._vlm_calls += 1
+            parsed = self._parse_json_response(response)
+            if not parsed:
+                self._parse_failures += 1
+                logger.error(
+                    "Convergence JSON parse failed after retry. Raw: %s",
+                    response[:200],
+                )
 
         pct = float(parsed.get("completion_percentage", self._last_completion_pct))
         pct = max(0.0, min(1.0, pct))
-        pct = max(pct, self._last_completion_pct)
         self._last_completion_pct = pct
+        self._high_water_mark = max(self._high_water_mark, pct)
 
         if parsed.get("complete", False) or parsed.get("diagnosis") == "complete":
             return DiaryCheckResult(
@@ -379,11 +394,29 @@ class LiveDiaryMonitor:
 
         corrective = parsed.get("corrective_instruction") or ""
         if not corrective:
-            diagnosis = parsed.get("diagnosis", "stopped_short")
-            if diagnosis == "overshot":
-                corrective = "turn around slowly"
-            else:
-                corrective = "continue forward"
+            fallback_prompt = CONVERGENCE_FALLBACK_PROMPT.format(
+                subgoal=self._subgoal,
+                displacement=disp_str,
+            )
+            fallback_response = query_vlm(
+                grid, fallback_prompt, llm=self._llm,
+                system_prompt=GENERAL_SYSTEM_PROMPT,
+            )
+            self._vlm_calls += 1
+            self._save_fallback_artifact(fallback_prompt, fallback_response)
+            corrective = fallback_response.strip().strip('"').strip("'")
+            logger.info(
+                "Convergence fallback VLM query returned: '%s'", corrective,
+            )
+            if not corrective:
+                logger.warning("Fallback VLM query also returned no instruction.")
+                return DiaryCheckResult(
+                    action="stop",
+                    new_instruction="",
+                    reasoning="no_corrective_instruction",
+                    diary_entry="",
+                    completion_pct=pct,
+                )
 
         self._corrections_used += 1
         return DiaryCheckResult(
@@ -407,8 +440,8 @@ class LiveDiaryMonitor:
     def _format_displacement(self) -> str:
         d = self._last_displacement
         return (
-            f"[forward: {d[0]:.1f} cm, right: {d[1]:.1f} cm, "
-            f"altitude: {d[2]:.1f} cm, yaw: {d[3]:.1f}°]"
+            f"[x: {d[0] / 100:.2f} m, y: {d[1] / 100:.2f} m, "
+            f"z: {d[2] / 100:.2f} m, yaw: {d[3]:.1f}°]"
         )
 
     def _save_frame(self, frame: Any) -> Path:
@@ -435,10 +468,10 @@ class LiveDiaryMonitor:
         grid_two = build_frame_grid([prev_path, curr_path])
         prompt_local = LOCAL_PROMPT_TEMPLATE.format(subgoal=self._subgoal)
         change_text = query_vlm(
-            grid_two,
-            f"{GENERAL_SYSTEM_PROMPT}\n\n{prompt_local}",
-            llm=self._llm,
+            grid_two, prompt_local, llm=self._llm,
+            system_prompt=GENERAL_SYSTEM_PROMPT,
         )
+        self._vlm_calls += 1
         disp_str = self._format_displacement()
         diary_entry = f"Steps {step - n}-{step} {disp_str}: {change_text}"
         self._diary.append(diary_entry)
@@ -466,10 +499,30 @@ class LiveDiaryMonitor:
         )
 
         response_global = query_vlm(
-            grid_global,
-            f"{GENERAL_SYSTEM_PROMPT}\n\n{prompt_global}",
-            llm=self._llm,
+            grid_global, prompt_global, llm=self._llm,
+            system_prompt=GENERAL_SYSTEM_PROMPT,
         )
+        self._vlm_calls += 1
+
+        parsed = self._parse_json_response(response_global)
+        if not parsed:
+            self._parse_failures += 1
+            logger.warning(
+                "Checkpoint %d JSON parse failed, retrying. Raw: %s",
+                step, response_global[:200],
+            )
+            response_global = query_vlm(
+                grid_global, prompt_global, llm=self._llm,
+                system_prompt=GENERAL_SYSTEM_PROMPT,
+            )
+            self._vlm_calls += 1
+            parsed = self._parse_json_response(response_global)
+            if not parsed:
+                self._parse_failures += 1
+                logger.error(
+                    "Checkpoint %d JSON parse failed after retry. Raw: %s",
+                    step, response_global[:200],
+                )
 
         self._save_checkpoint_artifact(
             step, grid_two, grid_global,
@@ -477,20 +530,26 @@ class LiveDiaryMonitor:
             prompt_global, response_global,
         )
 
-        result = self._parse_global_response(response_global, diary_entry)
+        result = self._parse_global_response(
+            response_global, diary_entry, parsed=parsed,
+        )
 
         self._last_completion_pct = result.completion_pct
+        self._high_water_mark = max(self._high_water_mark, result.completion_pct)
         self._diary.append(
             f"Checkpoint {step}: completion = {result.completion_pct:.2f}"
         )
 
         return result
 
-    def _parse_global_response(self, response: str, diary_entry: str) -> DiaryCheckResult:
-        parsed = self._parse_json_response(response)
+    def _parse_global_response(
+        self, response: str, diary_entry: str,
+        parsed: Optional[dict] = None,
+    ) -> DiaryCheckResult:
+        if parsed is None:
+            parsed = self._parse_json_response(response)
         pct = float(parsed.get("completion_percentage", self._last_completion_pct))
         pct = max(0.0, min(1.0, pct))
-        pct = max(pct, self._last_completion_pct)
 
         if parsed.get("complete", False):
             return DiaryCheckResult(
@@ -541,6 +600,22 @@ class LiveDiaryMonitor:
         return {}
 
     # ------------------------------------------------------------------
+    # Cleanup
+    # ------------------------------------------------------------------
+
+    def cleanup(self) -> None:
+        """Remove temporary frame directory if it was created."""
+        if self._temp_dir is not None:
+            try:
+                shutil.rmtree(self._temp_dir, ignore_errors=True)
+            except Exception:
+                pass
+            self._temp_dir = None
+
+    def __del__(self) -> None:
+        self.cleanup()
+
+    # ------------------------------------------------------------------
     # Artifact saving
     # ------------------------------------------------------------------
 
@@ -576,3 +651,13 @@ class LiveDiaryMonitor:
         (conv_dir / "response.txt").write_text(response)
         diary_blob = "\n".join(self._diary)
         (conv_dir / "diary.txt").write_text(diary_blob)
+
+    def _save_fallback_artifact(self, prompt: str, response: str) -> None:
+        if self._artifacts_dir is None:
+            return
+        conv_dir = self._artifacts_dir / f"convergence_{self._corrections_used:03d}"
+        conv_dir.mkdir(parents=True, exist_ok=True)
+        (conv_dir / "fallback_prompt.txt").write_text(
+            f"{GENERAL_SYSTEM_PROMPT}\n\n{prompt}"
+        )
+        (conv_dir / "fallback_response.txt").write_text(response)

@@ -102,6 +102,50 @@ class BaseLLM(ABC):
         messages = self.format_multimodal_message(text=text, media=media, mime=mime, media_type="image", is_url=is_url)
         return self.make_request(messages, temperature=temperature)
 
+    def make_multimodal_request(
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        image: Any,
+        temperature: float = 0.0,
+    ) -> str:
+        """Send a system-role prompt plus a user-role prompt with an attached image.
+
+        Unlike ``make_text_and_image_request`` (which stuffs everything into a
+        single user message), this method creates proper role separation so the
+        model treats the system prompt with higher priority.
+        """
+        if isinstance(image, str) and (
+            image.startswith("http://")
+            or image.startswith("https://")
+            or image.startswith("data:")
+        ):
+            media = image
+            is_url = True
+            mime = None
+        else:
+            try:
+                from PIL import Image as PILImage
+            except Exception:
+                raise RuntimeError("Pillow is required. Install with `pip install pillow`")
+            if not isinstance(image, np.ndarray):
+                raise TypeError(
+                    "image must be a numpy.ndarray (H x W x C) or an http(s)/data URL string"
+                )
+            pil = PILImage.fromarray(image.astype("uint8"))
+            buf = io.BytesIO()
+            pil.save(buf, format="PNG")
+            media = base64.b64encode(buf.getvalue()).decode("ascii")
+            is_url = False
+            mime = "image/png"
+
+        user_messages = self.format_multimodal_message(
+            text=user_prompt, media=media, mime=mime,
+            media_type="image", is_url=is_url,
+        )
+        messages = [{"role": "system", "content": system_prompt}] + user_messages
+        return self.make_request(messages, temperature=temperature)
+
     def make_text_and_video_request(self, text: str, video: Any, temperature: float = 0.0) -> str:
         """
         Accepts `video` as either:

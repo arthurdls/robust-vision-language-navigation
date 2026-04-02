@@ -137,15 +137,17 @@ def query_vlm(
     prompt: str,
     model: str = "gpt-4o",
     llm: Optional[BaseLLM] = None,
+    system_prompt: Optional[str] = None,
 ) -> str:
     """Send a grid image + prompt to a VLM and return the text response.
 
     Parameters
     ----------
     grid_image : PIL Image or numpy array
-    prompt : text prompt
+    prompt : text prompt (user role)
     model : model name (used only if *llm* is None)
     llm : pre-constructed BaseLLM instance (takes priority over *model*)
+    system_prompt : if provided, sent as a separate system-role message
     """
     if llm is None:
         llm = _get_llm(model)
@@ -155,4 +157,6 @@ def query_vlm(
     else:
         arr = np.asarray(grid_image, dtype=np.uint8)
 
+    if system_prompt is not None:
+        return llm.make_multimodal_request(system_prompt, prompt, arr, temperature=0.0)
     return llm.make_text_and_image_request(prompt, arr, temperature=0.0)

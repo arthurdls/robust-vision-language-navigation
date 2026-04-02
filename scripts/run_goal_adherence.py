@@ -48,7 +48,8 @@ Usage (from repo root):
   python scripts/run_goal_adherence.py --task turn_right_until_red_car.json
   python scripts/run_goal_adherence.py --run-all
   python scripts/run_goal_adherence.py --task turn_right_until_red_car.json --model gpt-5
-  python scripts/run_goal_adherence.py --run-all --llm-only   # skip no_llm runs
+  python scripts/run_goal_adherence.py --run-all --llm-only       # skip no_llm runs
+  python scripts/run_goal_adherence.py --run-all --baseline-only  # skip llm runs
   python scripts/run_goal_adherence.py --task X.json --save-mp4   # also write playback.mp4
 """
 
@@ -96,7 +97,7 @@ if _AI_SRC not in sys.path:
 
 import playback_fpv
 
-from modules.diary_monitor import LiveDiaryMonitor
+from modules.diary_monitor import DiaryCheckResult, LiveDiaryMonitor
 from modules.subgoal_converter import SubgoalConverter
 
 GA_TASKS_DIR = REPO_ROOT / "tasks" / "goal_adherence_tasks"
@@ -198,6 +199,8 @@ def _run_single_ga(
     trajectory_log: List[Dict[str, Any]] = []
     override_history: List[Dict[str, Any]] = []
     in_correction = False
+    correction_start_step = 0
+    last_correction_step = -check_interval
     stop_reason = "max_steps"
     total_steps = 0
     origin_x, origin_y, origin_z = initial_pos[0], initial_pos[1], initial_pos[2]
@@ -222,13 +225,31 @@ def _run_single_ga(
 
         # --- Diary monitor checkpoint (LLM runs only) ---
         if monitor is not None:
-            result = monitor.on_frame(frame_path, displacement=list(current_pose))
+            try:
+                result = monitor.on_frame(frame_path, displacement=list(current_pose))
+            except Exception as e:
+                logger.error("monitor.on_frame failed at step %d: %s", step, e)
+                result = DiaryCheckResult(
+                    action="continue", new_instruction="", reasoning="",
+                    diary_entry="", completion_pct=monitor.last_completion_pct,
+                )
             if result.action == "stop":
                 logger.info("LLM stop at step %d: %s", step, result.reasoning)
                 stop_reason = "llm_stopped"
                 total_steps = step
                 break
             if result.new_instruction:
+                if (
+                    in_correction
+                    and step - correction_start_step > 3 * check_interval
+                ):
+                    logger.info(
+                        "Escape hatch: clearing in_correction at step %d "
+                        "(correction started at step %d).",
+                        step, correction_start_step,
+                    )
+                    in_correction = False
+
                 if in_correction:
                     logger.info(
                         "LLM %s at step %d suppressed (in_correction): '%s'",
@@ -263,6 +284,8 @@ def _run_single_ga(
                     current_instruction = result.new_instruction
                     if instruction_changed:
                         in_correction = True
+                        correction_start_step = step
+                        last_correction_step = step
                         openvla_pose_origin = list(current_pose)
                         small_count = 0
                         last_pose = None
@@ -339,7 +362,11 @@ def _run_single_ga(
 
         # --- Convergence detection ---
         converged = False
-        if last_pose is not None:
+        steps_since_correction = step - last_correction_step
+        if (
+            last_pose is not None
+            and steps_since_correction >= check_interval
+        ):
             diffs = [abs(a - b) for a, b in zip(current_pose, last_pose)]
             if (
                 all(d < SMALL_DELTA_POS for d in diffs[:3])
@@ -365,9 +392,18 @@ def _run_single_ga(
                 else:
                     conv_path = frame_path
 
-                conv_result = monitor.on_convergence(
-                    conv_path, displacement=list(current_pose),
-                )
+                try:
+                    conv_result = monitor.on_convergence(
+                        conv_path, displacement=list(current_pose),
+                    )
+                except Exception as e:
+                    logger.error("monitor.on_convergence failed at step %d: %s", step, e)
+                    conv_result = DiaryCheckResult(
+                        action="stop", new_instruction="",
+                        reasoning="LLM error on convergence",
+                        diary_entry="",
+                        completion_pct=monitor.last_completion_pct,
+                    )
 
                 if conv_result.action == "stop":
                     logger.info(
@@ -397,6 +433,8 @@ def _run_single_ga(
                     })
                     current_instruction = conv_result.new_instruction
                     in_correction = True
+                    correction_start_step = step
+                    last_correction_step = step
                     openvla_pose_origin = list(current_pose)
                     small_count = 0
                     last_pose = None
@@ -440,6 +478,9 @@ def _run_single_ga(
         "instruction_overrides": override_history,
         "corrections_used": monitor.corrections_used if monitor else 0,
         "last_completion_pct": monitor.last_completion_pct if monitor else None,
+        "high_water_mark": monitor.high_water_mark if monitor else None,
+        "parse_failures": monitor.parse_failures if monitor else 0,
+        "vlm_calls": monitor.vlm_calls if monitor else 0,
         "in_correction_at_end": in_correction,
         "playback_mp4": str(playback_mp4) if playback_mp4 else None,
         "start_time": start_ts,
@@ -454,11 +495,15 @@ def _run_single_ga(
             "override_history": override_history,
             "corrections_used": monitor.corrections_used,
             "last_completion_pct": monitor.last_completion_pct,
+            "high_water_mark": monitor.high_water_mark,
+            "parse_failures": monitor.parse_failures,
+            "vlm_calls": monitor.vlm_calls,
             "stop_reason": stop_reason,
             "total_steps": total_steps,
         }
         with open(run_dir / "diary_summary.json", "w") as f:
             json.dump(diary_summary, f, indent=2)
+        monitor.cleanup()
 
     return run_info
 
@@ -480,6 +525,7 @@ def _run_task_experiments(
     save_mp4: bool = False,
     mp4_fps: float = 10.0,
     llm_only: bool = False,
+    baseline_only: bool = False,
     override_runs: bool = False,
 ) -> None:
     """Run experiments for one task (baseline, LLM, or both)."""
@@ -506,6 +552,9 @@ def _run_task_experiments(
                 "  %s: %d steps, stop_reason=%s",
                 run_name, info["total_steps"], info["stop_reason"],
             )
+
+    if baseline_only:
+        return
 
     for run_idx in range(1, runs_per_condition + 1):
         run_name = f"llm_run_{run_idx:02d}"
@@ -627,11 +676,19 @@ def main():
         help="Skip baseline (no_llm) runs; only run llm_run_* trials.",
     )
     parser.add_argument(
+        "--baseline-only",
+        action="store_true",
+        help="Skip LLM (llm_run) runs; only run no_llm_run_* baseline trials.",
+    )
+    parser.add_argument(
         "--override-runs",
         action="store_true",
         help="Re-run experiments even if results already exist (default: skip existing).",
     )
     args = parser.parse_args()
+
+    if args.llm_only and args.baseline_only:
+        parser.error("--llm-only and --baseline-only are mutually exclusive.")
 
     logging.basicConfig(
         level=getattr(logging, args.log_level.upper(), logging.INFO),
@@ -690,6 +747,7 @@ def main():
                 save_mp4=args.save_mp4,
                 mp4_fps=args.mp4_fps,
                 llm_only=args.llm_only,
+                baseline_only=args.baseline_only,
                 override_runs=args.override_runs,
             )
         except KeyboardInterrupt:

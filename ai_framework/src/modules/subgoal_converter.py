@@ -22,19 +22,30 @@ You convert natural language drone subgoals into short, imperative instructions
 that a vision-language-action model (OpenVLA) can execute. OpenVLA understands
 commands like:
 - "turn right", "turn left 90 degrees"
-- "move forward", "move forward 10 meters"
+- "move forward 5.0 meters", "proceed 6.0 meters towards the 20-degree right direction"
 - "go between the tree and the streetlight"
 - "move above the pergola", "descend 5 meters"
-- "approach the building", "get close to the person"
+- "approach the building", "get closer to the person ahead"
+- "advance past the sculpture from the left side"
+- "navigate to a point 4.0 meters away from the person"
 
 Rules:
-- Strip any stopping/completion conditions (e.g., "until you see X" -> just the action)
-- Keep spatial references that help the model navigate (e.g., "between X and Y")
+- If the clause after "until" describes a VISUAL DETECTION condition (seeing,
+  spotting, finding something), strip the condition and keep only the action.
+  The drone cannot act on visual detection triggers.
+- If the clause after "until" describes SPATIAL PROXIMITY to an object (close to,
+  near, next to), convert the whole instruction into an approach/get-closer
+  command targeting that object. The object is the navigation target and must
+  be preserved so the drone steers toward it.
+- Keep spatial references that help the model navigate (e.g., "between X and Y",
+  "from the left side", "ahead").
 - Output ONLY the instruction string, nothing else.
 
 Examples:
   "Turn right until you see the red car" -> "turn right"
-  "Continue forward until close to the person ahead" -> "move forward"
+  "Move forward until you spot the building" -> "move forward"
+  "Continue forward until close to the person ahead" -> "get closer to the person ahead"
+  "Move toward the tree until you are near it" -> "approach the tree"
   "Go between the tree and the streetlight" -> "go between the tree and the streetlight"
   "Move through the pergola between the wooden poles" -> "move through the pergola"
   "Go above the pergola" -> "go above the pergola"
