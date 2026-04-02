@@ -16,26 +16,16 @@ Control loop (simpler than LTL -- no subgoal decomposition):
      - Run SubgoalConverter to extract the OpenVLA instruction from the subgoal
      - Every diary_check_interval steps call LiveDiaryMonitor.on_frame():
        * stop  -> subgoal complete, end run (always honoured)
-       * override -> replace OpenVLA instruction (only resets VLA model and
-         pose origin when the instruction actually changes; repeated overrides
-         with the same instruction are logged but do not disrupt the trajectory)
+       * override -> logged but NOT applied (checkpoint overrides are disabled;
+         the VLM monitors and detects completion/overshoot but does not replace
+         the instruction during flight)
        * continue -> keep going
-     - On convergence: call LiveDiaryMonitor.on_convergence():
+     - On convergence (drone stops): call LiveDiaryMonitor.on_convergence():
        * complete -> end run
        * stopped_short / overshot -> supervisor issues corrective command,
-         always resets VLA model and pose origin (drone has stopped and needs
-         a fresh start), then resumes
+         resets VLA model and pose origin, then resumes
        * correction cycle repeats up to max_corrections times
-
-  Correction suppression:
-     While a corrective instruction is being executed (in_correction flag),
-     checkpoint overrides are suppressed — the LLM still runs and the diary
-     is updated, but the instruction is not swapped mid-correction. This
-     prevents the VLA from being repeatedly reset before it can finish
-     executing a correction. Overrides are only suppressed at checkpoints;
-     stop signals are always honoured. On convergence (drone stops), the
-     supervisor can issue a new correction (stays in_correction) or declare
-     complete (clears in_correction).
+     All instruction replacement happens at convergence, never mid-flight.
 
   Coordinate frame handling:
      OpenVLA receives proprio relative to the current instruction's origin
@@ -199,7 +189,6 @@ def _run_single_ga(
     trajectory_log: List[Dict[str, Any]] = []
     override_history: List[Dict[str, Any]] = []
     in_correction = False
-    correction_start_step = 0
     last_correction_step = -check_interval
     stop_reason = "max_steps"
     total_steps = 0
@@ -239,57 +228,18 @@ def _run_single_ga(
                 total_steps = step
                 break
             if result.new_instruction:
-                if (
-                    in_correction
-                    and step - correction_start_step > 3 * check_interval
-                ):
-                    logger.info(
-                        "Escape hatch: clearing in_correction at step %d "
-                        "(correction started at step %d).",
-                        step, correction_start_step,
-                    )
-                    in_correction = False
-
-                if in_correction:
-                    logger.info(
-                        "LLM %s at step %d suppressed (in_correction): '%s'",
-                        result.action, step, result.new_instruction,
-                    )
-                    override_history.append({
-                        "step": step,
-                        "type": result.action,
-                        "old_instruction": current_instruction,
-                        "new_instruction": result.new_instruction,
-                        "reasoning": result.reasoning,
-                        "suppressed": True,
-                    })
-                else:
-                    instruction_changed = (
-                        result.new_instruction.strip().lower()
-                        != current_instruction.strip().lower()
-                    )
-                    logger.info(
-                        "LLM %s at step %d: '%s' -> '%s' (changed=%s)",
-                        result.action, step,
-                        current_instruction, result.new_instruction,
-                        instruction_changed,
-                    )
-                    override_history.append({
-                        "step": step,
-                        "type": result.action,
-                        "old_instruction": current_instruction,
-                        "new_instruction": result.new_instruction,
-                        "reasoning": result.reasoning,
-                    })
-                    current_instruction = result.new_instruction
-                    if instruction_changed:
-                        in_correction = True
-                        correction_start_step = step
-                        last_correction_step = step
-                        openvla_pose_origin = list(current_pose)
-                        small_count = 0
-                        last_pose = None
-                        batch.reset_model(server_url)
+                logger.info(
+                    "LLM %s at step %d logged (checkpoint overrides disabled): '%s'",
+                    result.action, step, result.new_instruction,
+                )
+                override_history.append({
+                    "step": step,
+                    "type": result.action,
+                    "old_instruction": current_instruction,
+                    "new_instruction": result.new_instruction,
+                    "reasoning": result.reasoning,
+                    "suppressed": True,
+                })
 
         # --- Send instruction to OpenVLA ---
         # Pose relative to the current instruction's origin (reset on override).
@@ -433,7 +383,6 @@ def _run_single_ga(
                     })
                     current_instruction = conv_result.new_instruction
                     in_correction = True
-                    correction_start_step = step
                     last_correction_step = step
                     openvla_pose_origin = list(current_pose)
                     small_count = 0

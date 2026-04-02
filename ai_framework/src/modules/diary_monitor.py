@@ -75,12 +75,11 @@ DISPLACEMENT: [x, y, z, yaw] relative to subtask start. x/y are fixed to the
 initial heading (x = forward, y = lateral at start). z = altitude. Meters.
 yaw = heading change in degrees.
 
-DURING NORMAL FLIGHT — your primary job is to detect completion and overshoot:
-- Set should_override to FALSE unless the drone is moving AWAY from the target
-  or making zero progress over multiple checkpoints. The drone often makes progress
-  on one axis before another — this is normal, not a failure.
-- If the target is shrinking or shifting behind the camera (overshoot), override.
-- Otherwise, let the drone execute its instruction.
+DURING NORMAL FLIGHT — your primary job is to detect completion:
+- Focus on whether the subgoal is complete. If so, set "complete" to true.
+- The "should_override" and "corrective_instruction" fields are for diagnostics
+  only during flight — corrections are only applied when the drone stops.
+- Let the drone execute its instruction without interference.
 
 WHEN THE DRONE STOPS (convergence corrections):
 - Decide if the subgoal is complete, stopped short, or overshot.
