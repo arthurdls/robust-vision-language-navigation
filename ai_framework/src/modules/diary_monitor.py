@@ -203,7 +203,7 @@ class LiveDiaryMonitor:
         check_interval: int,
         model: str = "gpt-4o",
         artifacts_dir: Optional[Path] = None,
-        max_corrections: int = 10,
+        max_corrections: int = 15,
     ):
         self._subgoal = subgoal
         self._check_interval = check_interval
@@ -543,9 +543,9 @@ class LiveDiaryMonitor:
 
         if parsed.get("complete", False):
             return DiaryCheckResult(
-                action="stop",
+                action="force_converge",
                 new_instruction="",
-                reasoning=f"Subgoal complete. Raw: {response}",
+                reasoning=f"Checkpoint thinks complete — verifying at convergence. Raw: {response}",
                 diary_entry=diary_entry,
                 completion_pct=pct,
             )

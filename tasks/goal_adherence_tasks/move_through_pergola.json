@@ -2,7 +2,7 @@
   "task_name": "move_through_pergola",
   "subgoal": "Move through the pergola between the wooden poles",
   "initial_pos": [2217, -1183, 415, 12],
-  "max_steps": 200,
+  "max_steps": 300,
   "diary_check_interval": 10,
   "notes": ""
 }

@@ -2,7 +2,7 @@
   "task_name": "approach_person_ahead",
   "subgoal": "Continue forward until you are close to the person ahead",
   "initial_pos": [-10520, -1500, 170, 81],
-  "max_steps": 200,
+  "max_steps": 300,
   "diary_check_interval": 10,
   "notes": "Start from further away"
 }

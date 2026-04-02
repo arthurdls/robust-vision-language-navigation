@@ -2,7 +2,7 @@
   "task_name": "go_between_tree_and_streetlight",
   "subgoal": "Go between the tree and the streetlight",
   "initial_pos": [-9435, 15, 296, 7],
-  "max_steps": 200,
+  "max_steps": 300,
   "diary_check_interval": 10,
   "notes": ""
 }
