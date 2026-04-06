@@ -14,26 +14,21 @@ from datetime import datetime
 from pathlib import Path
 
 _SCRIPT_DIR = Path(__file__).resolve().parent
-if str(_SCRIPT_DIR) not in sys.path:
-    sys.path.insert(0, str(_SCRIPT_DIR))
+_REPO_ROOT = _SCRIPT_DIR.parent
+_AI_SRC = str(_REPO_ROOT / "ai_framework" / "src")
+if _AI_SRC not in sys.path:
+    sys.path.insert(0, _AI_SRC)
 
-from goal_adherence_utils import (
-    analyze_temporal_frames,
+from modules.utils.vision_utils import (
     build_frame_grid,
-    check_subtask_complete_diary,
     get_ordered_frames_from_dir,
     query_vlm,
     sample_frames_every_n,
 )
-
-__all__ = [
-    "sample_frames_every_n",
-    "get_ordered_frames_from_dir",
-    "build_frame_grid",
-    "query_vlm",
-    "analyze_temporal_frames",
-    "check_subtask_complete_diary",
-]
+from modules.utils.goal_adherence_utils import (
+    analyze_temporal_frames,
+    check_subtask_complete_diary,
+)
 
 
 if __name__ == "__main__":

@@ -31,7 +31,6 @@ import logging
 import os
 import sys
 import time
-from collections import deque
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -71,8 +70,6 @@ LTL_RESULTS_DIR = REPO_ROOT / "results" / "ltl_results"
 _TASK_NOT_FOUND = object()
 
 DEFAULT_MAX_STEPS = 100
-IMAGE_HISTORY_LEN = 10
-GOAL_MONITOR_PERIODIC_STEPS = 30
 SMALL_DELTA_POS = 3.0
 SMALL_DELTA_YAW = 1.0
 
@@ -88,18 +85,19 @@ def run_ltl_control_loop(
     server_url: str,
     batch: Any,
     planner: Any,
-    goal_monitor: Any,
     reset_model_fn: Any,
     run_dir: Optional[Path] = None,
     subgoals_out: Optional[List[str]] = None,
-    goal_adherence_on: bool = False,
     drone_cam_id: Optional[int] = None,
     set_cam_at_start: bool = True,
 ) -> None:
     """
     LTL-aware control loop: plan from full_instruction, run subgoals one at a time,
-    verify with goal monitor when OpenVLA reports done, advance or retry.
+    advance on convergence, max_steps, or OpenVLA done signal.
     If run_dir is set, saves every frame sent to the model under run_dir/frames/.
+
+    For diary-based goal monitoring with corrective commands, use
+    run_system_integration.py instead.
     """
     full_instruction = full_instruction.strip().lower()
     initial_pos = normalize_initial_pos(initial_pos)
@@ -123,7 +121,6 @@ def run_ltl_control_loop(
     last_pose = None
     small_count = 0
     step_count = 0
-    image_history = deque(maxlen=IMAGE_HISTORY_LEN)
     frame_index = 0
     subgoals_used = subgoals_out if subgoals_out is not None else []
 
@@ -139,14 +136,12 @@ def run_ltl_control_loop(
 
     while current_subgoal is not None:
         batch.set_cam(env)
-        if image is not None:
-            image_history.append(image.copy())
 
         if image is None:
             logger.warning("No image, ending control loop.")
             break
 
-        if run_dir is not None and image is not None:
+        if run_dir is not None:
             frames_dir = run_dir / "frames"
             frames_dir.mkdir(parents=True, exist_ok=True)
             frame_path = frames_dir / "frame_{:06d}.png".format(frame_index)
@@ -245,58 +240,20 @@ def run_ltl_control_loop(
                 break
             logger.info("Next subgoal: %s", current_subgoal)
 
-        if not advanced_this_iteration and goal_adherence_on and step_count % GOAL_MONITOR_PERIODIC_STEPS == 0 and step_count > 0:
-            result = goal_monitor.check(
-                list(image_history),
-                current_subgoal,
-                full_goal=full_instruction,
-                model_claimed_done=False,
-            )
-            if result.goal_achieved:
-                logger.info("Periodic check: full goal achieved.")
-                break
-
         if not advanced_this_iteration and response.get("done") is True:
-            if goal_adherence_on:
-                result = goal_monitor.check(
-                    list(image_history),
-                    current_subgoal,
-                    full_goal=full_instruction,
-                    model_claimed_done=True,
-                )
-                if result.subgoal_achieved:
-                    logger.info("Subgoal verified: %s. Advancing planner.", current_subgoal)
-                    subgoals_used.append(current_subgoal)
-                    planner.advance_state(current_subgoal)
-                    current_subgoal = planner.get_next_predicate()
-                    reset_model_fn(server_url)
-                    subgoal_origin_x, subgoal_origin_y, subgoal_origin_z, subgoal_origin_yaw = relative_pose_to_world(
-                        subgoal_origin_x, subgoal_origin_y, subgoal_origin_z, subgoal_origin_yaw, current_pose
-                    )
-                    current_pose = [0.0, 0.0, 0.0, 0.0]
-                    step_count = 0
-                    if current_subgoal is None:
-                        logger.info("No more subgoals. Task complete.")
-                        break
-                else:
-                    if result.suggest_retry:
-                        logger.info(
-                            "Goal monitor: subgoal not achieved, suggest retry. Continuing with same subgoal."
-                        )
-            else:
-                logger.info("Model reported done. Advancing planner (goal adherence off).")
-                subgoals_used.append(current_subgoal)
-                planner.advance_state(current_subgoal)
-                current_subgoal = planner.get_next_predicate()
-                reset_model_fn(server_url)
-                subgoal_origin_x, subgoal_origin_y, subgoal_origin_z, subgoal_origin_yaw = relative_pose_to_world(
-                    subgoal_origin_x, subgoal_origin_y, subgoal_origin_z, subgoal_origin_yaw, current_pose
-                )
-                current_pose = [0.0, 0.0, 0.0, 0.0]
-                step_count = 0
-                if current_subgoal is None:
-                    logger.info("No more subgoals. Task complete.")
-                    break
+            logger.info("Model reported done. Advancing planner.")
+            subgoals_used.append(current_subgoal)
+            planner.advance_state(current_subgoal)
+            current_subgoal = planner.get_next_predicate()
+            reset_model_fn(server_url)
+            subgoal_origin_x, subgoal_origin_y, subgoal_origin_z, subgoal_origin_yaw = relative_pose_to_world(
+                subgoal_origin_x, subgoal_origin_y, subgoal_origin_z, subgoal_origin_yaw, current_pose
+            )
+            current_pose = [0.0, 0.0, 0.0, 0.0]
+            step_count = 0
+            if current_subgoal is None:
+                logger.info("No more subgoals. Task complete.")
+                break
 
 
 def _load_task_from_json(path: Path) -> Dict[str, Any]:
@@ -392,7 +349,6 @@ def _run_single_task(
     task: Dict[str, Any],
     batch: Any,
     planner: Any,
-    goal_monitor: Any,
     server_url: str,
     results_base: Path,
     args: argparse.Namespace,
@@ -422,11 +378,9 @@ def _run_single_task(
         server_url,
         batch,
         planner,
-        goal_monitor,
         batch.reset_model,
         run_dir=run_dir,
         subgoals_out=subgoals_used,
-        goal_adherence_on=args.goal_adherence_on,
         drone_cam_id=drone_cam_id,
         set_cam_at_start=set_cam_at_start,
     )
@@ -528,19 +482,7 @@ def main():
     parser.add_argument(
         "--llm_model",
         default="gpt-4o-mini",
-        help="LLM for LTL decomposition (and goal monitor if not set)",
-    )
-    parser.add_argument(
-        "--goal_monitor_model",
-        default=None,
-        help="VLM for goal monitor (default: same as --llm_model)",
-    )
-    parser.add_argument(
-        "--goal-adherence-on",
-        dest="goal_adherence_on",
-        action="store_true",
-        default=False,
-        help="Enable goal adherence monitor (off by default).",
+        help="LLM for LTL decomposition",
     )
     parser.add_argument(
         "--use-default-cam",
@@ -568,7 +510,6 @@ def main():
     setup_env_and_imports()
     batch = import_batch_module()
 
-    from modules.goal_monitor import GoalAdherenceMonitor
     from modules.llm_user_interface import LLM_User_Interface
     from modules.ltl_planner import LTL_Symbolic_Planner
 
@@ -581,8 +522,6 @@ def main():
 
     llm_interface = LLM_User_Interface(model=args.llm_model)
     planner = LTL_Symbolic_Planner(llm_interface)
-    goal_monitor_model = args.goal_monitor_model or args.llm_model
-    goal_monitor = GoalAdherenceMonitor(model=goal_monitor_model)
 
     drone_cam_id = DRONE_CAM_ID
     if not args.use_default_cam:
@@ -607,7 +546,6 @@ def main():
                 task,
                 batch,
                 planner,
-                goal_monitor,
                 server_url,
                 results_base,
                 args,
@@ -645,7 +583,6 @@ def main():
                     result,
                     batch,
                     planner,
-                    goal_monitor,
                     server_url,
                     results_base,
                     args,

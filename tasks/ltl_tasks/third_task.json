@@ -1,4 +1,4 @@
 {
-  "instruction": "Descend 5.0 meters. Then pass by the trees from the left side. Pass by the sun umbrella from the right side. Circle around the streetlight with a radius of 2.0 meters in the right direction. Finally, land in front of the streetlight.",
-  "initial_pos": [-181.66, 7331.70, 876.24, 89.58]
+  "instruction": "Descend 5.0 meters. Approach the trees on the left. Then pass by the trees from the left. Get close to the sun umbrellas from the right side. Then move forward 20.0 meters. Approach the street lamp. Get very close to the street lamp. Then, circle around the street lamp with a radius of 2.0 meters in the right direction. Finally, land in front of the street lamp.",
+  "initial_pos": [-181.66, 7331.70, 876.24, -89.58]
 }

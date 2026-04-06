@@ -1,27 +1,29 @@
 """
-Re-export wrapper -- vision utilities now live in ai_framework.
+Goal adherence utilities: prompt templates, offline diary-based completion
+checking, and higher-level frame analysis helpers.
 
-Kept for backward compatibility so analyze_frames.py and other scripts
-can ``from goal_adherence_utils import ...`` without breaking.
+Low-level vision primitives (build_frame_grid, query_vlm, etc.) live in
+vision_utils.py; this module builds on them for goal-adherence-specific
+workflows such as offline diary checking (used by scripts/analyze_frames.py).
 """
 
-import os
-import sys
+import json
+import logging
 from pathlib import Path
+from typing import Any, List, Optional, Union
 
-_REPO_ROOT = Path(__file__).resolve().parent.parent
-_AI_SRC = str(_REPO_ROOT / "ai_framework" / "src")
-if _AI_SRC not in sys.path:
-    sys.path.insert(0, _AI_SRC)
-
-from modules.utils.vision_utils import (  # noqa: E402,F401
+from .vision_utils import (
     build_frame_grid,
     get_ordered_frames_from_dir,
     query_vlm,
     sample_frames_every_n,
 )
 
-# ── Prompt templates (kept here for analyze_frames / diary consumers) ─────
+logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Prompt templates
+# ---------------------------------------------------------------------------
 
 DEFAULT_TEMPORAL_PROMPT = (
     "These images are sequential frames from a single video, in temporal order "
@@ -31,6 +33,12 @@ DEFAULT_TEMPORAL_PROMPT = (
 DRONE_GOAL_MONITOR_CONTEXT = (
     "You are a goal adherence monitor for a drone. "
     "The frames are from the drone's first-person view. "
+)
+
+PROMPT_SUBTASK_COMPLETE = (
+    "Given the diary of what changed between each pair of moments and the grid "
+    "of frames so far, has the drone completed this subtask? Answer with exactly: "
+    "Yes the subtask is complete. OR: No the subtask is not complete."
 )
 
 
@@ -52,20 +60,9 @@ def build_prompt_what_changed(subtask: str) -> str:
     )
 
 
-PROMPT_SUBTASK_COMPLETE = (
-    "Given the diary of what changed between each pair of moments and the grid "
-    "of frames so far, has the drone completed this subtask? Answer with exactly: "
-    "Yes the subtask is complete. OR: No the subtask is not complete."
-)
-
-# Alias kept for backward compat
-query_gpt4o_mini_temporal = query_vlm
-
-
-# ── Higher-level helpers used by analyze_frames.py ────────────────────────
-
-from typing import Any, List, Optional, Sequence, Union  # noqa: E402
-
+# ---------------------------------------------------------------------------
+# Higher-level helpers
+# ---------------------------------------------------------------------------
 
 def analyze_temporal_frames(
     frame_paths: Union[Path, str, List[Path]],
@@ -121,9 +118,7 @@ def check_subtask_complete_diary(
     model: str = "gpt-4o",
     **grid_kwargs: Any,
 ) -> dict:
-    """Offline diary-based completion check (used by analyze_frames.py)."""
-    import json
-
+    """Offline diary-based completion check (used by scripts/analyze_frames.py)."""
     def _frame_source() -> str:
         if isinstance(frame_paths, (Path, str)):
             return str(Path(frame_paths))
