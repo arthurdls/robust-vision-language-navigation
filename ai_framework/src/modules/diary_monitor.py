@@ -169,7 +169,17 @@ Respond with EXACTLY ONE JSON object (no markdown fences):
   going, "overshot" if the drone went past the goal.
 - "corrective_instruction": REQUIRED if not complete — a single-action drone
   command to fix the biggest gap (not compound — one action per correction).
-  null only if complete."""
+  null only if complete.
+
+  Useful corrective patterns:
+    * "Turn toward <landmark>" — re-orient the drone toward a visible or
+      expected landmark so the policy can locate it.
+    * "Turn right/left <N> degrees" — precise yaw adjustment when the target
+      is off-screen or partially visible.
+    * "Move forward <N> meters" / "Move closer to <landmark>" — close a gap.
+    * "Ascend/Descend <N> meters" — altitude correction.
+  Prefer a turn command when the target is not visible in the latest frame;
+  the underlying policy needs to see the target to navigate toward it."""
 
 
 
