@@ -7,7 +7,8 @@
 - **config/defaults.yaml** – Optional default env id (e.g. `default_env_id: UnrealTrack-DowntownWest-ContinuousColor-v0`). Not required by the current scripts.
 - **envs/** – Unreal env binaries. Set `UnrealEnv` to this directory (or leave unset; the sim sets it to `repo_root/envs` by default). Put the UnrealZoo-UE4 download here (e.g. `envs/UnrealZoo-UE4/Collection_v4_LinuxNoEditor/...`).
 - **tasks/uav_flow_tasks/** – Task JSONs for the UAV-Flow evaluator. Populate by copying from `UAV-Flow/UAV-Flow-Eval/test_jsons/` if needed. `run_uav_flow_eval.py` reads from here.
-- **tasks/system_tasks/** – Multi-step task JSONs for the LTL runner and integrated runner. `run_ltl_planner.py` and `run_system_integration.py` read from here (e.g. `--task first_task.json` or `--run_all_tasks`). Integration tasks support optional `diary_check_interval`, `max_steps_per_subgoal`, and `max_corrections` fields.
+- **tasks/ltl_tasks/** – Multi-step task JSONs for the LTL-only runner. `run_ltl_planner.py` reads from here (`--task`, `--run_all_tasks`).
+- **tasks/system_tasks/** – Task JSONs for the integrated runner (`run_system_integration.py`: LTL planner + diary monitor). Same schema as LTL tasks; optional fields `diary_check_interval`, `max_steps_per_subgoal`, and `max_corrections` apply only here. Keep these separate from `ltl_tasks` when you want different missions or parameters for the full pipeline.
 - **tasks/goal_adherence_tasks/** – Task JSONs for the goal adherence runner. Each file defines a single subgoal with `subgoal`, `initial_pos`, `max_steps`, `diary_check_interval`, and optional `notes`. See schema below.
 - **results/** – Output root. UAV-Flow sim writes to `results/uav_flow_results/`. LTL runs write to `results/ltl_results/run_<timestamp>/`. Goal adherence experiments write to `results/goal_adherence_results/<task_name>/`. Integrated runs write to `results/integration_results/run_<timestamp>/`. Playback auto-detects under `results/` or you pass a directory.
 - **weights/** – Model checkpoints. Put the OpenVLA checkpoint (HF format) in `weights/` or a subdir (e.g. `weights/OpenVLA-UAV/`). If you use a subdir, the server script auto-detects it when given `weights/`. If the repo uses Git LFS for `*.safetensors`, run `git lfs pull` in the checkout so the shard files are present.
@@ -60,9 +61,9 @@ Provider-agnostic vision utilities: `sample_frames_every_n()`, `get_ordered_fram
 | `start_openvla_server.py` | Start OpenVLA server (Flask, port 5007) |
 | `run_uav_flow_eval.py` | Run default UAV-Flow evaluation suite (reads `tasks/uav_flow_tasks/`) |
 | `sim_common.py` | Shared sim utilities (env setup, coordinate transforms, action execution) |
-| `run_ltl_planner.py` | LTL-only control loop (no diary monitoring) |
+| `run_ltl_planner.py` | LTL-only control loop; reads `tasks/ltl_tasks/` |
 | `run_goal_adherence.py` | Single-subgoal goal adherence experiments (baseline vs LLM diary) |
-| `run_system_integration.py` | **Integrated LTL planner + diary monitor** (multi-step with per-subgoal diary supervision) |
+| `run_system_integration.py` | **Integrated LTL planner + diary monitor**; reads `tasks/system_tasks/` |
 | `run_repl.py` | Interactive REPL for natural-language drone commands |
 | `analyze_frames.py` | Offline frame analysis (grid building, VLM temporal queries, diary completion) |
 | `playback_fpv.py` | FPV frame viewer and MP4 encoder |
@@ -85,7 +86,7 @@ Provider-agnostic vision utilities: `sample_frames_every_n()`, `get_ordered_fram
 
 ## Integrated runner (run_system_integration.py)
 
-Combines the LTL-NL neuro-symbolic planner with the LiveDiaryMonitor for full multi-step execution with per-subgoal diary supervision and corrective commands. This is the primary experiment runner.
+Combines the LTL-NL neuro-symbolic planner with the LiveDiaryMonitor for full multi-step execution with per-subgoal diary supervision and corrective commands. This is the primary experiment runner. Task files are under **`tasks/system_tasks/`** (separate from **`tasks/ltl_tasks/`** used by `run_ltl_planner.py`).
 
 For each subgoal from the LTL planner:
 1. `SubgoalConverter` rewrites the predicate NL into an OpenVLA instruction.
@@ -127,9 +128,9 @@ results/integration_results/
 
 Bare LTL control loop without diary monitoring. Subgoals advance on convergence (pose stall), max_steps, or OpenVLA done signal. For diary-based monitoring, use `run_system_integration.py` instead.
 
-- **Single task from tasks/system_tasks/:**  
+- **Single task from tasks/ltl_tasks/:**  
   `python scripts/run_ltl_planner.py --task first_task.json`
-- **All tasks in tasks/system_tasks/:**  
+- **All tasks in tasks/ltl_tasks/:**  
   `python scripts/run_ltl_planner.py --run_all_tasks`
 - **Ad-hoc command (requires --initial-position):**  
   `python scripts/run_ltl_planner.py -c "Go to the red building..." --initial-position 100,100,100,61`
