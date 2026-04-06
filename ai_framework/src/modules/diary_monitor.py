@@ -340,7 +340,7 @@ class LiveDiaryMonitor:
         )
         self._vlm_calls += 1
 
-        self._save_convergence_artifact(response, prompt)
+        self._save_convergence_artifact(response, prompt, grid)
 
         parsed = self._parse_json_response(response)
         if not parsed:
@@ -353,6 +353,7 @@ class LiveDiaryMonitor:
                 grid, prompt, llm=self._llm, system_prompt=GENERAL_SYSTEM_PROMPT,
             )
             self._vlm_calls += 1
+            self._save_convergence_artifact(response, prompt, grid)
             parsed = self._parse_json_response(response)
             if not parsed:
                 self._parse_failures += 1
@@ -384,6 +385,7 @@ class LiveDiaryMonitor:
                 grid, prompt, llm=self._llm, system_prompt=GENERAL_SYSTEM_PROMPT,
             )
             self._vlm_calls += 1
+            self._save_convergence_artifact(response, prompt, grid)
             parsed_retry = self._parse_json_response(response)
             if parsed_retry.get("complete", False) or parsed_retry.get("diagnosis") == "complete":
                 pct_r = float(parsed_retry.get("completion_percentage", pct))
@@ -630,7 +632,9 @@ class LiveDiaryMonitor:
         diary_blob = "\n".join(self._diary)
         (cp_dir / "diary.txt").write_text(diary_blob)
 
-    def _save_convergence_artifact(self, response: str, prompt: str) -> None:
+    def _save_convergence_artifact(
+        self, response: str, prompt: str, grid: Optional[Any] = None
+    ) -> None:
         if self._artifacts_dir is None:
             return
         conv_dir = self._artifacts_dir / f"convergence_{self._corrections_used:03d}"
@@ -639,4 +643,6 @@ class LiveDiaryMonitor:
         (conv_dir / "response.txt").write_text(response)
         diary_blob = "\n".join(self._diary)
         (conv_dir / "diary.txt").write_text(diary_blob)
+        if grid is not None:
+            grid.save(conv_dir / "grid_convergence.png")
 

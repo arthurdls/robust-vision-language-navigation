@@ -597,6 +597,12 @@ def run_integrated_control_loop(
         "task": task,
         "llm_model": llm_model,
         "monitor_model": monitor_model,
+        "models": {
+            "ltl_nl_planning": llm_model,
+            "subgoal_converter": monitor_model,
+            "live_diary_monitor": monitor_model,
+            "openvla_predict_url": server_url,
+        },
         "ltl_plan": ltl_plan,
         "subgoal_count": subgoal_index,
         "subgoal_summaries": subgoal_summaries,
