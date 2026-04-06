@@ -15,9 +15,9 @@ OpenVLA server must be running: python scripts/start_openvla_server.py
 Usage (from repo root):
   # Ad-hoc command (requires --initial-position)
   python scripts/run_ltl_planner.py -c "Go to the red building..." --initial-position 100,100,100,61
-  # Single task from tasks/ltl_tasks/
+  # Single task from tasks/system_tasks/
   python scripts/run_ltl_planner.py --task first_task.json
-  # All tasks in tasks/ltl_tasks/
+  # All tasks in tasks/system_tasks/
   python scripts/run_ltl_planner.py --run_all_tasks
   # Skip camera selection and use default camera:
   python scripts/run_ltl_planner.py --task first_task.json --use-default-cam
@@ -65,7 +65,7 @@ from sim_common import (
     state_for_openvla,
 )
 
-LTL_TASKS_DIR = REPO_ROOT / "tasks" / "ltl_tasks"
+SYSTEM_TASKS_DIR = REPO_ROOT / "tasks" / "system_tasks"
 LTL_RESULTS_DIR = REPO_ROOT / "results" / "ltl_results"
 
 _TASK_NOT_FOUND = object()
@@ -283,7 +283,7 @@ def _resolve_task_name_to_task(cli_input: str) -> Any:
     if not raw or raw.lower() in ("quit", "exit", "q"):
         return None
     name = raw if raw.endswith(".json") else raw + ".json"
-    path = LTL_TASKS_DIR / name
+    path = SYSTEM_TASKS_DIR / name
     if not path.exists():
         logger.error("Task file not found: %s", path)
         return _TASK_NOT_FOUND
@@ -308,16 +308,16 @@ def _resolve_tasks(args: argparse.Namespace) -> List[Dict[str, Any]]:
         raise SystemExit(
             "Specify a task or use --interactive to enter the task at the prompt.\n"
             "  -c \"instruction\" [--initial-position x,y,z,yaw]  run one ad-hoc task\n"
-            "  --task first_task.json                           run one task from tasks/ltl_tasks/\n"
-            "  --run_all_tasks                                  run all JSONs in tasks/ltl_tasks/\n"
+            "  --task first_task.json                           run one task from tasks/system_tasks/\n"
+            "  --run_all_tasks                                  run all JSONs in tasks/system_tasks/\n"
             "  --interactive                                    no initial task; prompt for task name in CLI"
         )
     if count > 1:
         raise SystemExit(
             "At most one of -c/--command, --task, or --run_all_tasks is allowed.\n"
             "  -c \"instruction\" [--initial-position x,y,z,yaw]  run one ad-hoc task (position optional)\n"
-            "  --task first_task.json                           run one task from tasks/ltl_tasks/\n"
-            "  --run_all_tasks                                  run all JSONs in tasks/ltl_tasks/"
+            "  --task first_task.json                           run one task from tasks/system_tasks/\n"
+            "  --run_all_tasks                                  run all JSONs in tasks/system_tasks/"
         )
 
     if cmd is not None:
@@ -327,15 +327,15 @@ def _resolve_tasks(args: argparse.Namespace) -> List[Dict[str, Any]]:
     if task_file is not None:
         path = Path(task_file)
         if not path.is_absolute():
-            path = LTL_TASKS_DIR / path.name
+            path = SYSTEM_TASKS_DIR / path.name
         if not path.exists():
             raise SystemExit("Task file not found: {}".format(path))
         return [_load_task_from_json(path)]
 
-    LTL_TASKS_DIR.mkdir(parents=True, exist_ok=True)
-    json_files = sorted(glob.glob(str(LTL_TASKS_DIR / "*.json")))
+    SYSTEM_TASKS_DIR.mkdir(parents=True, exist_ok=True)
+    json_files = sorted(glob.glob(str(SYSTEM_TASKS_DIR / "*.json")))
     if not json_files:
-        raise SystemExit("No JSON files found in {}".format(LTL_TASKS_DIR))
+        raise SystemExit("No JSON files found in {}".format(SYSTEM_TASKS_DIR))
     tasks = []
     for jf in json_files:
         try:
@@ -420,12 +420,12 @@ def main():
         type=str,
         default=None,
         metavar="TASK.json",
-        help="Run single task from tasks/ltl_tasks/ (e.g. first_task.json)",
+        help="Run single task from tasks/system_tasks/ (e.g. first_task.json)",
     )
     mode.add_argument(
         "--run_all_tasks",
         action="store_true",
-        help="Run all JSON tasks in tasks/ltl_tasks/",
+        help="Run all JSON tasks in tasks/system_tasks/",
     )
     parser.add_argument(
         "--initial-position",

@@ -19,9 +19,9 @@ the full diary-based supervision pipeline from run_goal_adherence.py.
 OpenVLA server must be running: python scripts/start_openvla_server.py
 
 Usage (from repo root):
-  # Single task from tasks/ltl_tasks/
+  # Single task from tasks/system_tasks/
   python scripts/run_system_integration.py --task third_task.json
-  # All tasks in tasks/ltl_tasks/
+  # All tasks in tasks/system_tasks/
   python scripts/run_system_integration.py --run_all_tasks
   # Ad-hoc command
   python scripts/run_system_integration.py -c "Go to the tree then land" --initial-position -181,7331,876,-89
@@ -75,7 +75,7 @@ _AI_SRC = str(REPO_ROOT / "ai_framework" / "src")
 if _AI_SRC not in sys.path:
     sys.path.insert(0, _AI_SRC)
 
-LTL_TASKS_DIR = REPO_ROOT / "tasks" / "ltl_tasks"
+SYSTEM_TASKS_DIR = REPO_ROOT / "tasks" / "system_tasks"
 INTEGRATION_RESULTS_DIR = REPO_ROOT / "results" / "integration_results"
 
 DEFAULT_MAX_STEPS_PER_SUBGOAL = 200
@@ -142,7 +142,7 @@ def _resolve_tasks(args: argparse.Namespace) -> List[Dict[str, Any]]:
     if task_file is not None:
         path = Path(task_file)
         if not path.is_absolute():
-            path = LTL_TASKS_DIR / path.name
+            path = SYSTEM_TASKS_DIR / path.name
         if not path.exists():
             raise SystemExit(f"Task file not found: {path}")
         task = _load_task(path)
@@ -151,10 +151,10 @@ def _resolve_tasks(args: argparse.Namespace) -> List[Dict[str, Any]]:
         task["max_corrections"] = args.max_corrections or task["max_corrections"]
         return [task]
 
-    LTL_TASKS_DIR.mkdir(parents=True, exist_ok=True)
-    json_files = sorted(glob.glob(str(LTL_TASKS_DIR / "*.json")))
+    SYSTEM_TASKS_DIR.mkdir(parents=True, exist_ok=True)
+    json_files = sorted(glob.glob(str(SYSTEM_TASKS_DIR / "*.json")))
     if not json_files:
-        raise SystemExit(f"No JSON files found in {LTL_TASKS_DIR}")
+        raise SystemExit(f"No JSON files found in {SYSTEM_TASKS_DIR}")
     tasks = []
     for jf in json_files:
         try:
@@ -635,12 +635,12 @@ def main():
         type=str,
         default=None,
         metavar="TASK.json",
-        help="Run single task from tasks/ltl_tasks/",
+        help="Run single task from tasks/system_tasks/",
     )
     mode.add_argument(
         "--run_all_tasks",
         action="store_true",
-        help="Run all JSON tasks in tasks/ltl_tasks/",
+        help="Run all JSON tasks in tasks/system_tasks/",
     )
 
     parser.add_argument(
