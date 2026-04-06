@@ -7,7 +7,7 @@ Run with conda env rvln-sim:  conda run -n rvln-sim python test_ltl_planner_robu
 import sys
 from pathlib import Path
 
-# Ensure modules can be imported (same as run_openvla_ltl)
+# Ensure modules can be imported (same as run_ltl_planner)
 _SCRIPT_DIR = Path(__file__).resolve().parent
 if str(_SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(_SCRIPT_DIR))

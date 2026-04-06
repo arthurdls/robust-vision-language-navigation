@@ -63,7 +63,7 @@ def _load_env_vars() -> None:
 
 
 def _setup_env_and_imports() -> None:
-    """Same as run_openvla_ltl: UnrealEnv, path, gym_unrealcv, monkey-patches."""
+    """Same as run_ltl_planner: UnrealEnv, path, gym_unrealcv, monkey-patches."""
     os.environ.setdefault("UnrealEnv", str(_REPO_ROOT / "envs"))
     uav_eval_str = str(_UAV_FLOW_EVAL)
     if uav_eval_str in sys.path:

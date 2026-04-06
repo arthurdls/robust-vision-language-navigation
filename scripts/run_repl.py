@@ -1,25 +1,30 @@
 #!/usr/bin/env python3
 """
-OpenVLA REPL: same simulation setup as run_openvla_ltl, then an interactive REPL.
+Interactive REPL for issuing natural-language commands directly to OpenVLA.
 
-- After the simulator initializes, you are prompted for the initial drone position (x,y,z,yaw).
-- You can then type natural-language actions; each is sent directly to the VLA (no LTL planning).
-- An action runs until the model predicts small changes 10 steps in a row, or you press Ctrl+C to abort.
-- Relative position fed to the model is reset only at the start of each action (first step gets 0,0,0,0) and accumulates until the action ends.
-- When the action finishes, "ACTION COMPLETE" is printed (or "Action aborted." if Ctrl+C), and the REPL continues.
-- 'where' (or 'location', 'pos', 'pose') prints current position/orientation (x, y, z, yaw).
-- 'pos x,y,z,yaw' or 'teleport x,y,z,yaw' teleports the drone to that proprio at any time.
-- 'undo' (or 'u') restores the drone to the position before the last VLA action; multiple undos in a row are supported.
-- 'record' or 'record start' starts saving every frame sent to the VLA under results/repl_results/run_YYYY_MM_DD_HH_MM_SS/; 'record stop' stops and reports how many frames were saved.
-- Up/Down arrow keys browse through previous actions (history saved to ~/.rvln_openvla_repl_history).
-- The simulator is not closed when the script exits (e.g. on quit).
+Uses the same simulation environment as the other runners. After the simulator
+initialises, you are prompted for the initial drone position (x,y,z,yaw) and
+then enter an interactive loop where you type commands that are sent straight
+to the VLA — no LTL planning or diary monitoring.
+
+Capabilities:
+- An action runs until the model predicts small changes 10 steps in a row, or
+  you press Ctrl+C to abort.
+- Relative position fed to the model is reset at the start of each action
+  (first step gets 0,0,0,0) and accumulates until the action ends.
+- 'where' (or 'location', 'pos', 'pose') prints current position/orientation.
+- 'pos x,y,z,yaw' or 'teleport x,y,z,yaw' teleports the drone.
+- 'undo' (or 'u') restores the drone to the position before the last action.
+- 'record' / 'record start' saves frames under results/repl_results/run_<ts>/.
+- Up/Down arrow keys browse command history (~/.rvln_openvla_repl_history).
+- The simulator is not closed when the script exits.
 
 OpenVLA server must be running: python scripts/start_openvla_server.py
 
 Usage (from repo root):
-  python scripts/run_openvla_repl.py
-  python scripts/run_openvla_repl.py -p 5007
-  python scripts/run_openvla_repl.py --use-default-cam   # skip camera selection
+  python scripts/run_repl.py
+  python scripts/run_repl.py -p 5007
+  python scripts/run_repl.py --use-default-cam   # skip camera selection
 """
 
 import argparse
@@ -260,7 +265,7 @@ def _drain_connections_after_abort(env: Any, batch: Any, drone_cam_id: int) -> N
 def main() -> None:
     load_env_vars()
     parser = argparse.ArgumentParser(
-        description="OpenVLA REPL: same sim as run_openvla_ltl, then interactive actions"
+        description="Interactive REPL for natural-language drone commands via OpenVLA"
     )
     parser.add_argument(
         "-p",

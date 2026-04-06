@@ -1,7 +1,7 @@
 # Conda environment for the simulator and LTL runner (rvln-sim).
 # Usage: conda env create -f rvln-sim_env.yml
 #        conda activate rvln-sim
-# Then:  python scripts/start_openvla_sim.py  (or run_openvla_ltl.py after starting the server)
+# Then:  python scripts/run_uav_flow_eval.py  (or run_ltl_planner.py after starting the server)
 #
 # Depends on: OpenVLA server running (rvln-server env), Unreal env in envs/,
 #             and ai_framework/.env_vars for LLM API keys if using LTL/LLM features.

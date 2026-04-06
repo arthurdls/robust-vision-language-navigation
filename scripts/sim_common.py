@@ -1,7 +1,7 @@
 """
 Shared simulation utilities for OpenVLA control loops (LTL, REPL, goal adherence).
 
-Extracted from run_openvla_ltl.py and run_openvla_repl.py to eliminate duplication.
+Extracted from run_ltl_planner.py and run_repl.py to eliminate duplication.
 """
 
 import logging

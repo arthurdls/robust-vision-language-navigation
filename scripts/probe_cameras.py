@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Quick probe: set up env like run_openvla_ltl, run a basic command (e.g. "Go to the bush"),
+Quick probe: set up env like run_ltl_planner, run a basic command (e.g. "Go to the bush"),
 and save a frame from every camera at each step. Outputs go to probe_results/<camera_number>/.
 
 Usage (from repo root):

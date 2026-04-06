@@ -1,27 +1,28 @@
 #!/usr/bin/env python3
 """
-Run OpenVLA simulation with LTL-based symbolic planning and goal adherence monitoring.
+LTL-only control loop: decomposes a multi-step instruction into subgoals via
+the LTL-NL neuro-symbolic planner (Spot automaton) and executes them
+sequentially through OpenVLA.
 
-Uses the same env/setup as start_openvla_sim.py but runs a custom control loop that:
-- Breaks the task instruction into LTL subgoals and feeds one subgoal at a time to OpenVLA.
-- When OpenVLA reports done, verifies the subgoal via a goal monitor before advancing.
-- Saves every camera frame sent to the model and run metadata under results/ltl_results/.
+Subgoal transitions happen on pose-stall convergence, max_steps, or when the
+model reports done. No VLM-based diary monitoring or corrective commands — for
+that, use run_system_integration.py instead.
+
+Saves every camera frame and run metadata under results/ltl_results/.
 
 OpenVLA server must be running: python scripts/start_openvla_server.py
 
 Usage (from repo root):
-  # Ad-hoc command (require --initial-position)
-  python scripts/run_openvla_ltl.py -c "Go to the red building..." --initial-position 100,100,100,61
+  # Ad-hoc command (requires --initial-position)
+  python scripts/run_ltl_planner.py -c "Go to the red building..." --initial-position 100,100,100,61
   # Single task from tasks/ltl_tasks/
-  python scripts/run_openvla_ltl.py --task first_task.json
+  python scripts/run_ltl_planner.py --task first_task.json
   # All tasks in tasks/ltl_tasks/
-  python scripts/run_openvla_ltl.py --run_all_tasks
+  python scripts/run_ltl_planner.py --run_all_tasks
   # Skip camera selection and use default camera:
-  python scripts/run_openvla_ltl.py --task first_task.json --use-default-cam
-  # Interactive: prompt for task name in CLI (no initial task). Use --use-default-cam to skip camera selection:
-  python scripts/run_openvla_ltl.py --interactive --use-default-cam
-  # Or run one task then stay in interactive mode to rerun or run another:
-  python scripts/run_openvla_ltl.py --task third_task.json --interactive --use-default-cam
+  python scripts/run_ltl_planner.py --task first_task.json --use-default-cam
+  # Interactive: prompt for task name in CLI (no initial task):
+  python scripts/run_ltl_planner.py --interactive --use-default-cam
 """
 
 import argparse

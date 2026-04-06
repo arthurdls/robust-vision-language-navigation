@@ -13,7 +13,7 @@ For each subgoal produced by the planner:
   3. When the monitor confirms completion (or the step budget is exhausted),
      the planner advances to the next subgoal.
 
-This replaces the simple GoalAdherenceMonitor used in run_openvla_ltl.py with
+This replaces the simple GoalAdherenceMonitor used in run_ltl_planner.py with
 the full diary-based supervision pipeline from run_goal_adherence.py.
 
 OpenVLA server must be running: python scripts/start_openvla_server.py

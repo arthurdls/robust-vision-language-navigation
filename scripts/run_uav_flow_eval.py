@@ -1,24 +1,21 @@
 #!/usr/bin/env python3
 """
-Run the UAV-Flow simulation evaluator using the original UAV-Flow-Eval code
-(UAV-Flow/UAV-Flow-Eval/batch_run_act_all.py) with no modifications.
+Run the default UAV-Flow evaluation suite.
 
-Uses the real DowntownWest environment (UnrealZoo-UE4 Collection). Config overlay
-at config/uav_flow_envs/Track/DowntownWest.json points to envs/UnrealZoo-UE4/.
+Wraps the original UAV-Flow-Eval test runner (batch_run_act_all.py) with no
+modifications, executing the default test tasks that ship with the UAV-Flow
+repository against the DowntownWest Unreal environment.
 
-Sets up:
-  - UnrealEnv pointing to repo envs/
-  - gym_unrealcv from UAV-Flow-Eval; DowntownWest config from config/uav_flow_envs/
+Task JSONs are read from tasks/uav_flow_tasks/ (copy from
+UAV-Flow/UAV-Flow-Eval/test_jsons/ to populate). Results (trajectory logs
+and plots) are written to results/uav_flow_results/.
 
 The OpenVLA server must be running separately:
   python scripts/start_openvla_server.py
 
-Task JSONs are read from tasks/uav_flow_tasks/; results (trajectory logs and
-plots) are written to results/uav_flow_results/.
-
 Usage (from repo root):
-  python scripts/start_openvla_sim.py
-  python scripts/start_openvla_sim.py -p 5007 -m 50
+  python scripts/run_uav_flow_eval.py
+  python scripts/run_uav_flow_eval.py -p 5007 -m 50
 
 All unrecognised arguments are forwarded to batch_run_act_all.py.
 """
