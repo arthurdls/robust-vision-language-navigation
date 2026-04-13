@@ -64,7 +64,9 @@ COMPLETION CRITERIA — mark complete only with high confidence:
 - MOVEMENT ("move past X"): drone has passed the landmark.
 - BETWEEN ("go between X and Y"): drone is positioned between both landmarks.
 - APPROACH ("approach X"): target fills a large portion of the frame.
-- VISUAL SEARCH ("turn until you see X"): target is clearly visible.
+- VISUAL SEARCH ("turn until you see X"): target is clearly visible in the
+  frame. It does NOT need to be perfectly centered — anywhere in the frame is
+  acceptable as long as it is identifiable.
 - ABOVE ("go above X"): target is visible below — requires being positioned
   over the target, not just at a higher altitude.
 - BELOW ("go below X"): target is visible above.
@@ -80,6 +82,12 @@ DURING NORMAL FLIGHT — your primary job is to detect completion and problems:
 - If the drone is actively making things worse (e.g., moving away from the target,
   overshooting), set "should_stop" to true so it can be corrected.
 - Otherwise, let the drone execute its instruction without interference.
+
+ORIENTATION TOLERANCE — avoid oscillating corrections:
+- When the subgoal involves turning toward or facing an object, the target does
+  NOT need to be at the exact center of the frame. If the target is visible
+  anywhere in the frame, the orientation is good enough — mark it complete
+  rather than issuing further yaw corrections.
 
 WHEN THE DRONE STOPS (convergence corrections):
 - Decide if the subgoal is complete, stopped short, or overshot.
@@ -179,7 +187,13 @@ Respond with EXACTLY ONE JSON object (no markdown fences):
     * "Move forward <N> meters" / "Move closer to <landmark>" — close a gap.
     * "Ascend/Descend <N> meters" — altitude correction.
   Prefer a turn command when the target is not visible in the latest frame;
-  the underlying policy needs to see the target to navigate toward it."""
+  the underlying policy needs to see the target to navigate toward it.
+
+  IMPORTANT — orientation tolerance: if the subgoal is about turning toward or
+  facing a target and the target is already visible in the frame (even if
+  off-center), mark the subgoal complete instead of issuing further turn
+  corrections. Small yaw offsets are acceptable. Do NOT oscillate between
+  left and right turn corrections trying to perfectly center the target."""
 
 
 
