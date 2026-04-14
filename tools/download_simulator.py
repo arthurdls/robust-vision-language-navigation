@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Download the Unreal Engine simulation environment and textures.
 
-Downloads from ModelScope (UnrealZoo) and extracts to envs/.
+Downloads from ModelScope (UnrealZoo) and extracts under runtime/unreal/
+(by default; matches ``rvln.paths.UNREAL_ENV_ROOT``).
 Based on UAV-Flow-Eval/load_env.py.
 
 Usage:
@@ -21,7 +22,13 @@ import zipfile
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-ENVS_DIR = REPO_ROOT / "envs"
+_SRC = REPO_ROOT / "src"
+if _SRC.is_dir():
+    sys.path.insert(0, str(_SRC))
+try:
+    from rvln.paths import UNREAL_ENV_ROOT as DEFAULT_UNREAL_ROOT
+except ImportError:
+    DEFAULT_UNREAL_ROOT = REPO_ROOT / "runtime" / "unreal"
 
 MODELSCOPE_REPO_UE4 = "UnrealZoo/UnrealZoo-UE4"
 
@@ -102,7 +109,12 @@ def extract_and_move(zip_path, dest_dir, is_textures=False):
 
 def main():
     parser = argparse.ArgumentParser(description="Download Unreal simulation environment")
-    parser.add_argument("--dest", type=Path, default=ENVS_DIR, help=f"Destination directory (default: {ENVS_DIR})")
+    parser.add_argument(
+        "--dest",
+        type=Path,
+        default=DEFAULT_UNREAL_ROOT,
+        help=f"Destination directory (default: {DEFAULT_UNREAL_ROOT})",
+    )
     group = parser.add_mutually_exclusive_group()
     group.add_argument("--env-only", action="store_true", help="Download simulator only (skip textures)")
     group.add_argument("--textures-only", action="store_true", help="Download textures only (skip simulator)")

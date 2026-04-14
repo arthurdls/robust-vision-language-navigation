@@ -14,8 +14,10 @@
 !.env.example
 
 # Large runtime directories (populated by tools/)
-envs/UnrealZoo-UE4/
-envs/textures/
+runtime/unreal/UnrealZoo-UE4/
+runtime/unreal/textures/
+# Legacy download location (pre-runtime/unreal layout)
+/envs/
 weights/OpenVLA-UAV/*
 !weights/OpenVLA-UAV/.gitkeep
 *.safetensors

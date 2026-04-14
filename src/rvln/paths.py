@@ -14,17 +14,30 @@ logger = logging.getLogger(__name__)
 # Repository root: two levels up from src/rvln/paths.py
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 
+# Installed package root (src/rvln)
+_RVLN_PKG = Path(__file__).resolve().parent
+
 # Environment / secrets
 ENV_FILE = REPO_ROOT / ".env"
 ENV_VARS_FILE = REPO_ROOT / "ai_framework" / ".env_vars"  # legacy location
 
-# Vendored gym_unrealcv settings overlay
-UAV_FLOW_ENVS_OVERLAY = REPO_ROOT / "config" / "uav_flow_envs"
-DOWNTOWN_OVERLAY_JSON = UAV_FLOW_ENVS_OVERLAY / "Track" / "DowntownWest.json"
+# Unreal scene JSON overlays for gym_unrealcv (Linux env_bin paths, etc.)
+DOWNTOWN_OVERLAY_JSON = _RVLN_PKG / "sim" / "scenes" / "Track" / "DowntownWest.json"
 DOWNTOWN_ENV_ID = "UnrealTrack-DowntownWest-ContinuousColor-v0"
 
+# Downloaded Unreal binaries root (gitignored; tools/download_simulator.py)
+UNREAL_ENV_ROOT = REPO_ROOT / "runtime" / "unreal"
+# Legacy alias: gym / older docs refer to a top-level "envs" tree
+ENVS_DIR = UNREAL_ENV_ROOT
+
+# Batch eval script (run via runpy from scripts/run_eval.py)
+EVAL_DIR = _RVLN_PKG / "eval"
+BATCH_SCRIPT = EVAL_DIR / "batch_runner.py"
+# Working directory when invoking the batch runner (relative paths like debug.jpg)
+BATCH_RUN_CWD = REPO_ROOT
+UAV_FLOW_EVAL = BATCH_RUN_CWD  # legacy name from pre-integration layout
+
 # Runtime directories (gitignored, populated by tools/)
-ENVS_DIR = REPO_ROOT / "envs"
 WEIGHTS_DIR = REPO_ROOT / "weights"
 RESULTS_DIR = REPO_ROOT / "results"
 

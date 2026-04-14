@@ -129,6 +129,7 @@ def setup_env_and_imports() -> None:
     _original_get_settingpath = _misc.get_settingpath
 
     def _get_settingpath(filename):
+        # Prefer repo scene JSON (Linux env_bin paths) over vendored gym_unrealcv defaults.
         if filename == "Track/DowntownWest.json" and DOWNTOWN_OVERLAY_JSON.exists():
             return str(DOWNTOWN_OVERLAY_JSON)
         return _original_get_settingpath(filename)

@@ -66,20 +66,21 @@ rvln-adls/
   src/rvln/               Python package (pip install -e .)
     paths.py              Centralized path constants and env loading
     ai/                   LTL planner, diary monitor, subgoal converter, LLM providers
-    sim/                  Unreal sim env setup, pose utilities
+    sim/                  Unreal sim env setup, pose utilities, scene JSON overlays
     eval/                 Batch evaluation runner, metrics, playback
     server/               OpenVLA inference server
     mininav/              MiniNav real-drone interface
   src/gym_unrealcv/       UnrealCV gym environments (vendored from UAV-Flow)
   scripts/                CLI entry points
   tools/                  Setup and download scripts
-  config/                 Environment overlay configs
   tasks/                  Task JSON files (system, ltl, goal_adherence, uav_flow)
   tests/                  Test suite
-  envs/                   Unreal binaries (gitignored, populated by tools/)
+  runtime/unreal/         Unreal binaries (gitignored, populated by tools/)
   weights/                Model checkpoints (gitignored, populated by tools/)
   results/                Run outputs (gitignored)
 ```
+
+The Unreal download target is `runtime/unreal/` (the code sets `UnrealEnv` to that path by default). If you still have data under the old top-level `envs/` folder, move it into `runtime/unreal/` or export `UnrealEnv` to point at your existing tree.
 
 ## Scripts
 

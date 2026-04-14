@@ -52,3 +52,6 @@ server = [
 [tool.setuptools.packages.find]
 where = ["src"]
 include = ["rvln*", "gym_unrealcv*"]
+
+[tool.setuptools.package-data]
+rvln = ["sim/scenes/**/*.json"]
