@@ -33,8 +33,8 @@ git clone <repo-url> rvln-adls && cd rvln-adls
 bash tools/setup.sh
 
 # 2. Configure API keys
-cp .env.example .env
-# Edit .env with your OpenAI / Google API keys
+cp .env.example .env.local
+# Edit .env.local with your OpenAI / Google API keys
 
 # 3. Download assets (requires ~20GB disk)
 conda activate rvln-sim
@@ -57,7 +57,7 @@ python scripts/run_integration.py --task first_task.json
 - **CUDA GPU** for the OpenVLA server (tested with A100/4090)
 - **conda** (Miniconda or Anaconda)
 - **~20GB disk** for model weights + Unreal environment
-- **API keys** for OpenAI and/or Google (for LLM/VLM calls)
+- **API keys** for OpenAI and/or Google (for LLM/VLM calls), typically in `.env.local`
 
 ## Directory Structure
 
@@ -125,6 +125,8 @@ conda activate rvln-server && pip install -e ".[server]"
 ```
 
 Note: The `spot` LTL model checker is only available via conda-forge (not pip). It is included in `rvln-sim_env.yml`.
+
+API keys are read from `.env` then `.env.local` (see `rvln.paths.load_env_vars`); put secrets in `.env.local` so they stay out of shared defaults.
 
 ## Vendored Code
 

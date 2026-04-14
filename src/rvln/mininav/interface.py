@@ -45,7 +45,6 @@ from rvln.ai.utils.llm_providers import LLMFactory
 logger = logging.getLogger(__name__)
 
 DEFAULT_RESULTS_DIR = REPO_ROOT / "results" / "real_integration_results"
-DEFAULT_ENV_VARS = REPO_ROOT / ".env"
 IMG_INPUT_SIZE: Tuple[int, int] = (224, 224)
 ACTION_SMALL_DELTA_POS = 3.0
 ACTION_SMALL_DELTA_YAW = 1.0
@@ -745,7 +744,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--odom_udp_host", type=str, default="0.0.0.0")
     parser.add_argument("--odom_udp_port", type=int, default=0)
     parser.add_argument("--odom_stale_timeout_s", type=float, default=1.0)
-    parser.add_argument("--env_vars_path", type=str, default=str(DEFAULT_ENV_VARS))
+    parser.add_argument(
+        "--env-vars-path",
+        dest="env_vars_path",
+        type=str,
+        default=None,
+        help="Optional extra env file loaded last (overrides). Default: use .env / .env.local from repo root.",
+    )
     parser.add_argument(
         "--log_level",
         default="INFO",
@@ -762,7 +767,7 @@ def main() -> None:
         format="[%(levelname)s] %(asctime)s - %(name)s - %(message)s",
     )
 
-    load_env_vars(Path(args.env_vars_path))
+    load_env_vars(args.env_vars_path)
     initial_world_pose = parse_position(args.initial_position)
     instruction = args.instruction or input("Enter initial instruction: ").strip()
     if not instruction:

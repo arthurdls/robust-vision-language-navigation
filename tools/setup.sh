@@ -32,23 +32,23 @@ echo "Note: Run this inside your target conda env (rvln-sim or rvln-server)"
 echo "  conda activate rvln-sim && pip install -e ."
 echo "  conda activate rvln-server && pip install -e '.[server]'"
 
-# --- .env file ---
-if [ ! -f .env ]; then
+# --- Local API keys (.env.local recommended) ---
+if [ ! -f .env.local ]; then
     if [ -f .env.example ]; then
-        cp .env.example .env
+        cp .env.example .env.local
         echo ""
-        echo "Created .env from .env.example -- edit it with your API keys."
+        echo "Created .env.local from .env.example -- add your API keys there."
     fi
 else
     echo ""
-    echo ".env already exists."
+    echo ".env.local already exists."
 fi
 
 echo ""
 echo "=== Setup complete ==="
 echo ""
 echo "Next steps:"
-echo "  1. Edit .env with your API keys"
+echo "  1. Edit .env.local with your API keys (optional: .env for shared defaults)"
 echo "  2. Download model weights:    python tools/download_weights.py"
 echo "  3. Download simulator:        python tools/download_simulator.py"
 echo "  4. Start the server:          conda activate rvln-server && python scripts/start_server.py"
