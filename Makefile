@@ -1,4 +1,4 @@
-.PHONY: setup download-weights download-sim server run repl eval help
+.PHONY: setup download-weights download-sim server run repl goal-adherence lint help
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-20s\033[0m %s\n", $$1, $$2}'
@@ -21,8 +21,8 @@ run: ## Run integrated LTL + diary pipeline (requires rvln-sim env)
 repl: ## Interactive REPL for drone commands
 	python scripts/run_repl.py
 
-eval: ## Run UAV-Flow batch evaluation
-	python scripts/run_eval.py
+goal-adherence: ## Run single-subgoal goal adherence experiments
+	python scripts/run_goal_adherence.py
 
 lint: ## Check for import errors
 	python -c "import rvln; import gym_unrealcv; print('All imports OK')"

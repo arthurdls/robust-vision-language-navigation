@@ -3,8 +3,8 @@ Goal adherence utilities: prompt templates, offline diary-based completion
 checking, and higher-level frame analysis helpers.
 
 Low-level vision primitives (build_frame_grid, query_vlm, etc.) live in
-vision_utils.py; this module builds on them for goal-adherence-specific
-workflows such as offline diary checking (used by scripts/analyze_frames.py).
+vision.py; this module builds on them for goal-adherence-specific workflows
+such as the offline ``check_subtask_completed_diary`` helper.
 """
 
 import json
@@ -118,7 +118,7 @@ def check_subtask_complete_diary(
     model: str = "gpt-4o",
     **grid_kwargs: Any,
 ) -> dict:
-    """Offline diary-based completion check (used by scripts/analyze_frames.py)."""
+    """Offline diary-based completion check over a sequence of saved frames."""
     def _frame_source() -> str:
         if isinstance(frame_paths, (Path, str)):
             return str(Path(frame_paths))

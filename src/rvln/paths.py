@@ -30,12 +30,12 @@ UNREAL_ENV_ROOT = REPO_ROOT / "runtime" / "unreal"
 # Legacy alias: gym / older docs refer to a top-level "envs" tree
 ENVS_DIR = UNREAL_ENV_ROOT
 
-# Batch eval script (run via runpy from scripts/run_eval.py)
+# Batch eval script (invoked via runpy by scripts/run_old_original_eval.py)
 EVAL_DIR = _RVLN_PKG / "eval"
 BATCH_SCRIPT = EVAL_DIR / "batch_runner.py"
 # Working directory when invoking the batch runner (relative paths like debug.jpg)
 BATCH_RUN_CWD = REPO_ROOT
-UAV_FLOW_EVAL = BATCH_RUN_CWD  # legacy name from pre-integration layout
+UAV_FLOW_EVAL = BATCH_RUN_CWD  # alias used by scripts that chdir before running batch_runner
 
 # Runtime directories (gitignored, populated by tools/)
 WEIGHTS_DIR = REPO_ROOT / "weights"

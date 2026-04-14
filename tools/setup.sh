@@ -4,7 +4,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(dirname "$SCRIPT_DIR")"
 
-echo "=== rvln-adls setup ==="
+echo "=== Robust Vision-Language Navigation setup ==="
 echo "Repo root: $REPO_ROOT"
 cd "$REPO_ROOT"
 

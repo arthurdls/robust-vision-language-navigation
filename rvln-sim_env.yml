@@ -1,7 +1,7 @@
 # Conda environment for the simulator and LTL runner (rvln-sim).
 # Usage: conda env create -f rvln-sim_env.yml
 #        conda activate rvln-sim
-# Then:  e.g. python scripts/run_eval.py or scripts/run_ltl.py (after starting the server).
+# Then:  e.g. python scripts/run_integration.py or scripts/run_ltl.py (after starting the server).
 #
 # Depends on: OpenVLA server running (rvln-server env), Unreal env under runtime/unreal/,
 #             and .env / .env.local for LLM API keys if using LTL/LLM.

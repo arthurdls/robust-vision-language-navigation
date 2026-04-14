@@ -10,8 +10,8 @@ The OpenVLA server must be running separately:
   python scripts/start_server.py
 
 Usage (from repo root):
-  python scripts/run_eval.py
-  python scripts/run_eval.py -p 5007 -m 50
+  python scripts/run_old_original_eval.py
+  python scripts/run_old_original_eval.py -p 5007 -m 50
 
 All unrecognised arguments are forwarded to the batch runner.
 """
