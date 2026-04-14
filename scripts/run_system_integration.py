@@ -26,7 +26,7 @@ Usage (from repo root):
   # Ad-hoc command
   python scripts/run_system_integration.py -c "Go to the tree then land" --initial-position -181,7331,876,-89
   # Custom models and diary parameters
-  python scripts/run_system_integration.py --task first_task.json --llm_model gpt-4o --monitor_model gpt-4o \\
+  python scripts/run_system_integration.py --task first_task.json --llm_model gpt-4o --monitor_model gpt-5.4 \\
       --diary-check-interval 10 --max-steps-per-subgoal 200 --max-corrections 10
 """
 
@@ -195,8 +195,11 @@ def _run_subgoal(
     drone_cam_id: int,
     frames_dir: Path,
     subgoal_dir: Path,
+    subgoal_index: int,
     frame_offset: int,
     trajectory_log: List[Dict[str, Any]],
+    frame_metadata: List[Dict[str, Any]],
+    telemetry_log: List[Dict[str, Any]],
 ) -> Dict[str, Any]:
     """Run the diary-monitored control loop for a single subgoal.
 
@@ -211,7 +214,27 @@ def _run_subgoal(
     diary_artifacts.mkdir(parents=True, exist_ok=True)
 
     converter = SubgoalConverter(model=monitor_model)
-    converted_instruction = converter.convert(subgoal_nl)
+    convert_start = time.perf_counter()
+    convert_error: Optional[str] = None
+    try:
+        converted_instruction = converter.convert(subgoal_nl)
+    except Exception as e:
+        convert_error = str(e)
+        raise
+    finally:
+        convert_end = time.perf_counter()
+        telemetry_log.append({
+            "event_type": "vlm_inference",
+            "query_type": "subgoal_conversion",
+            "subgoal_index": subgoal_index,
+            "subgoal": subgoal_nl,
+            "model": monitor_model,
+            "duration_ms": (convert_end - convert_start) * 1000.0,
+            "success": convert_error is None,
+            "error": convert_error,
+            "timestamp_iso": datetime.now().isoformat(timespec="milliseconds"),
+            "timestamp_unix_s": time.time(),
+        })
     current_instruction = converted_instruction
 
     monitor = LiveDiaryMonitor(
@@ -241,6 +264,8 @@ def _run_subgoal(
     while step < max_steps:
         batch.set_cam(env)
         image = set_drone_cam_and_get_image(env, cam_id)
+        frame_capture_time_unix_s = time.time()
+        frame_capture_time_iso = datetime.now().isoformat(timespec="milliseconds")
         if image is None:
             logger.warning("No image at step %d, ending subgoal.", step)
             stop_reason = "no_image"
@@ -250,18 +275,47 @@ def _run_subgoal(
         frame_path = frames_dir / f"frame_{global_frame_idx:06d}.png"
         try:
             import cv2
-            cv2.imwrite(str(frame_path), image)
+            if cv2.imwrite(str(frame_path), image):
+                frame_metadata.append({
+                    "frame_file": frame_path.name,
+                    "frame_index": global_frame_idx,
+                    "frame_type": "step",
+                    "subgoal_index": subgoal_index,
+                    "subgoal": subgoal_nl,
+                    "converted_instruction": converted_instruction,
+                    "subgoal_step": step,
+                    "captured_at_iso": frame_capture_time_iso,
+                    "captured_at_unix_s": frame_capture_time_unix_s,
+                })
         except Exception as e:
             logger.debug("Failed to save frame %s: %s", frame_path, e)
 
+        monitor_start = time.perf_counter()
+        monitor_error: Optional[str] = None
         try:
             result = monitor.on_frame(frame_path, displacement=list(current_pose))
         except Exception as e:
+            monitor_error = str(e)
             logger.error("monitor.on_frame failed at step %d: %s", step, e)
             result = DiaryCheckResult(
                 action="continue", new_instruction="", reasoning="",
                 diary_entry="", completion_pct=monitor.last_completion_pct,
             )
+        monitor_end = time.perf_counter()
+        telemetry_log.append({
+            "event_type": "vlm_inference",
+            "query_type": "diary_on_frame",
+            "subgoal_index": subgoal_index,
+            "subgoal": subgoal_nl,
+            "subgoal_step": step,
+            "model": monitor_model,
+            "duration_ms": (monitor_end - monitor_start) * 1000.0,
+            "success": monitor_error is None,
+            "error": monitor_error,
+            "result_action": result.action if result is not None else None,
+            "timestamp_iso": datetime.now().isoformat(timespec="milliseconds"),
+            "timestamp_unix_s": time.time(),
+        })
 
         if result.action == "stop":
             logger.info("Monitor stop at step %d: %s", step, result.reasoning)
@@ -277,12 +331,32 @@ def _run_subgoal(
             })
 
         openvla_pose = [c - o for c, o in zip(current_pose, openvla_pose_origin)]
-        response = batch.send_prediction_request(
-            image=Image.fromarray(image),
-            proprio=state_for_openvla(openvla_pose),
-            instr=current_instruction.strip().lower(),
-            server_url=server_url,
-        )
+        openvla_start = time.perf_counter()
+        openvla_error: Optional[str] = None
+        try:
+            response = batch.send_prediction_request(
+                image=Image.fromarray(image),
+                proprio=state_for_openvla(openvla_pose),
+                instr=current_instruction.strip().lower(),
+                server_url=server_url,
+            )
+        except Exception as e:
+            openvla_error = str(e)
+            raise
+        finally:
+            openvla_end = time.perf_counter()
+            telemetry_log.append({
+                "event_type": "openvla_inference",
+                "query_type": "predict",
+                "subgoal_index": subgoal_index,
+                "subgoal": subgoal_nl,
+                "subgoal_step": step,
+                "duration_ms": (openvla_end - openvla_start) * 1000.0,
+                "success": openvla_error is None,
+                "error": openvla_error,
+                "timestamp_iso": datetime.now().isoformat(timespec="milliseconds"),
+                "timestamp_unix_s": time.time(),
+            })
 
         if response is None:
             logger.warning("No VLA response at step %d, ending subgoal.", step)
@@ -349,20 +423,36 @@ def _run_subgoal(
         if converged:
             conv_frame = set_drone_cam_and_get_image(env, cam_id)
             if conv_frame is not None:
+                conv_capture_time_unix_s = time.time()
+                conv_capture_time_iso = datetime.now().isoformat(timespec="milliseconds")
                 conv_path = frames_dir / f"frame_conv_{global_frame_idx:06d}.png"
                 try:
                     import cv2
-                    cv2.imwrite(str(conv_path), conv_frame)
+                    if cv2.imwrite(str(conv_path), conv_frame):
+                        frame_metadata.append({
+                            "frame_file": conv_path.name,
+                            "frame_index": global_frame_idx,
+                            "frame_type": "convergence",
+                            "subgoal_index": subgoal_index,
+                            "subgoal": subgoal_nl,
+                            "converted_instruction": converted_instruction,
+                            "subgoal_step": step,
+                            "captured_at_iso": conv_capture_time_iso,
+                            "captured_at_unix_s": conv_capture_time_unix_s,
+                        })
                 except Exception:
                     conv_path = frame_path
             else:
                 conv_path = frame_path
 
+            convergence_start = time.perf_counter()
+            convergence_error: Optional[str] = None
             try:
                 conv_result = monitor.on_convergence(
                     conv_path, displacement=list(current_pose),
                 )
             except Exception as e:
+                convergence_error = str(e)
                 logger.error("monitor.on_convergence failed at step %d: %s", step, e)
                 conv_result = DiaryCheckResult(
                     action="stop", new_instruction="",
@@ -370,6 +460,21 @@ def _run_subgoal(
                     diary_entry="",
                     completion_pct=monitor.last_completion_pct,
                 )
+            convergence_end = time.perf_counter()
+            telemetry_log.append({
+                "event_type": "vlm_inference",
+                "query_type": "diary_on_convergence",
+                "subgoal_index": subgoal_index,
+                "subgoal": subgoal_nl,
+                "subgoal_step": step,
+                "model": monitor_model,
+                "duration_ms": (convergence_end - convergence_start) * 1000.0,
+                "success": convergence_error is None,
+                "error": convergence_error,
+                "result_action": conv_result.action if conv_result is not None else None,
+                "timestamp_iso": datetime.now().isoformat(timespec="milliseconds"),
+                "timestamp_unix_s": time.time(),
+            })
 
             if conv_result.action == "stop":
                 logger.info(
@@ -508,6 +613,8 @@ def run_integrated_control_loop(
     # --- Subgoal execution loop ---
     subgoal_summaries: List[Dict[str, Any]] = []
     trajectory_log: List[Dict[str, Any]] = []
+    frame_metadata: List[Dict[str, Any]] = []
+    telemetry_log: List[Dict[str, Any]] = []
     total_frame_count = 0
     subgoal_index = 0
 
@@ -543,8 +650,11 @@ def run_integrated_control_loop(
             drone_cam_id=drone_cam_id,
             frames_dir=frames_dir,
             subgoal_dir=subgoal_dir,
+            subgoal_index=subgoal_index,
             frame_offset=total_frame_count,
             trajectory_log=trajectory_log,
+            frame_metadata=frame_metadata,
+            telemetry_log=telemetry_log,
         )
 
         total_frame_count += subgoal_result["total_steps"]
@@ -578,6 +688,14 @@ def run_integrated_control_loop(
     # --- Save trajectory log ---
     with open(run_dir / "trajectory_log.json", "w") as f:
         json.dump(trajectory_log, f, indent=2)
+
+    # --- Save frame to subgoal mapping ---
+    with open(run_dir / "frame_metadata.json", "w") as f:
+        json.dump(frame_metadata, f, indent=2)
+
+    # --- Save per-query inference telemetry ---
+    with open(run_dir / "inference_telemetry.json", "w") as f:
+        json.dump(telemetry_log, f, indent=2)
 
     # --- Optional playback mp4 ---
     playback_mp4: Optional[Path] = None
@@ -671,8 +789,8 @@ def main():
     )
     parser.add_argument(
         "--monitor_model",
-        default="gpt-4o",
-        help="VLM for diary monitor and subgoal converter (default: gpt-4o)",
+        default="gpt-5.4",
+        help="VLM for diary monitor and subgoal converter (default: gpt-5.4)",
     )
 
     # Diary parameters (override task JSON values)
