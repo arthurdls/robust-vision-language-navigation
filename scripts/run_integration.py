@@ -13,20 +13,20 @@ For each subgoal produced by the planner:
   3. When the monitor confirms completion (or the step budget is exhausted),
      the planner advances to the next subgoal.
 
-This replaces the simple GoalAdherenceMonitor used in run_ltl_planner.py with
-the full diary-based supervision pipeline from run_goal_adherence.py.
+This replaces the simple GoalAdherenceMonitor used in scripts/run_ltl.py with
+the full diary-based supervision pipeline from scripts/run_goal_adherence.py.
 
-OpenVLA server must be running: python scripts/start_openvla_server.py
+OpenVLA server must be running: python scripts/start_server.py
 
 Usage (from repo root):
-  # Single task from tasks/system_tasks/
-  python scripts/run_system_integration.py --task third_task.json
-  # All tasks in tasks/system_tasks/
-  python scripts/run_system_integration.py --run_all_tasks
+  # Single task from tasks/system/
+  python scripts/run_integration.py --task third_task.json
+  # All tasks in tasks/system/
+  python scripts/run_integration.py --run_all_tasks
   # Ad-hoc command
-  python scripts/run_system_integration.py -c "Go to the tree then land" --initial-position -181,7331,876,-89
+  python scripts/run_integration.py -c "Go to the tree then land" --initial-position -181,7331,876,-89
   # Custom models and diary parameters
-  python scripts/run_system_integration.py --task first_task.json --llm_model gpt-4o --monitor_model gpt-4o \\
+  python scripts/run_integration.py --task first_task.json --llm_model gpt-4o --monitor_model gpt-4o \\
       --diary-check-interval 10 --max-steps-per-subgoal 200 --max-corrections 10
 """
 
@@ -635,12 +635,12 @@ def main():
         type=str,
         default=None,
         metavar="TASK.json",
-        help="Run single task from tasks/system_tasks/",
+        help="Run single task from tasks/system/",
     )
     mode.add_argument(
         "--run_all_tasks",
         action="store_true",
-        help="Run all JSON tasks in tasks/system_tasks/",
+        help="Run all JSON tasks in tasks/system/",
     )
 
     parser.add_argument(

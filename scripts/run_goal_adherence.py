@@ -534,12 +534,12 @@ def main():
         "--task",
         type=str,
         metavar="TASK.json",
-        help="Run single task from tasks/goal_adherence_tasks/",
+        help="Run single task from tasks/goal_adherence/",
     )
     mode.add_argument(
         "--run-all",
         action="store_true",
-        help="Run all JSON tasks in tasks/goal_adherence_tasks/",
+        help="Run all JSON tasks in tasks/goal_adherence/",
     )
     parser.add_argument(
         "--model",

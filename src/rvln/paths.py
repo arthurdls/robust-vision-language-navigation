@@ -17,10 +17,9 @@ REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 # Installed package root (src/rvln)
 _RVLN_PKG = Path(__file__).resolve().parent
 
-# Environment / secrets (load order in load_env_vars: .env, legacy, .env.local overrides)
+# Environment / secrets (see load_env_vars for load order)
 ENV_FILE = REPO_ROOT / ".env"
 ENV_FILE_LOCAL = REPO_ROOT / ".env.local"
-ENV_VARS_FILE = REPO_ROOT / "ai_framework" / ".env_vars"  # legacy location
 
 # Unreal scene JSON overlays for gym_unrealcv (Linux env_bin paths, etc.)
 DOWNTOWN_OVERLAY_JSON = _RVLN_PKG / "sim" / "scenes" / "Track" / "DowntownWest.json"
@@ -93,9 +92,8 @@ def load_env_vars(extra_override: Path | str | None = None) -> None:
     Order:
 
     1. ``.env`` — fills missing keys only (shared defaults).
-    2. ``ai_framework/.env_vars`` — legacy location, fills missing keys only.
-    3. ``.env.local`` — **overrides** keys (recommended for API keys on this machine).
-    4. ``extra_override`` — optional path from callers, loaded last with override (CLI / tests).
+    2. ``.env.local`` — **overrides** keys (recommended for API keys on this machine).
+    3. ``extra_override`` — optional path from callers, loaded last with override (CLI / tests).
 
     Supports ``export KEY=value`` or plain ``KEY=value`` lines.
     """
@@ -111,7 +109,6 @@ def load_env_vars(extra_override: Path | str | None = None) -> None:
         _load_env_file(path, override=override)
 
     _one(ENV_FILE, override=False)
-    _one(ENV_VARS_FILE, override=False)
     _one(ENV_FILE_LOCAL, override=True)
     if extra_override is not None:
         _one(Path(extra_override), override=True)

@@ -1,7 +1,7 @@
 # Conda environment for the OpenVLA inference server (rvln-server).
 # Usage: conda env create -f rvln-server_env.yml
 #        conda activate rvln-server
-# Then:  python scripts/start_openvla_server.py
+# Then:  python scripts/start_server.py
 #
 # Requires a CUDA-capable GPU. flash-attn requires compatible CUDA; if install
 # fails on your machine, you can try installing it separately or the server may

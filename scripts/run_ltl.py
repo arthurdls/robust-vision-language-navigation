@@ -6,23 +6,23 @@ sequentially through OpenVLA.
 
 Subgoal transitions happen on pose-stall convergence, max_steps, or when the
 model reports done. No VLM-based diary monitoring or corrective commands — for
-that, use run_system_integration.py instead.
+that, use scripts/run_integration.py instead.
 
 Saves every camera frame and run metadata under results/ltl_results/.
 
-OpenVLA server must be running: python scripts/start_openvla_server.py
+OpenVLA server must be running: python scripts/start_server.py
 
 Usage (from repo root):
   # Ad-hoc command (requires --initial-position)
-  python scripts/run_ltl_planner.py -c "Go to the red building..." --initial-position 100,100,100,61
-  # Single task from tasks/ltl_tasks/
-  python scripts/run_ltl_planner.py --task first_task.json
-  # All tasks in tasks/ltl_tasks/
-  python scripts/run_ltl_planner.py --run_all_tasks
+  python scripts/run_ltl.py -c "Go to the red building..." --initial-position 100,100,100,61
+  # Single task from tasks/ltl/
+  python scripts/run_ltl.py --task first_task.json
+  # All tasks in tasks/ltl/
+  python scripts/run_ltl.py --run_all_tasks
   # Skip camera selection and use default camera:
-  python scripts/run_ltl_planner.py --task first_task.json --use-default-cam
+  python scripts/run_ltl.py --task first_task.json --use-default-cam
   # Interactive: prompt for task name in CLI (no initial task):
-  python scripts/run_ltl_planner.py --interactive --use-default-cam
+  python scripts/run_ltl.py --interactive --use-default-cam
 """
 
 import argparse
@@ -96,7 +96,7 @@ def run_ltl_control_loop(
     If run_dir is set, saves every frame sent to the model under run_dir/frames/.
 
     For diary-based goal monitoring with corrective commands, use
-    run_system_integration.py instead.
+    scripts/run_integration.py instead.
     """
     full_instruction = full_instruction.strip().lower()
     initial_pos = normalize_initial_pos(initial_pos)
@@ -306,16 +306,16 @@ def _resolve_tasks(args: argparse.Namespace) -> List[Dict[str, Any]]:
         raise SystemExit(
             "Specify a task or use --interactive to enter the task at the prompt.\n"
             "  -c \"instruction\" [--initial-position x,y,z,yaw]  run one ad-hoc task\n"
-            "  --task first_task.json                           run one task from tasks/ltl_tasks/\n"
-            "  --run_all_tasks                                  run all JSONs in tasks/ltl_tasks/\n"
+            "  --task first_task.json                           run one task from tasks/ltl/\n"
+            "  --run_all_tasks                                  run all JSONs in tasks/ltl/\n"
             "  --interactive                                    no initial task; prompt for task name in CLI"
         )
     if count > 1:
         raise SystemExit(
             "At most one of -c/--command, --task, or --run_all_tasks is allowed.\n"
             "  -c \"instruction\" [--initial-position x,y,z,yaw]  run one ad-hoc task (position optional)\n"
-            "  --task first_task.json                           run one task from tasks/ltl_tasks/\n"
-            "  --run_all_tasks                                  run all JSONs in tasks/ltl_tasks/"
+            "  --task first_task.json                           run one task from tasks/ltl/\n"
+            "  --run_all_tasks                                  run all JSONs in tasks/ltl/"
         )
 
     if cmd is not None:
@@ -418,12 +418,12 @@ def main():
         type=str,
         default=None,
         metavar="TASK.json",
-        help="Run single task from tasks/ltl_tasks/ (e.g. first_task.json)",
+        help="Run single task from tasks/ltl/ (e.g. first_task.json)",
     )
     mode.add_argument(
         "--run_all_tasks",
         action="store_true",
-        help="Run all JSON tasks in tasks/ltl_tasks/",
+        help="Run all JSON tasks in tasks/ltl/",
     )
     parser.add_argument(
         "--initial-position",

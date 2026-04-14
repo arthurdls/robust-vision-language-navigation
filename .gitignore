@@ -9,7 +9,6 @@
 
 # Environment / secrets
 .env
-.env_vars
 *.env*
 !.env.example
 

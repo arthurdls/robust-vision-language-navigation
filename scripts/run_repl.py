@@ -19,7 +19,7 @@ Capabilities:
 - Up/Down arrow keys browse command history (~/.rvln_openvla_repl_history).
 - The simulator is not closed when the script exits.
 
-OpenVLA server must be running: python scripts/start_openvla_server.py
+OpenVLA server must be running: python scripts/start_server.py
 
 Usage (from repo root):
   python scripts/run_repl.py

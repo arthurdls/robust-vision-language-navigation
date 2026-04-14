@@ -745,11 +745,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--odom_udp_port", type=int, default=0)
     parser.add_argument("--odom_stale_timeout_s", type=float, default=1.0)
     parser.add_argument(
-        "--env-vars-path",
-        dest="env_vars_path",
+        "--extra-env-file",
         type=str,
         default=None,
-        help="Optional extra env file loaded last (overrides). Default: use .env / .env.local from repo root.",
+        help="Optional env file loaded after .env and .env.local (overrides).",
     )
     parser.add_argument(
         "--log_level",
@@ -767,7 +766,7 @@ def main() -> None:
         format="[%(levelname)s] %(asctime)s - %(name)s - %(message)s",
     )
 
-    load_env_vars(args.env_vars_path)
+    load_env_vars(args.extra_env_file)
     initial_world_pose = parse_position(args.initial_position)
     instruction = args.instruction or input("Enter initial instruction: ").strip()
     if not instruction:
