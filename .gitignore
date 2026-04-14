@@ -1,11 +1,33 @@
-
 *__pycache__/
-.old_code/
-*.zip
+*.pyc
+*.egg-info/
+
+# IDE
+.vscode/
+.idea/
+.cursor/
+
+# Environment / secrets
+.env
+.env_vars
 *.env*
-envs/UnrealZoo-UE4/Collection_v4_LinuxNoEditor/
-envs/UnrealZoo-UE4/textures/
-results/*
+!.env.example
+
+# Large runtime directories (populated by tools/)
+envs/UnrealZoo-UE4/
+envs/textures/
 weights/OpenVLA-UAV/*
+!weights/OpenVLA-UAV/.gitkeep
 *.safetensors
-goal_adherence_artifacts/*
+*.zip
+
+# Results
+results/
+
+# Old / archived code
+.old_code/
+.old_broken_repo/
+
+# Misc
+*.log
+.DS_Store

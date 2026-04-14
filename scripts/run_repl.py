@@ -43,11 +43,7 @@ except ImportError:
 
 from PIL import Image
 
-_SCRIPT_DIR = Path(__file__).resolve().parent
-if str(_SCRIPT_DIR) not in sys.path:
-    sys.path.insert(0, str(_SCRIPT_DIR))
-
-from sim_common import (
+from rvln.paths import (
     BATCH_SCRIPT,
     DEFAULT_INITIAL_POSITION,
     DEFAULT_SERVER_PORT,
@@ -56,6 +52,8 @@ from sim_common import (
     DOWNTOWN_ENV_ID,
     DRONE_CAM_ID,
     REPO_ROOT,
+)
+from rvln.sim.env_setup import (
     apply_action_poses,
     import_batch_module,
     interactive_camera_select,

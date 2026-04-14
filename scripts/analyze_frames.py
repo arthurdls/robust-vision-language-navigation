@@ -13,19 +13,13 @@ import tempfile
 from datetime import datetime
 from pathlib import Path
 
-_SCRIPT_DIR = Path(__file__).resolve().parent
-_REPO_ROOT = _SCRIPT_DIR.parent
-_AI_SRC = str(_REPO_ROOT / "ai_framework" / "src")
-if _AI_SRC not in sys.path:
-    sys.path.insert(0, _AI_SRC)
-
-from modules.utils.vision_utils import (
+from rvln.ai.utils.vision import (
     build_frame_grid,
     get_ordered_frames_from_dir,
     query_vlm,
     sample_frames_every_n,
 )
-from modules.utils.goal_adherence_utils import (
+from rvln.ai.utils.goal_adherence import (
     analyze_temporal_frames,
     check_subtask_complete_diary,
 )

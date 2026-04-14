@@ -57,11 +57,7 @@ from typing import Any, Dict, List, Optional
 
 from PIL import Image
 
-_SCRIPT_DIR = Path(__file__).resolve().parent
-if str(_SCRIPT_DIR) not in sys.path:
-    sys.path.insert(0, str(_SCRIPT_DIR))
-
-from sim_common import (
+from rvln.paths import (
     BATCH_SCRIPT,
     DEFAULT_SERVER_PORT,
     DEFAULT_SEED,
@@ -70,6 +66,8 @@ from sim_common import (
     DRONE_CAM_ID,
     REPO_ROOT,
     UAV_FLOW_EVAL,
+)
+from rvln.sim.env_setup import (
     apply_action_poses,
     import_batch_module,
     interactive_camera_select,
@@ -81,16 +79,12 @@ from sim_common import (
     state_for_openvla,
 )
 
-_AI_SRC = str(REPO_ROOT / "ai_framework" / "src")
-if _AI_SRC not in sys.path:
-    sys.path.insert(0, _AI_SRC)
+from rvln.eval import playback as playback_fpv
 
-import playback_fpv
+from rvln.ai.diary_monitor import DiaryCheckResult, LiveDiaryMonitor
+from rvln.ai.subgoal_converter import SubgoalConverter
 
-from modules.diary_monitor import DiaryCheckResult, LiveDiaryMonitor
-from modules.subgoal_converter import SubgoalConverter
-
-GA_TASKS_DIR = REPO_ROOT / "tasks" / "goal_adherence_tasks"
+GA_TASKS_DIR = REPO_ROOT / "tasks" / "goal_adherence"
 GA_RESULTS_DIR = REPO_ROOT / "results" / "goal_adherence_results"
 
 RUNS_PER_CONDITION = 3
