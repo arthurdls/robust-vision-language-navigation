@@ -101,6 +101,77 @@ The Unreal download target is `runtime/unreal/` (matching `rvln.paths.UNREAL_ENV
 | `scripts/playback.py` | FPV viewer and MP4 encoder for saved runs |
 | `scripts/scout_locations.py` | Position scouting helper for task authoring |
 
+## Running on Hardware (MiniNav)
+
+The same planner + diary monitor + OpenVLA stack can drive a real drone via the MiniNav interface in `src/rvln/mininav/`. The drone-facing module streams commands `[frame_count, vx, vy, vz, yaw]` as `float32` over TCP to a control server on the vehicle.
+
+### What you need
+
+- A flight controller / companion computer running a TCP control server that accepts the 5-float packet format (see `src/rvln/mininav/mock_server.py` for the wire format and a local simulator you can develop against).
+- A USB / network camera visible to the machine running `rvln-sim`.
+- The OpenVLA server reachable on the network (typically on the same laptop that runs the pipeline).
+- Optional but recommended: an external odometry source (HTTP poll or UDP JSON stream). Without one, the runner falls back to dead-reckoning from commanded velocities.
+
+### Dry run against the mock server
+
+```bash
+# Terminal 1: OpenVLA server (GPU machine)
+conda activate rvln-server
+python scripts/start_server.py
+
+# Terminal 2: TCP mock of the drone control server
+conda activate rvln-sim
+python -m rvln.mininav.mock_server --host 127.0.0.1 --port 8080
+
+# Terminal 3: Hardware pipeline pointed at the mock
+conda activate rvln-sim
+python -m rvln.mininav.interface \
+  --preferred_server_host 127.0.0.1 \
+  --control_port 8080 \
+  --openvla_predict_url http://127.0.0.1:5007/predict \
+  --camera 0 \
+  --initial_position 0,0,0,0 \
+  --command_is_velocity \
+  --instruction "take off and circle the red cone"
+```
+
+The mock writes every received command to a CSV in its working directory so you can verify the command stream before flying anything.
+
+### Live flight
+
+```bash
+conda activate rvln-sim
+python -m rvln.mininav.interface \
+  --preferred_server_host 192.168.0.101 \
+  --control_port 8080 \
+  --openvla_predict_url http://<openvla-host>:5007/predict \
+  --camera 0 \
+  --initial_position 0,0,0,0 \
+  --odom_udp_port 9001 \
+  --command_is_velocity
+```
+
+`--preferred_server_host` is the drone's IP. If unreachable the runner falls back to the host's own LAN IP so you notice the problem quickly rather than silently streaming commands into the void.
+
+Odometry options:
+
+- `--odom_http_url http://<drone>:<port>/pose` for a poll endpoint returning `{"x", "y", "z", "yaw"}`.
+- `--odom_udp_port 9001` to listen for UDP JSON packets with the same schema.
+- Omit both and the runner dead-reckons from the commands it sends (`--command_is_velocity` tells it to treat commands as m/s and rad/s rather than deltas).
+
+Action mapping:
+
+- `--action_pose_mode direct` (default): pass the OpenVLA action pose through as the command payload.
+- `--action_pose_mode delta_from_pose`: subtract the current relative pose first; useful when OpenVLA outputs absolute targets but the flight controller expects deltas.
+
+Artifacts (frames, diary logs, trajectory, run_info.json) land in `results/real_integration_results/run_<timestamp>/` and have the same shape as the simulator runs, so `scripts/playback.py` and the offline goal-adherence tools work on them unchanged.
+
+### Safety checklist before arming
+
+- Test the full pipeline against `rvln.mininav.mock_server` first and inspect the CSV.
+- Cap `--max_steps_per_subgoal` and `--max_corrections` to conservative values for the first flight.
+- Keep a manual override channel on the drone; the pipeline will send commands at `--command_dt_s` (default 0.1 s) until a subgoal completes, a `stop` action is issued, or you Ctrl-C.
+
 ## Conda Environments
 
 Two separate environments are used because the OpenVLA server needs a heavy CUDA/PyTorch stack while the simulator client does not:
