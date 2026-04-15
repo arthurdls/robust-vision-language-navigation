@@ -32,3 +32,4 @@ results/
 # Misc
 *.log
 .DS_Store
+docs/

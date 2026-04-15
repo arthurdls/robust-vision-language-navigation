@@ -100,6 +100,8 @@ The Unreal download target is `runtime/unreal/` (matching `rvln.paths.UNREAL_ENV
 | `scripts/run_old_original_eval.py` | Legacy UAV-Flow batch evaluation runner |
 | `scripts/playback.py` | FPV viewer and MP4 encoder for saved runs |
 | `scripts/scout_locations.py` | Position scouting helper for task authoring |
+| `scripts/start_simulate_hardware.py` | TCP mock of the MiniNav drone control server |
+| `scripts/run_hardware.py` | MiniNav real-drone integration pipeline |
 
 ## Running on Hardware (MiniNav)
 
@@ -121,11 +123,11 @@ python scripts/start_server.py
 
 # Terminal 2: TCP mock of the drone control server
 conda activate rvln-sim
-python -m rvln.mininav.mock_server --host 127.0.0.1 --port 8080
+python scripts/start_simulate_hardware.py --host 127.0.0.1 --port 8080
 
 # Terminal 3: Hardware pipeline pointed at the mock
 conda activate rvln-sim
-python -m rvln.mininav.interface \
+python scripts/run_hardware.py \
   --preferred_server_host 127.0.0.1 \
   --control_port 8080 \
   --openvla_predict_url http://127.0.0.1:5007/predict \
@@ -141,7 +143,7 @@ The mock writes every received command to a CSV in its working directory so you 
 
 ```bash
 conda activate rvln-sim
-python -m rvln.mininav.interface \
+python scripts/run_hardware.py \
   --preferred_server_host 192.168.0.101 \
   --control_port 8080 \
   --openvla_predict_url http://<openvla-host>:5007/predict \
