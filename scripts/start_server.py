@@ -9,6 +9,8 @@ Usage (from repo root):
   python scripts/start_server.py
   python scripts/start_server.py --port 5007 --gpu-id 0
   python scripts/start_server.py --model-dir /path/to/checkpoint
+  python scripts/start_server.py --device cpu        # pure CPU (fp32, slow)
+  python scripts/start_server.py --device auto       # split GPU+CPU (bf16)
 """
 
 import argparse
@@ -75,15 +77,29 @@ def main():
     )
     parser.add_argument(
         "--gpu-id", type=int, default=0,
-        help="CUDA GPU id (default: 0)",
+        help="CUDA GPU id (only used when --device=cuda, default: 0)",
+    )
+    parser.add_argument(
+        "--device",
+        choices=("cuda", "cpu", "auto"),
+        default="cuda",
+        help=(
+            "Inference device. 'cuda': single GPU with bf16 + flash-attn (default). "
+            "'cpu': pure CPU fp32 (no GPU needed, slow). "
+            "'auto': split layers across GPU+CPU via accelerate (bf16, no flash-attn)."
+        ),
     )
     args = parser.parse_args()
+
+    if args.device != "cuda" and args.gpu_id != 0:
+        log.warning("--gpu-id=%d is ignored when --device=%s", args.gpu_id, args.device)
 
     model_path = _resolve_model_path(args.model_dir)
     log.info("Model path: %s", model_path)
 
     cfg = {
         "gpu_id": args.gpu_id,
+        "device": args.device,
         "model_path": str(model_path),
         "http_port": args.port,
         "unnorm_key": "sim",

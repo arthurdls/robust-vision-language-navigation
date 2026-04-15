@@ -29,5 +29,7 @@ dependencies:
       - transformers==4.40.1
       - timm==0.9.10
       - tokenizers==0.19.1
+      # Required for --device auto (GPU+CPU layer offload via device_map="auto")
+      - accelerate
       # Flash Attention 2 (needs CUDA 11.6+; if install fails, install manually or use a different attn_implementation in server code)
       - flash-attn

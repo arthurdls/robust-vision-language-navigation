@@ -23,10 +23,20 @@ class OpenVLAActionAgent:
     def __init__(self, cfg):
         self.cfg = cfg
         self.gpu_id = cfg.get("gpu_id", 0)
-        self.device = torch.device(f"cuda:{self.gpu_id}")
+        self.device_mode = cfg.get("device", "cuda")
+
+        if self.device_mode not in ("cuda", "cpu", "auto"):
+            raise ValueError(
+                f"Unknown device mode: {self.device_mode!r} (expected 'cuda', 'cpu', or 'auto')"
+            )
+        if self.device_mode in ("cuda", "auto") and not torch.cuda.is_available():
+            raise RuntimeError(
+                f"device={self.device_mode!r} requires CUDA, but torch.cuda.is_available() is False. "
+                "Use --device cpu to run without a GPU."
+            )
 
         self.model_path = cfg.get("model_path")
-        log.info(f"Loading model: {self.model_path}")
+        log.info(f"Loading model: {self.model_path} (device={self.device_mode})")
 
         self.processor = AutoProcessor.from_pretrained(
             self.model_path,
@@ -34,13 +44,33 @@ class OpenVLAActionAgent:
         )
         log.info(f"Processor type: {type(self.processor)}")
 
+        load_kwargs = {
+            "low_cpu_mem_usage": True,
+            "trust_remote_code": True,
+        }
+        if self.device_mode == "cuda":
+            load_kwargs["attn_implementation"] = "flash_attention_2"
+            load_kwargs["torch_dtype"] = torch.bfloat16
+            self.compute_dtype = torch.bfloat16
+            self.device = torch.device(f"cuda:{self.gpu_id}")
+        elif self.device_mode == "cpu":
+            load_kwargs["torch_dtype"] = torch.float32
+            self.compute_dtype = torch.float32
+            self.device = torch.device("cpu")
+        else:  # auto: split across GPU + CPU RAM via accelerate
+            load_kwargs["torch_dtype"] = torch.bfloat16
+            load_kwargs["device_map"] = "auto"
+            self.compute_dtype = torch.bfloat16
+            self.device = None  # set after load from first parameter
+
         self.model = AutoModelForVision2Seq.from_pretrained(
             self.model_path,
-            attn_implementation="flash_attention_2",
-            torch_dtype=torch.bfloat16,
-            low_cpu_mem_usage=True,
-            trust_remote_code=True,
-        ).to(self.device)
+            **load_kwargs,
+        )
+        if self.device_mode != "auto":
+            self.model = self.model.to(self.device)
+        else:
+            self.device = next(self.model.parameters()).device
         log.info(f"VLA model type: {type(self.model)}")
 
         self.model.eval()
@@ -121,7 +151,7 @@ class OpenVLAActionAgent:
             pred_action: [4] numpy array
         """
         inputs = self.processor(prompt, image)
-        inputs = inputs.to(self.device, dtype=torch.bfloat16)
+        inputs = inputs.to(self.device, dtype=self.compute_dtype)
 
         pred_action = self.model.predict_action(
             **inputs,
