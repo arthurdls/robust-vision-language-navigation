@@ -44,7 +44,7 @@ from rvln.ai.utils.llm_providers import LLMFactory
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_RESULTS_DIR = REPO_ROOT / "results" / "real_integration_results"
+DEFAULT_RESULTS_DIR = REPO_ROOT / "results" / "hardware"
 IMG_INPUT_SIZE: Tuple[int, int] = (224, 224)
 ACTION_SMALL_DELTA_POS = 3.0
 ACTION_SMALL_DELTA_YAW = 1.0
@@ -191,6 +191,78 @@ class ThreadedCamera:
             self.capture.release()
         except Exception:
             pass
+
+
+class HttpFrameCamera:
+    """Camera shim that pulls JPEG/PNG frames from a remote HTTP endpoint.
+
+    Mirrors the public surface of ThreadedCamera (read, wait_until_ready,
+    release, failed, failure_reason) so callers don't care about the source.
+    """
+
+    def __init__(self, url: str, fps: int, init_timeout: float, poll_timeout: float = 0.5):
+        self.url = url
+        self.fps = max(1, fps)
+        self.init_timeout = init_timeout
+        self.poll_timeout = poll_timeout
+        self.frame: Optional[np.ndarray] = None
+        self.read_once = False
+        self.failed = False
+        self.failure_reason = ""
+        self._lock = threading.Lock()
+        self._thread = threading.Thread(target=self._update, daemon=True)
+        self._thread.start()
+
+    def _decode(self, payload: bytes) -> Optional[np.ndarray]:
+        arr = np.frombuffer(payload, dtype=np.uint8)
+        return cv2.imdecode(arr, cv2.IMREAD_COLOR)
+
+    def _update(self) -> None:
+        global stop_capture
+        period = 1.0 / float(self.fps)
+        while not stop_capture:
+            t0 = time.time()
+            try:
+                resp = requests.get(self.url, timeout=self.poll_timeout)
+                resp.raise_for_status()
+                frame = self._decode(resp.content)
+            except Exception as exc:
+                logger.debug("Frame poll failed: %s", exc)
+                frame = None
+
+            if frame is not None:
+                with self._lock:
+                    self.frame = frame
+                    self.read_once = True
+
+            elapsed = time.time() - t0
+            if elapsed < period:
+                time.sleep(period - elapsed)
+
+    def read(self) -> Tuple[bool, Optional[np.ndarray]]:
+        with self._lock:
+            if self.frame is None:
+                return False, None
+            return True, self.frame.copy()
+
+    def wait_until_ready(self) -> bool:
+        start = time.time()
+        while not stop_capture:
+            if self.read_once:
+                return True
+            if time.time() - start > self.init_timeout:
+                self.failed = True
+                self.failure_reason = (
+                    f"HTTP frame source {self.url} did not produce frames in "
+                    f"{self.init_timeout:.1f}s"
+                )
+                return False
+            time.sleep(0.1)
+        return False
+
+    def release(self) -> None:
+        # Daemon thread exits with stop_capture; nothing to free.
+        pass
 
 
 class OpenVLAClient:
@@ -712,6 +784,16 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--initial_position", type=str, default="0,0,0,0", help="x,y,z,yaw (degrees).")
     parser.add_argument("--results_dir", type=str, default=str(DEFAULT_RESULTS_DIR))
     parser.add_argument("--camera", type=int, default=0)
+    parser.add_argument(
+        "--camera_url",
+        type=str,
+        default=None,
+        help=(
+            "HTTP URL serving JPEG/PNG frames (e.g. http://127.0.0.1:8081/frame). "
+            "When set, replaces the local cv2 capture with an HTTP-pull camera. "
+            "Use this to test against the simulated MiniNav frame feed."
+        ),
+    )
     parser.add_argument("--fps", type=int, default=30)
     parser.add_argument("--camera_retries", type=int, default=15)
     parser.add_argument("--camera_init_timeout", type=float, default=8.0)
@@ -780,12 +862,20 @@ def main() -> None:
     frames_dir = run_dir / "frames"
     frames_dir.mkdir(parents=True, exist_ok=True)
 
-    camera = ThreadedCamera(
-        src=args.camera,
-        fps=args.fps,
-        max_reopen_attempts=args.camera_retries,
-        init_timeout=args.camera_init_timeout,
-    )
+    if args.camera_url:
+        logger.info("Camera source: HTTP feed at %s", args.camera_url)
+        camera = HttpFrameCamera(
+            url=args.camera_url,
+            fps=args.fps,
+            init_timeout=args.camera_init_timeout,
+        )
+    else:
+        camera = ThreadedCamera(
+            src=args.camera,
+            fps=args.fps,
+            max_reopen_attempts=args.camera_retries,
+            init_timeout=args.camera_init_timeout,
+        )
     if not camera.wait_until_ready():
         reason = camera.failure_reason or "camera failed to initialize"
         raise RuntimeError(reason)

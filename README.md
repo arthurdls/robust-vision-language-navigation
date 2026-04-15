@@ -110,34 +110,36 @@ The same planner + diary monitor + OpenVLA stack can drive a real drone via the 
 ### What you need
 
 - A flight controller / companion computer running a TCP control server that accepts the 5-float packet format (see `src/rvln/mininav/mock_server.py` for the wire format and a local simulator you can develop against).
-- A USB / network camera visible to the machine running `rvln-sim`.
+- A USB / network camera visible to the machine running `rvln-sim`, or `--camera_url` pointed at any HTTP JPEG/PNG endpoint (the simulated hardware exposes one on `:8081/frame`).
 - The OpenVLA server reachable on the network (typically on the same laptop that runs the pipeline).
 - Optional but recommended: an external odometry source (HTTP poll or UDP JSON stream). Without one, the runner falls back to dead-reckoning from commanded velocities.
 
-### Dry run against the mock server
+### Dry run against the simulated hardware
+
+`scripts/start_simulate_hardware.py` stands in for both halves of the drone-side companion: the TCP control sink (port `--port`, default 8080) and an HTTP frame feed (port `--frame_port`, default 8081) that serves random PNGs auto-discovered from `results/**/frames/`. If no frames are found it falls back to a generated white JPEG, so the pipeline runs end-to-end with no real camera attached.
 
 ```bash
 # Terminal 1: OpenVLA server (GPU machine)
 conda activate rvln-server
 python scripts/start_server.py
 
-# Terminal 2: TCP mock of the drone control server
+# Terminal 2: simulated drone-side hardware (TCP control + HTTP frame feed)
 conda activate rvln-sim
-python scripts/start_simulate_hardware.py --host 127.0.0.1 --port 8080
+python scripts/start_simulate_hardware.py --host 127.0.0.1 --port 8080 --frame_port 8081
 
-# Terminal 3: Hardware pipeline pointed at the mock
+# Terminal 3: Hardware pipeline pointed at the simulator
 conda activate rvln-sim
 python scripts/run_hardware.py \
   --preferred_server_host 127.0.0.1 \
   --control_port 8080 \
+  --camera_url http://127.0.0.1:8081/frame \
   --openvla_predict_url http://127.0.0.1:5007/predict \
-  --camera 0 \
   --initial_position 0,0,0,0 \
   --command_is_velocity \
   --instruction "take off and circle the red cone"
 ```
 
-The mock writes every received command to a CSV in its working directory so you can verify the command stream before flying anything.
+The mock writes every received command to a CSV in its working directory so you can verify the command stream before flying anything. Run results land under `results/hardware/run_<timestamp>/`.
 
 ### Live flight
 

@@ -1,9 +1,15 @@
 #!/usr/bin/env python3
 """
-TCP simulator server for boieng_mininav.py.
+Full simulator for the MiniNav drone-side hardware.
 
-Expected client payload (per command packet):
-    [frame_count, vx, vy, vz, yaw] as float32
+Stands in for both halves of a real onboard companion:
+  * TCP control sink: accepts [frame_count, vx, vy, vz, yaw] float32 packets
+    in the boieng_mininav.py wire format and logs them to CSV.
+  * HTTP frame feed: serves GET /frame as image/jpeg, sourced from a
+    configurable directory (default: random PNGs auto-discovered under
+    results/**/frames). Falls back to a generated white frame if no images
+    are available, so the pipeline can be exercised end-to-end with no real
+    camera attached.
 """
 
 from __future__ import annotations
@@ -11,13 +17,17 @@ from __future__ import annotations
 import argparse
 import csv
 import datetime as dt
+import io
 import os
+import random
 import signal
 import socket
 import struct
+import threading
 import time
 from dataclasses import dataclass, asdict
-from typing import Optional
+from http.server import BaseHTTPRequestHandler, HTTPServer
+from typing import List, Optional
 
 
 # boieng_mininav.py sends 5 float32 values per packet:
@@ -25,6 +35,11 @@ from typing import Optional
 FLOATS_PER_PACKET = 5
 PACKET_SIZE_BYTES = FLOATS_PER_PACKET * 4
 PACKET_STRUCT = struct.Struct("<5f")
+
+DEFAULT_FRAME_PORT = 8081
+DEFAULT_FRAME_SIZE = 640
+DEFAULT_FRAME_GLOB = "**/frames/*.png"
+DEFAULT_FRAME_SAMPLE_CAP = 200
 
 
 @dataclass
@@ -41,6 +56,131 @@ class DroneCommand:
     packet_index: int
 
 
+def _discover_default_frames(sample_cap: int) -> List[str]:
+    """Glob results/**/frames/*.png from REPO_ROOT, return up to sample_cap paths."""
+    try:
+        from rvln.paths import REPO_ROOT
+    except Exception:
+        return []
+    results_root = REPO_ROOT / "results"
+    if not results_root.is_dir():
+        return []
+    paths = [str(p) for p in results_root.glob(DEFAULT_FRAME_GLOB)]
+    if not paths:
+        return []
+    if len(paths) > sample_cap:
+        paths = random.sample(paths, sample_cap)
+    return paths
+
+
+def _load_frames(frames_dir: Optional[str], sample_cap: int) -> List[str]:
+    if frames_dir is None:
+        return _discover_default_frames(sample_cap)
+    base = os.path.abspath(frames_dir)
+    if not os.path.isdir(base):
+        return []
+    paths: List[str] = []
+    for root, _dirs, files in os.walk(base):
+        for name in files:
+            if name.lower().endswith((".png", ".jpg", ".jpeg")):
+                paths.append(os.path.join(root, name))
+    if len(paths) > sample_cap:
+        paths = random.sample(paths, sample_cap)
+    return paths
+
+
+def _generate_white_jpeg(size: int) -> bytes:
+    from PIL import Image
+    img = Image.new("RGB", (size, size), color=(255, 255, 255))
+    buf = io.BytesIO()
+    img.save(buf, format="JPEG", quality=85)
+    return buf.getvalue()
+
+
+class FrameFeedServer:
+    """Serves GET /frame with image/jpeg, randomly selected from a frame pool."""
+
+    def __init__(
+        self,
+        host: str,
+        port: int,
+        frames_dir: Optional[str],
+        frame_size: int,
+        sample_cap: int,
+        log_event,
+    ) -> None:
+        self.host = host
+        self.port = port
+        self.frame_size = frame_size
+        self.frames: List[str] = _load_frames(frames_dir, sample_cap)
+        self._log = log_event
+        self._fallback_jpeg: Optional[bytes] = None
+        self._httpd: Optional[HTTPServer] = None
+        self._thread: Optional[threading.Thread] = None
+
+        if self.frames:
+            self._log(
+                f"Frame feed pool: {len(self.frames)} images "
+                f"(source={frames_dir or 'auto-discovered results/**/frames'})"
+            )
+        else:
+            self._fallback_jpeg = _generate_white_jpeg(self.frame_size)
+            self._log(
+                f"Frame feed pool empty; serving generated {self.frame_size}x"
+                f"{self.frame_size} white JPEG."
+            )
+
+    def _next_frame_bytes(self) -> bytes:
+        if self.frames:
+            path = random.choice(self.frames)
+            try:
+                with open(path, "rb") as f:
+                    return f.read()
+            except OSError:
+                pass
+        if self._fallback_jpeg is None:
+            self._fallback_jpeg = _generate_white_jpeg(self.frame_size)
+        return self._fallback_jpeg
+
+    def _build_handler(self):
+        feed = self
+
+        class _Handler(BaseHTTPRequestHandler):
+            def do_GET(self):  # noqa: N802 (stdlib API)
+                if self.path.split("?", 1)[0] != "/frame":
+                    self.send_response(404)
+                    self.end_headers()
+                    return
+                payload = feed._next_frame_bytes()
+                ctype = "image/png" if payload[:8] == b"\x89PNG\r\n\x1a\n" else "image/jpeg"
+                self.send_response(200)
+                self.send_header("Content-Type", ctype)
+                self.send_header("Content-Length", str(len(payload)))
+                self.send_header("Cache-Control", "no-store")
+                self.end_headers()
+                self.wfile.write(payload)
+
+            def log_message(self, *_args, **_kwargs):
+                return
+
+        return _Handler
+
+    def start(self) -> None:
+        self._httpd = HTTPServer((self.host, self.port), self._build_handler())
+        self._thread = threading.Thread(target=self._httpd.serve_forever, daemon=True)
+        self._thread.start()
+        self._log(f"Frame feed listening on http://{self.host}:{self.port}/frame")
+
+    def stop(self) -> None:
+        if self._httpd is not None:
+            try:
+                self._httpd.shutdown()
+                self._httpd.server_close()
+            except Exception:
+                pass
+            self._httpd = None
+
+
 class MiniNavDroneServer:
     def __init__(
         self,
@@ -50,6 +190,7 @@ class MiniNavDroneServer:
         print_every: int,
         recv_buf_size: int,
         timeout_s: float,
+        frame_feed: Optional[FrameFeedServer] = None,
     ) -> None:
         self.host = host
         self.port = port
@@ -57,6 +198,7 @@ class MiniNavDroneServer:
         self.print_every = max(1, print_every)
         self.recv_buf_size = recv_buf_size
         self.timeout_s = timeout_s
+        self.frame_feed = frame_feed
 
         self._stop_requested = False
         self._server_socket: Optional[socket.socket] = None
@@ -109,6 +251,8 @@ class MiniNavDroneServer:
         self._log_event("Stop requested; shutting down server.")
         self._close_client()
         self._close_server()
+        if self.frame_feed is not None:
+            self.frame_feed.stop()
 
     def _close_client(self) -> None:
         if self._client_socket is not None:
@@ -232,6 +376,9 @@ class MiniNavDroneServer:
         self._log_event(f"Command packet format: {FLOATS_PER_PACKET} float32 ({PACKET_SIZE_BYTES} bytes)")
         self._log_event(f"CSV output: {self.csv_path}")
 
+        if self.frame_feed is not None:
+            self.frame_feed.start()
+
         self._listen()
         while not self._stop_requested:
             self._accept_client()
@@ -279,11 +426,43 @@ def parse_args() -> argparse.Namespace:
         default=1.0,
         help="Socket timeout for non-blocking shutdown loop.",
     )
+    parser.add_argument(
+        "--frame_port",
+        type=int,
+        default=DEFAULT_FRAME_PORT,
+        help=(
+            "HTTP port for the GET /frame image feed. Set to 0 to disable "
+            f"the frame server. Default: {DEFAULT_FRAME_PORT}."
+        ),
+    )
+    parser.add_argument(
+        "--frames_dir",
+        type=str,
+        default=None,
+        help=(
+            "Directory to source frames from (recursively). Default: "
+            "auto-discover results/**/frames/*.png. Falls back to a "
+            "generated white frame if no images are found."
+        ),
+    )
+    parser.add_argument(
+        "--frame_size",
+        type=int,
+        default=DEFAULT_FRAME_SIZE,
+        help="Size of the white fallback frame in pixels (square).",
+    )
+    parser.add_argument(
+        "--frame_sample_cap",
+        type=int,
+        default=DEFAULT_FRAME_SAMPLE_CAP,
+        help="Cap on the number of frames sampled from the source pool.",
+    )
     return parser.parse_args()
 
 
 def main() -> None:
     args = parse_args()
+
     server = MiniNavDroneServer(
         host=args.host,
         port=args.port,
@@ -292,6 +471,16 @@ def main() -> None:
         recv_buf_size=args.recv_buf_size,
         timeout_s=args.timeout_s,
     )
+
+    if args.frame_port > 0:
+        server.frame_feed = FrameFeedServer(
+            host=args.host,
+            port=args.frame_port,
+            frames_dir=args.frames_dir,
+            frame_size=args.frame_size,
+            sample_cap=args.frame_sample_cap,
+            log_event=server._log_event,
+        )
 
     signal.signal(signal.SIGINT, server.request_stop)
     signal.signal(signal.SIGTERM, server.request_stop)
