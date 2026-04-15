@@ -7,11 +7,17 @@ server, LTL planner, and live diary monitor. Results land under
 results/hardware/run_<timestamp>/. See README "Running on Hardware (MiniNav)"
 for the full terminal layout.
 
+Defaults target real MiniNav hardware: USB camera 0, control server at
+192.168.0.101:8080, OpenVLA action poses treated as absolute positions.
+
 Usage (from repo root):
-  # Live flight (real camera + real drone):
+  # Live flight (real USB camera + real drone):
   python scripts/run_hardware.py --instruction "take off and circle the red cone"
 
-  # Fully simulated (against scripts/start_simulate_hardware.py):
+  # Fully simulated (OpenVLA proprio/action in cm, so use velocity + delta mode):
+  #   terminal 1: python scripts/start_simulate_hardware.py
+  #   terminal 2: python scripts/start_server.py
+  #   terminal 3:
   python scripts/run_hardware.py \
       --preferred_server_host 127.0.0.1 \
       --control_port 8080 \
@@ -19,7 +25,8 @@ Usage (from repo root):
       --openvla_predict_url http://127.0.0.1:5007/predict \
       --initial_position 0,0,0,0 \
       --command_is_velocity \
-      --instruction "take off and circle the red cone"
+      --action_pose_mode delta_from_pose \
+      --instruction "Move forward 10.0 meters, then turn toward the red car"
 
 All flags are forwarded to rvln.mininav.interface.
 """

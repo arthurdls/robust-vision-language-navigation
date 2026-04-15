@@ -100,7 +100,7 @@ The Unreal download target is `runtime/unreal/` (matching `rvln.paths.UNREAL_ENV
 | `scripts/run_old_original_eval.py` | Legacy UAV-Flow batch evaluation runner |
 | `scripts/playback.py` | FPV viewer and MP4 encoder for saved runs |
 | `scripts/scout_locations.py` | Position scouting helper for task authoring |
-| `scripts/start_simulate_hardware.py` | TCP mock of the MiniNav drone control server |
+| `scripts/start_simulate_hardware.py` | Simulated MiniNav drone-side hardware (TCP control sink + HTTP frame feed) |
 | `scripts/run_hardware.py` | MiniNav real-drone integration pipeline |
 
 ## Running on Hardware (MiniNav)
@@ -136,8 +136,11 @@ python scripts/run_hardware.py \
   --openvla_predict_url http://127.0.0.1:5007/predict \
   --initial_position 0,0,0,0 \
   --command_is_velocity \
-  --instruction "take off and circle the red cone"
+  --action_pose_mode delta_from_pose \
+  --instruction "Move forward 10.0 meters, then turn toward the red car"
 ```
+
+OpenVLA's proprio input and returned action pose are in **centimetres** (the server adds the raw displacement to the current position before returning, so the response is an absolute target in cm). That is why the simulated run pairs `--action_pose_mode delta_from_pose` (subtract current pose to recover the cm displacement) with `--command_is_velocity` (integrate that displacement as cm/s over `--command_dt_s`). Omitting either flag causes the dead-reckoned pose to compound each step instead of advancing linearly.
 
 The mock writes every received command to a CSV in its working directory so you can verify the command stream before flying anything. Run results land under `results/hardware/run_<timestamp>/`.
 
@@ -161,14 +164,14 @@ Odometry options:
 
 - `--odom_http_url http://<drone>:<port>/pose` for a poll endpoint returning `{"x", "y", "z", "yaw"}`.
 - `--odom_udp_port 9001` to listen for UDP JSON packets with the same schema.
-- Omit both and the runner dead-reckons from the commands it sends (`--command_is_velocity` tells it to treat commands as m/s and rad/s rather than deltas).
+- Omit both and the runner dead-reckons from the commands it sends (`--command_is_velocity` tells it to treat commands as velocities integrated over `--command_dt_s` rather than as per-step positional deltas). Units follow whatever the flight controller expects; the bundled OpenVLA server emits poses in centimetres.
 
 Action mapping:
 
 - `--action_pose_mode direct` (default): pass the OpenVLA action pose through as the command payload.
 - `--action_pose_mode delta_from_pose`: subtract the current relative pose first; useful when OpenVLA outputs absolute targets but the flight controller expects deltas.
 
-Artifacts (frames, diary logs, trajectory, run_info.json) land in `results/real_integration_results/run_<timestamp>/` and have the same shape as the simulator runs, so `scripts/playback.py` and the offline goal-adherence tools work on them unchanged.
+Artifacts (frames, diary logs, trajectory, run_info.json) land in `results/hardware/run_<timestamp>/` (override with `--results_dir`) and have the same shape as the simulator runs, so `scripts/playback.py` and the offline goal-adherence tools work on them unchanged.
 
 ### Safety checklist before arming
 
