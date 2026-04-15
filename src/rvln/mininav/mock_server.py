@@ -247,10 +247,12 @@ class MiniNavDroneServer:
             f.write(line + "\n")
 
     def request_stop(self, *_args) -> None:
+        # Signal-handler safe: only flip the flag and stop the (separate-thread)
+        # HTTP frame feed. Sockets are torn down by run() once its accept/recv
+        # loops time out and observe the flag, avoiding EBADF on the in-flight
+        # accept() call.
         self._stop_requested = True
         self._log_event("Stop requested; shutting down server.")
-        self._close_client()
-        self._close_server()
         if self.frame_feed is not None:
             self.frame_feed.stop()
 
