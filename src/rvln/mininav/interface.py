@@ -559,6 +559,37 @@ def write_json(path: Path, payload: Dict[str, Any]) -> None:
         json.dump(payload, f, indent=2)
 
 
+def _convergence_loop(
+    monitor,
+    control: DroneControlClient,
+    pose_manager: PoseManager,
+    command_dt_s: float,
+    frame_offset: int,
+    step: int,
+    frame_path,
+    subgoal_rel_pose: List[float],
+) -> Optional[Dict[str, Any]]:
+    """Send zero-velocity commands while waiting for convergence VLM result."""
+    monitor.request_convergence(frame_path, list(subgoal_rel_pose))
+    zero_cmd = np.array([0.0, 0.0, 0.0, 0.0], dtype=np.float32)
+    global_frame_idx = frame_offset + step
+
+    while not stop_capture:
+        result = monitor.poll_result()
+        if result is not None:
+            return {
+                "action": result.action,
+                "new_instruction": result.new_instruction,
+                "reasoning": result.reasoning,
+                "completion_pct": result.completion_pct,
+            }
+        control.send_command(global_frame_idx, zero_cmd)
+        pose_manager.update_from_command(zero_cmd, command_dt_s)
+        time.sleep(command_dt_s)
+
+    return None
+
+
 def run_subgoal(
     subgoal_nl: str,
     subgoal_index: int,
@@ -576,6 +607,7 @@ def run_subgoal(
     command_dt_s: float,
     action_pose_mode: str,
     trajectory_log: List[Dict[str, Any]],
+    check_interval_s: Optional[float] = None,
 ) -> Dict[str, Any]:
     from rvln.ai.diary_monitor import DiaryCheckResult, LiveDiaryMonitor
     from rvln.ai.subgoal_converter import SubgoalConverter
@@ -593,6 +625,7 @@ def run_subgoal(
         model=monitor_model,
         artifacts_dir=diary_artifacts,
         max_corrections=max_corrections,
+        check_interval_s=check_interval_s,
     )
 
     openvla.reset_model()
@@ -606,12 +639,62 @@ def run_subgoal(
     total_steps = 0
     override_history: List[Dict[str, Any]] = []
 
+    use_async = check_interval_s is not None
+    last_correction_time = time.time() if use_async else None
+    subgoal_rel_pose = [0.0, 0.0, 0.0, 0.0]
+    frame_path = None
+
     try:
       for step in range(max_steps):
+        # 1. Check stop_capture
         if stop_capture:
             stop_reason = "interrupted"
             break
 
+        # 2. Async mode: poll for pending monitor results
+        if use_async:
+            async_result = monitor.poll_result()
+            if async_result is not None:
+                if async_result.action == "stop":
+                    stop_reason = "monitor_complete"
+                    total_steps = step
+                    break
+                if async_result.action == "force_converge":
+                    override_history.append({
+                        "step": step,
+                        "type": "force_converge",
+                        "reasoning": async_result.reasoning,
+                    })
+                    conv_dict = _convergence_loop(
+                        monitor, control, pose_manager, command_dt_s,
+                        frame_offset, step, frame_path, subgoal_rel_pose,
+                    )
+                    if conv_dict is None:
+                        stop_reason = "interrupted"
+                        break
+                    if conv_dict["action"] == "stop":
+                        stop_reason = "monitor_complete"
+                        break
+                    if conv_dict.get("new_instruction"):
+                        override_history.append({
+                            "step": step,
+                            "type": f"convergence_{conv_dict['action']}",
+                            "old_instruction": current_instruction,
+                            "new_instruction": conv_dict["new_instruction"],
+                            "reasoning": conv_dict["reasoning"],
+                        })
+                        current_instruction = conv_dict["new_instruction"]
+                        openvla_pose_origin = list(subgoal_rel_pose)
+                        small_count = 0
+                        last_pose = None
+                        last_correction_time = time.time()
+                        last_correction_step = step
+                        openvla.reset_model()
+                    else:
+                        stop_reason = "convergence_no_command"
+                        break
+
+        # 3. Grab frame, compute pose
         ok, frame = camera.read()
         if not ok or frame is None:
             time.sleep(0.05)
@@ -624,6 +707,7 @@ def run_subgoal(
         frame_path = frames_dir / f"frame_{global_frame_idx:06d}.png"
         cv2.imwrite(str(frame_path), frame)
 
+        # 4. Call monitor.on_frame
         try:
             result = monitor.on_frame(frame_path, displacement=list(subgoal_rel_pose))
         except Exception as exc:
@@ -636,18 +720,21 @@ def run_subgoal(
                 completion_pct=monitor.last_completion_pct,
             )
 
-        if result.action == "stop":
-            stop_reason = "monitor_complete"
-            total_steps = step
-            break
+        if not use_async:
+            # Sync mode: on_frame may return "stop" or "force_converge"
+            if result.action == "stop":
+                stop_reason = "monitor_complete"
+                total_steps = step
+                break
 
-        if result.action == "force_converge":
-            override_history.append({
-                "step": step,
-                "type": "force_converge",
-                "reasoning": result.reasoning,
-            })
+            if result.action == "force_converge":
+                override_history.append({
+                    "step": step,
+                    "type": "force_converge",
+                    "reasoning": result.reasoning,
+                })
 
+        # 5. openvla.predict() and send commands (identical for both modes)
         openvla_pose = [c - o for c, o in zip(subgoal_rel_pose, openvla_pose_origin)]
         response = openvla.predict(
             image_bgr=frame,
@@ -682,58 +769,105 @@ def run_subgoal(
             })
             time.sleep(command_dt_s)
 
+        # 6. Convergence detection
         total_steps = step + 1
         world_pose = pose_manager.get_world_pose()
         subgoal_rel_pose = relative_pose(world_pose, origin_world)
-        converged = result.action == "force_converge"
-        steps_since_correction = step - last_correction_step
 
-        if last_pose is not None and steps_since_correction >= check_interval:
-            diffs = [abs(a - b) for a, b in zip(subgoal_rel_pose, last_pose)]
-            if all(d < ACTION_SMALL_DELTA_POS for d in diffs[:3]) and diffs[3] < ACTION_SMALL_DELTA_YAW:
-                small_count += 1
-            else:
-                small_count = 0
-            if small_count >= ACTION_SMALL_STEPS:
-                converged = True
-        last_pose = list(subgoal_rel_pose)
+        if use_async:
+            # Async mode: time-based convergence guard
+            converged = False
+            elapsed_since_correction = time.time() - last_correction_time
+            if last_pose is not None and elapsed_since_correction >= check_interval_s:
+                diffs = [abs(a - b) for a, b in zip(subgoal_rel_pose, last_pose)]
+                if all(d < ACTION_SMALL_DELTA_POS for d in diffs[:3]) and diffs[3] < ACTION_SMALL_DELTA_YAW:
+                    small_count += 1
+                else:
+                    small_count = 0
+                if small_count >= ACTION_SMALL_STEPS:
+                    converged = True
+            last_pose = list(subgoal_rel_pose)
 
-        if converged:
-            try:
-                conv_result = monitor.on_convergence(
-                    frame_path, displacement=list(subgoal_rel_pose)
+            if converged:
+                conv_dict = _convergence_loop(
+                    monitor, control, pose_manager, command_dt_s,
+                    frame_offset, step, frame_path, subgoal_rel_pose,
                 )
-            except Exception as exc:
-                logger.error("monitor.on_convergence failed at step %d: %s", step, exc)
-                conv_result = DiaryCheckResult(
-                    action="stop",
-                    new_instruction="",
-                    reasoning="convergence_monitor_error",
-                    diary_entry="",
-                    completion_pct=monitor.last_completion_pct,
-                )
+                if conv_dict is None:
+                    stop_reason = "interrupted"
+                    break
+                if conv_dict["action"] == "stop":
+                    stop_reason = "monitor_complete"
+                    break
+                if conv_dict.get("new_instruction"):
+                    override_history.append({
+                        "step": step,
+                        "type": f"convergence_{conv_dict['action']}",
+                        "old_instruction": current_instruction,
+                        "new_instruction": conv_dict["new_instruction"],
+                        "reasoning": conv_dict["reasoning"],
+                    })
+                    current_instruction = conv_dict["new_instruction"]
+                    openvla_pose_origin = list(subgoal_rel_pose)
+                    small_count = 0
+                    last_pose = None
+                    last_correction_time = time.time()
+                    last_correction_step = step
+                    openvla.reset_model()
+                else:
+                    stop_reason = "convergence_no_command"
+                    break
+        else:
+            # Sync mode: step-based convergence guard (original behavior)
+            converged = result.action == "force_converge"
+            steps_since_correction = step - last_correction_step
 
-            if conv_result.action == "stop":
-                stop_reason = "monitor_complete"
-                break
+            if last_pose is not None and steps_since_correction >= check_interval:
+                diffs = [abs(a - b) for a, b in zip(subgoal_rel_pose, last_pose)]
+                if all(d < ACTION_SMALL_DELTA_POS for d in diffs[:3]) and diffs[3] < ACTION_SMALL_DELTA_YAW:
+                    small_count += 1
+                else:
+                    small_count = 0
+                if small_count >= ACTION_SMALL_STEPS:
+                    converged = True
+            last_pose = list(subgoal_rel_pose)
 
-            if conv_result.new_instruction:
-                override_history.append({
-                    "step": step,
-                    "type": f"convergence_{conv_result.action}",
-                    "old_instruction": current_instruction,
-                    "new_instruction": conv_result.new_instruction,
-                    "reasoning": conv_result.reasoning,
-                })
-                current_instruction = conv_result.new_instruction
-                openvla_pose_origin = list(subgoal_rel_pose)
-                small_count = 0
-                last_pose = None
-                last_correction_step = step
-                openvla.reset_model()
-            else:
-                stop_reason = "convergence_no_command"
-                break
+            if converged:
+                try:
+                    conv_result = monitor.on_convergence(
+                        frame_path, displacement=list(subgoal_rel_pose)
+                    )
+                except Exception as exc:
+                    logger.error("monitor.on_convergence failed at step %d: %s", step, exc)
+                    conv_result = DiaryCheckResult(
+                        action="stop",
+                        new_instruction="",
+                        reasoning="convergence_monitor_error",
+                        diary_entry="",
+                        completion_pct=monitor.last_completion_pct,
+                    )
+
+                if conv_result.action == "stop":
+                    stop_reason = "monitor_complete"
+                    break
+
+                if conv_result.new_instruction:
+                    override_history.append({
+                        "step": step,
+                        "type": f"convergence_{conv_result.action}",
+                        "old_instruction": current_instruction,
+                        "new_instruction": conv_result.new_instruction,
+                        "reasoning": conv_result.reasoning,
+                    })
+                    current_instruction = conv_result.new_instruction
+                    openvla_pose_origin = list(subgoal_rel_pose)
+                    small_count = 0
+                    last_pose = None
+                    last_correction_step = step
+                    openvla.reset_model()
+                else:
+                    stop_reason = "convergence_no_command"
+                    break
       else:
           stop_reason = "max_steps"
           total_steps = max_steps
