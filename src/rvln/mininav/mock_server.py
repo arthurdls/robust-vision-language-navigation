@@ -18,6 +18,8 @@ import argparse
 import csv
 import datetime as dt
 import io
+import json
+import math
 import os
 import random
 import signal
@@ -40,6 +42,44 @@ DEFAULT_FRAME_PORT = 8081
 DEFAULT_FRAME_SIZE = 640
 DEFAULT_FRAME_GLOB = "**/frames/*.png"
 DEFAULT_FRAME_SAMPLE_CAP = 200
+
+
+def _get_local_ip() -> str:
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        sock.connect(("8.8.8.8", 80))
+        return sock.getsockname()[0]
+    except OSError:
+        return "127.0.0.1"
+    finally:
+        sock.close()
+
+
+class SimulatedPose:
+    """Thread-safe integrated pose updated from received velocity commands."""
+
+    def __init__(self, initial: List[float]):
+        self._lock = threading.Lock()
+        self._pose = list(initial)
+
+    def integrate(self, vx: float, vy: float, vz: float, yaw_rad_s: float, dt_s: float) -> None:
+        with self._lock:
+            self._pose[0] += vx * dt_s
+            self._pose[1] += vy * dt_s
+            self._pose[2] += vz * dt_s
+            yaw = self._pose[3] + math.degrees(yaw_rad_s) * dt_s
+            yaw = yaw % 360.0
+            if yaw > 180.0:
+                yaw -= 360.0
+            self._pose[3] = yaw
+
+    def get(self) -> List[float]:
+        with self._lock:
+            return list(self._pose)
+
+    def as_json_bytes(self) -> bytes:
+        p = self.get()
+        return json.dumps({"x": p[0], "y": p[1], "z": p[2], "yaw": p[3]}).encode()
 
 
 @dataclass
@@ -98,7 +138,13 @@ def _generate_white_jpeg(size: int) -> bytes:
 
 
 class FrameFeedServer:
-    """Serves GET /frame with image/jpeg, randomly selected from a frame pool."""
+    """HTTP server providing GET /frame (image) and GET /pose (JSON).
+
+    Frame sources (in priority order):
+      1. ``frames_dir`` - serve from a directory of images
+      2. ``webcam`` device index - capture from local webcam (default)
+      3. White fallback JPEG if nothing else is available
+    """
 
     def __init__(
         self,
@@ -108,29 +154,80 @@ class FrameFeedServer:
         frame_size: int,
         sample_cap: int,
         log_event,
+        webcam: Optional[int] = 0,
+        pose: Optional[SimulatedPose] = None,
     ) -> None:
         self.host = host
         self.port = port
         self.frame_size = frame_size
-        self.frames: List[str] = _load_frames(frames_dir, sample_cap)
         self._log = log_event
         self._fallback_jpeg: Optional[bytes] = None
         self._httpd: Optional[HTTPServer] = None
         self._thread: Optional[threading.Thread] = None
+        self.pose = pose
 
-        if self.frames:
-            self._log(
-                f"Frame feed pool: {len(self.frames)} images "
-                f"(source={frames_dir or 'auto-discovered results/**/frames'})"
-            )
+        self._webcam_frame: Optional[bytes] = None
+        self._webcam_lock = threading.Lock()
+        self._webcam_cap = None
+        self._webcam_thread: Optional[threading.Thread] = None
+        self._webcam_stop = False
+
+        if frames_dir is not None:
+            self.frames: List[str] = _load_frames(frames_dir, sample_cap)
+            if self.frames:
+                self._log(
+                    f"Frame feed pool: {len(self.frames)} images (source={frames_dir})"
+                )
+            else:
+                self._log(f"No images found in {frames_dir}; falling back to white frame.")
+                self._fallback_jpeg = _generate_white_jpeg(self.frame_size)
+        elif webcam is not None:
+            self.frames = []
+            self._start_webcam(webcam)
         else:
+            self.frames = []
             self._fallback_jpeg = _generate_white_jpeg(self.frame_size)
             self._log(
-                f"Frame feed pool empty; serving generated {self.frame_size}x"
+                f"Webcam disabled; serving generated {self.frame_size}x"
                 f"{self.frame_size} white JPEG."
             )
 
+    def _start_webcam(self, device: int) -> None:
+        import cv2
+        cap = cv2.VideoCapture(device)
+        if not cap.isOpened():
+            self._log(f"Webcam {device} failed to open; falling back to white frame.")
+            self._fallback_jpeg = _generate_white_jpeg(self.frame_size)
+            return
+        self._webcam_cap = cap
+        self._webcam_thread = threading.Thread(target=self._webcam_loop, daemon=True)
+        self._webcam_thread.start()
+        self._log(f"Webcam {device} opened for frame feed.")
+
+    def _webcam_loop(self) -> None:
+        import cv2
+        cap = self._webcam_cap
+        while not self._webcam_stop:
+            ok, frame = cap.read()
+            if not ok:
+                time.sleep(0.05)
+                continue
+            h, w = frame.shape[:2]
+            center_h, center_w = h // 2, w // 2
+            half = min(h, w) // 2
+            cropped = frame[center_h - half:center_h + half, center_w - half:center_w + half]
+            resized = cv2.resize(cropped, (self.frame_size, self.frame_size))
+            ok, buf = cv2.imencode(".jpg", resized, [cv2.IMWRITE_JPEG_QUALITY, 85])
+            if ok:
+                with self._webcam_lock:
+                    self._webcam_frame = buf.tobytes()
+            time.sleep(1.0 / 30.0)
+        cap.release()
+
     def _next_frame_bytes(self) -> bytes:
+        with self._webcam_lock:
+            if self._webcam_frame is not None:
+                return self._webcam_frame
         if self.frames:
             path = random.choice(self.frames)
             try:
@@ -147,18 +244,27 @@ class FrameFeedServer:
 
         class _Handler(BaseHTTPRequestHandler):
             def do_GET(self):  # noqa: N802 (stdlib API)
-                if self.path.split("?", 1)[0] != "/frame":
+                route = self.path.split("?", 1)[0]
+                if route == "/frame":
+                    payload = feed._next_frame_bytes()
+                    ctype = "image/png" if payload[:8] == b"\x89PNG\r\n\x1a\n" else "image/jpeg"
+                    self.send_response(200)
+                    self.send_header("Content-Type", ctype)
+                    self.send_header("Content-Length", str(len(payload)))
+                    self.send_header("Cache-Control", "no-store")
+                    self.end_headers()
+                    self.wfile.write(payload)
+                elif route == "/pose" and feed.pose is not None:
+                    body = feed.pose.as_json_bytes()
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/json")
+                    self.send_header("Content-Length", str(len(body)))
+                    self.send_header("Cache-Control", "no-store")
+                    self.end_headers()
+                    self.wfile.write(body)
+                else:
                     self.send_response(404)
                     self.end_headers()
-                    return
-                payload = feed._next_frame_bytes()
-                ctype = "image/png" if payload[:8] == b"\x89PNG\r\n\x1a\n" else "image/jpeg"
-                self.send_response(200)
-                self.send_header("Content-Type", ctype)
-                self.send_header("Content-Length", str(len(payload)))
-                self.send_header("Cache-Control", "no-store")
-                self.end_headers()
-                self.wfile.write(payload)
 
             def log_message(self, *_args, **_kwargs):
                 return
@@ -170,8 +276,11 @@ class FrameFeedServer:
         self._thread = threading.Thread(target=self._httpd.serve_forever, daemon=True)
         self._thread.start()
         self._log(f"Frame feed listening on http://{self.host}:{self.port}/frame")
+        if self.pose is not None:
+            self._log(f"Pose endpoint listening on http://{self.host}:{self.port}/pose")
 
     def stop(self) -> None:
+        self._webcam_stop = True
         if self._httpd is not None:
             try:
                 self._httpd.shutdown()
@@ -191,6 +300,7 @@ class MiniNavDroneServer:
         recv_buf_size: int,
         timeout_s: float,
         frame_feed: Optional[FrameFeedServer] = None,
+        pose: Optional[SimulatedPose] = None,
     ) -> None:
         self.host = host
         self.port = port
@@ -199,6 +309,7 @@ class MiniNavDroneServer:
         self.recv_buf_size = recv_buf_size
         self.timeout_s = timeout_s
         self.frame_feed = frame_feed
+        self.pose = pose
 
         self._stop_requested = False
         self._server_socket: Optional[socket.socket] = None
@@ -304,6 +415,9 @@ class MiniNavDroneServer:
         frame_count = int(round(frame_count_f))
         speed_xyz = (vx * vx + vy * vy + vz * vz) ** 0.5
         yaw_deg_s = yaw * (180.0 / 3.141592653589793)
+
+        if self.pose is not None and dt_s > 0:
+            self.pose.integrate(vx, vy, vz, yaw, dt_s)
 
         return DroneCommand(
             timestamp_iso=dt.datetime.now().isoformat(timespec="milliseconds"),
@@ -459,11 +573,66 @@ def parse_args() -> argparse.Namespace:
         default=DEFAULT_FRAME_SAMPLE_CAP,
         help="Cap on the number of frames sampled from the source pool.",
     )
+    parser.add_argument(
+        "--webcam",
+        type=int,
+        default=0,
+        help="Webcam device index (default: 0). Ignored when --frames_dir is set.",
+    )
+    parser.add_argument(
+        "--no-webcam",
+        action="store_true",
+        help="Disable webcam; serve a generated white frame instead.",
+    )
+    parser.add_argument(
+        "--initial_position",
+        type=str,
+        default="0,0,0,0",
+        help="Initial simulated pose x,y,z,yaw (default: 0,0,0,0).",
+    )
+    parser.add_argument(
+        "--openvla_host",
+        type=str,
+        default=None,
+        help="OpenVLA server host for the printed connection command (default: this machine's IP).",
+    )
     return parser.parse_args()
+
+
+def _parse_initial_position(s: str) -> List[float]:
+    parts = [p.strip() for p in s.split(",")]
+    if len(parts) != 4:
+        raise ValueError("--initial_position must be x,y,z,yaw")
+    return [float(p) for p in parts]
+
+
+def _print_connection_info(
+    local_ip: str,
+    tcp_port: int,
+    frame_port: int,
+    openvla_host: str,
+) -> None:
+    print()
+    print("=" * 60)
+    print("Mock drone ready. On the client machine run:")
+    print()
+    print(f"  python scripts/run_hardware.py \\")
+    print(f"      --preferred_server_host {local_ip} \\")
+    print(f"      --control_port {tcp_port} \\")
+    print(f"      --camera_url http://{local_ip}:{frame_port}/frame \\")
+    print(f"      --odom_http_url http://{local_ip}:{frame_port}/pose \\")
+    print(f"      --openvla_predict_url http://{openvla_host}:5007/predict \\")
+    print(f"      --instruction \"your instruction here\"")
+    print()
+    print("=" * 60)
+    print()
 
 
 def main() -> None:
     args = parse_args()
+
+    initial_pose = _parse_initial_position(args.initial_position)
+    pose = SimulatedPose(initial_pose)
 
     server = MiniNavDroneServer(
         host=args.host,
@@ -472,9 +641,11 @@ def main() -> None:
         print_every=args.print_every,
         recv_buf_size=args.recv_buf_size,
         timeout_s=args.timeout_s,
+        pose=pose,
     )
 
     if args.frame_port > 0:
+        webcam_device = None if (args.no_webcam or args.frames_dir) else args.webcam
         server.frame_feed = FrameFeedServer(
             host=args.host,
             port=args.frame_port,
@@ -482,10 +653,17 @@ def main() -> None:
             frame_size=args.frame_size,
             sample_cap=args.frame_sample_cap,
             log_event=server._log_event,
+            webcam=webcam_device,
+            pose=pose,
         )
 
     signal.signal(signal.SIGINT, server.request_stop)
     signal.signal(signal.SIGTERM, server.request_stop)
+
+    local_ip = _get_local_ip()
+    openvla_host = args.openvla_host or local_ip
+    if args.frame_port > 0:
+        _print_connection_info(local_ip, args.port, args.frame_port, openvla_host)
 
     server.run()
 

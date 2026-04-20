@@ -820,6 +820,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--odom_udp_port", type=int, default=0)
     parser.add_argument("--odom_stale_timeout_s", type=float, default=1.0)
     parser.add_argument(
+        "--dead-reckoning",
+        action="store_true",
+        default=False,
+        help="Use dead-reckoning for pose estimation instead of external odometry.",
+    )
+    parser.add_argument(
         "--extra-env-file",
         type=str,
         default=None,
@@ -884,14 +890,28 @@ def main() -> None:
     )
     control.connect()
 
+    has_odom = args.odom_http_url or args.odom_udp_port > 0
+    has_dr = args.dead_reckoning
+    if has_odom and has_dr:
+        raise SystemExit("Cannot use both --dead-reckoning and external odometry (--odom_http_url / --odom_udp_port).")
+    if not has_odom and not has_dr:
+        raise SystemExit(
+            "No pose source specified. Use --odom_http_url / --odom_udp_port for "
+            "external odometry, or --dead-reckoning for estimated poses."
+        )
+
     odom_provider = None
-    if args.odom_http_url or args.odom_udp_port > 0:
+    if has_odom:
         odom_provider = OdometryPoseProvider(
             http_url=args.odom_http_url,
             udp_host=args.odom_udp_host,
             udp_port=args.odom_udp_port,
             stale_timeout_s=args.odom_stale_timeout_s,
         )
+
+    if has_dr:
+        print("\033[91mWARNING: Dead-reckoning mode active. Pose will drift over time.\033[0m")
+
     dr_provider = DeadReckoningPoseProvider(
         initial_world_pose=initial_world_pose,
         command_is_velocity=args.command_is_velocity,
