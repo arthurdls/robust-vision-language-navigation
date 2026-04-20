@@ -25,6 +25,20 @@ for envfile in rvln-sim_env.yml rvln-server_env.yml; do
     fi
 done
 
+# --- flash-attn (needs torch present, so must run after conda installs pytorch) ---
+echo ""
+echo "--- Installing flash-attn for rvln-server ---"
+if conda info --envs 2>/dev/null | grep -q "^rvln-server "; then
+    conda run --no-banner -n rvln-server pip install flash-attn --no-build-isolation || {
+        echo ""
+        echo "Warning: flash-attn installation failed (needs CUDA 11.6+ and a compatible GPU)."
+        echo "If you need it, install manually after fixing CUDA:"
+        echo "  conda activate rvln-server && pip install flash-attn --no-build-isolation"
+    }
+else
+    echo "Skipping: rvln-server env not found."
+fi
+
 # --- pip install (editable) ---
 echo ""
 echo "--- Installing rvln package (editable) ---"
