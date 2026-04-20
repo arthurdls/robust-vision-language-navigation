@@ -947,8 +947,7 @@ def parse_args() -> argparse.Namespace:
         default=1.0,
         help=(
             "Time-based checkpoint interval in seconds for concurrent VLM "
-            "monitoring. Default: 1.0. Set to 0 to use frame-based mode "
-            "(--diary_check_interval)."
+            "monitoring. Default: 1.0."
         ),
     )
     parser.add_argument("--max_corrections", type=int, default=15)
@@ -1088,7 +1087,7 @@ def main() -> None:
             "pi_predicates": dict(planner.pi_map),
         }
 
-        check_interval_s = args.diary_check_interval_s if args.diary_check_interval_s > 0 else None
+        check_interval_s = args.diary_check_interval_s
 
         current_subgoal = planner.get_next_predicate()
         subgoal_index = 0
