@@ -941,6 +941,16 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--monitor_fallback_model", type=str, default="gpt-4o")
     parser.add_argument("--max_steps_per_subgoal", type=int, default=300)
     parser.add_argument("--diary_check_interval", type=int, default=10)
+    parser.add_argument(
+        "--diary_check_interval_s",
+        type=float,
+        default=1.0,
+        help=(
+            "Time-based checkpoint interval in seconds for concurrent VLM "
+            "monitoring. Default: 1.0. Set to 0 to use frame-based mode "
+            "(--diary_check_interval)."
+        ),
+    )
     parser.add_argument("--max_corrections", type=int, default=15)
     parser.add_argument("--command_dt_s", type=float, default=0.1)
     parser.add_argument(
@@ -1078,6 +1088,8 @@ def main() -> None:
             "pi_predicates": dict(planner.pi_map),
         }
 
+        check_interval_s = args.diary_check_interval_s if args.diary_check_interval_s > 0 else None
+
         current_subgoal = planner.get_next_predicate()
         subgoal_index = 0
         while current_subgoal is not None and not stop_capture:
@@ -1100,6 +1112,7 @@ def main() -> None:
                 command_dt_s=args.command_dt_s,
                 action_pose_mode=args.action_pose_mode,
                 trajectory_log=trajectory_log,
+                check_interval_s=check_interval_s,
             )
             frame_offset += result["total_steps"]
             subgoal_summaries.append(result)
