@@ -12,10 +12,10 @@ Acts exactly like a real onboard companion, except the data is fake:
     drone or USB camera attached.
 
 Usage (from repo root):
-  python scripts/start_simulate_hardware.py
-  python scripts/start_simulate_hardware.py --host 127.0.0.1 --port 8080
-  python scripts/start_simulate_hardware.py --frames_dir results/ltl_results/run_xxx/frames
-  python scripts/start_simulate_hardware.py --frame_port 0   # disable frame feed
+  python scripts/start_mock_hardware.py
+  python scripts/start_mock_hardware.py --host 127.0.0.1 --port 8080
+  python scripts/start_mock_hardware.py --frames_dir results/ltl_results/run_xxx/frames
+  python scripts/start_mock_hardware.py --frame_port 0   # disable frame feed
 
 All flags are forwarded to rvln.mininav.mock_server.
 """
@@ -23,7 +23,7 @@ All flags are forwarded to rvln.mininav.mock_server.
 import sys
 from pathlib import Path
 
-# src/ layout: allow `python scripts/start_simulate_hardware.py` without `pip install -e .`
+# src/ layout: allow `python scripts/start_mock_hardware.py` without `pip install -e .`
 _SRC = Path(__file__).resolve().parent.parent / "src"
 if _SRC.is_dir() and str(_SRC) not in sys.path:
     sys.path.insert(0, str(_SRC))

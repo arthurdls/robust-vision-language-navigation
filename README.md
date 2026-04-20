@@ -100,7 +100,7 @@ The Unreal download target is `runtime/unreal/` (matching `rvln.paths.UNREAL_ENV
 | `scripts/run_old_original_eval.py` | Legacy UAV-Flow batch evaluation runner |
 | `scripts/playback.py` | FPV viewer and MP4 encoder for saved runs |
 | `scripts/scout_locations.py` | Position scouting helper for task authoring |
-| `scripts/start_simulate_hardware.py` | Simulated MiniNav drone-side hardware (TCP control sink + HTTP frame feed) |
+| `scripts/start_mock_hardware.py` | Simulated MiniNav drone-side hardware (TCP control sink + HTTP frame feed) |
 | `scripts/run_hardware.py` | MiniNav real-drone integration pipeline |
 
 ## Running on Hardware (MiniNav)
@@ -116,7 +116,7 @@ The same planner + diary monitor + OpenVLA stack can drive a real drone via the 
 
 ### Dry run against the simulated hardware
 
-`scripts/start_simulate_hardware.py` stands in for both halves of the drone-side companion: the TCP control sink (port `--port`, default 8080) and an HTTP frame feed (port `--frame_port`, default 8081) that serves random PNGs auto-discovered from `results/**/frames/`. If no frames are found it falls back to a generated white JPEG, so the pipeline runs end-to-end with no real camera attached.
+`scripts/start_mock_hardware.py` stands in for both halves of the drone-side companion: the TCP control sink (port `--port`, default 8080) and an HTTP frame feed (port `--frame_port`, default 8081) that serves random PNGs auto-discovered from `results/**/frames/`. If no frames are found it falls back to a generated white JPEG, so the pipeline runs end-to-end with no real camera attached.
 
 ```bash
 # Terminal 1: OpenVLA server (GPU machine)
@@ -125,7 +125,7 @@ python scripts/start_server.py
 
 # Terminal 2: simulated drone-side hardware (TCP control + HTTP frame feed)
 conda activate rvln-sim
-python scripts/start_simulate_hardware.py --host 127.0.0.1 --port 8080 --frame_port 8081
+python scripts/start_mock_hardware.py --host 127.0.0.1 --port 8080 --frame_port 8081
 
 # Terminal 3: Hardware pipeline pointed at the simulator
 conda activate rvln-sim

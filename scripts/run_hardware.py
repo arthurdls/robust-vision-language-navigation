@@ -15,7 +15,7 @@ Usage (from repo root):
   python scripts/run_hardware.py --instruction "take off and circle the red cone"
 
   # Fully simulated (OpenVLA proprio/action in cm, so use velocity + delta mode):
-  #   terminal 1: python scripts/start_simulate_hardware.py
+  #   terminal 1: python scripts/start_mock_hardware.py
   #   terminal 2: python scripts/start_server.py
   #   terminal 3:
   python scripts/run_hardware.py \
