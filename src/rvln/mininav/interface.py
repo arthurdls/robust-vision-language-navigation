@@ -749,6 +749,7 @@ def run_subgoal(
             "high_water_mark": monitor.high_water_mark,
             "parse_failures": monitor.parse_failures,
             "vlm_calls": monitor.vlm_calls,
+            "vlm_rtts": monitor.vlm_rtts,
             "stop_reason": stop_reason,
             "total_steps": total_steps,
         },

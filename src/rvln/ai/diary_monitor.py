@@ -26,9 +26,10 @@ import json
 import logging
 import shutil
 import tempfile
+import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 
 import numpy as np
 
@@ -242,6 +243,7 @@ class LiveDiaryMonitor:
         self._corrections_used = 0
         self._parse_failures = 0
         self._vlm_calls = 0
+        self._vlm_rtts: List[Dict[str, Any]] = []
         self._last_completion_pct: float = 0.0
         self._high_water_mark: float = 0.0
         self._last_displacement: List[float] = [0.0, 0.0, 0.0, 0.0]
@@ -278,6 +280,10 @@ class LiveDiaryMonitor:
     @property
     def vlm_calls(self) -> int:
         return self._vlm_calls
+
+    @property
+    def vlm_rtts(self) -> List[Dict[str, Any]]:
+        return list(self._vlm_rtts)
 
     def on_frame(
         self,
@@ -359,10 +365,10 @@ class LiveDiaryMonitor:
         sampled = sampled[-self.MAX_GLOBAL_FRAMES:]
 
         grid = build_frame_grid(sampled)
-        response = query_vlm(
-            grid, prompt, llm=self._llm, system_prompt=GENERAL_SYSTEM_PROMPT,
+        response = self._timed_query_vlm(
+            grid, prompt, "convergence",
+            system_prompt=GENERAL_SYSTEM_PROMPT,
         )
-        self._vlm_calls += 1
 
         self._save_convergence_artifact(response, prompt, grid)
 
@@ -373,10 +379,10 @@ class LiveDiaryMonitor:
                 "Convergence JSON parse failed (attempt 1), retrying. Raw: %s",
                 response[:200],
             )
-            response = query_vlm(
-                grid, prompt, llm=self._llm, system_prompt=GENERAL_SYSTEM_PROMPT,
+            response = self._timed_query_vlm(
+                grid, prompt, "convergence_retry",
+                system_prompt=GENERAL_SYSTEM_PROMPT,
             )
-            self._vlm_calls += 1
             self._save_convergence_artifact(response, prompt, grid)
             parsed = self._parse_json_response(response)
             if not parsed:
@@ -405,10 +411,10 @@ class LiveDiaryMonitor:
             logger.warning(
                 "Convergence response missing corrective_instruction, retrying."
             )
-            response = query_vlm(
-                grid, prompt, llm=self._llm, system_prompt=GENERAL_SYSTEM_PROMPT,
+            response = self._timed_query_vlm(
+                grid, prompt, "convergence_instruction_retry",
+                system_prompt=GENERAL_SYSTEM_PROMPT,
             )
-            self._vlm_calls += 1
             self._save_convergence_artifact(response, prompt, grid)
             parsed_retry = self._parse_json_response(response)
             if parsed_retry.get("complete", False) or parsed_retry.get("diagnosis") == "complete":
@@ -447,6 +453,18 @@ class LiveDiaryMonitor:
     # Internal helpers
     # ------------------------------------------------------------------
 
+    def _timed_query_vlm(self, grid: Any, prompt: str, label: str, **kwargs) -> str:
+        t0 = time.time()
+        response = query_vlm(grid, prompt, llm=self._llm, **kwargs)
+        rtt = time.time() - t0
+        self._vlm_calls += 1
+        self._vlm_rtts.append({
+            "label": label,
+            "step": self._step,
+            "rtt_s": round(rtt, 3),
+        })
+        return response
+
     @staticmethod
     def _make_llm(model: str) -> BaseLLM:
         if model.startswith("gemini"):
@@ -483,11 +501,10 @@ class LiveDiaryMonitor:
         # --- Local query: what changed ---
         grid_two = build_frame_grid([prev_path, curr_path])
         prompt_local = LOCAL_PROMPT_TEMPLATE.format(subgoal=self._subgoal)
-        change_text = query_vlm(
-            grid_two, prompt_local, llm=self._llm,
+        change_text = self._timed_query_vlm(
+            grid_two, prompt_local, "local_checkpoint",
             system_prompt=GENERAL_SYSTEM_PROMPT,
         )
-        self._vlm_calls += 1
         disp_str = self._format_displacement()
         diary_entry = f"Steps {step - n}-{step} {disp_str}: {change_text}"
         self._diary.append(diary_entry)
@@ -514,11 +531,10 @@ class LiveDiaryMonitor:
             displacement=disp_str,
         )
 
-        response_global = query_vlm(
-            grid_global, prompt_global, llm=self._llm,
+        response_global = self._timed_query_vlm(
+            grid_global, prompt_global, "global_checkpoint",
             system_prompt=GENERAL_SYSTEM_PROMPT,
         )
-        self._vlm_calls += 1
 
         parsed = self._parse_json_response(response_global)
         if not parsed:
@@ -527,11 +543,10 @@ class LiveDiaryMonitor:
                 "Checkpoint %d JSON parse failed, retrying. Raw: %s",
                 step, response_global[:200],
             )
-            response_global = query_vlm(
-                grid_global, prompt_global, llm=self._llm,
+            response_global = self._timed_query_vlm(
+                grid_global, prompt_global, "global_checkpoint_retry",
                 system_prompt=GENERAL_SYSTEM_PROMPT,
             )
-            self._vlm_calls += 1
             parsed = self._parse_json_response(response_global)
             if not parsed:
                 self._parse_failures += 1
