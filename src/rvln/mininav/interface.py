@@ -606,7 +606,8 @@ def run_subgoal(
     total_steps = 0
     override_history: List[Dict[str, Any]] = []
 
-    for step in range(max_steps):
+    try:
+      for step in range(max_steps):
         if stop_capture:
             stop_reason = "interrupted"
             break
@@ -733,9 +734,12 @@ def run_subgoal(
             else:
                 stop_reason = "convergence_no_command"
                 break
-    else:
-        stop_reason = "max_steps"
-        total_steps = max_steps
+      else:
+          stop_reason = "max_steps"
+          total_steps = max_steps
+    except Exception as exc:
+        stop_reason = f"error: {exc}"
+        logger.error("run_subgoal failed at step %d: %s", total_steps, exc)
 
     write_json(
         subgoal_dir / "diary_summary.json",
@@ -925,6 +929,7 @@ def main() -> None:
     trajectory_log: List[Dict[str, Any]] = []
     subgoal_summaries: List[Dict[str, Any]] = []
     frame_offset = 0
+    ltl_plan: Dict[str, Any] = {}
 
     try:
         from rvln.ai.llm_interface import LLM_User_Interface
@@ -967,44 +972,46 @@ def main() -> None:
             planner.advance_state(current_subgoal)
             current_subgoal = planner.get_next_predicate()
 
-        with open(run_dir / "trajectory_log.json", "w") as f:
-            json.dump(trajectory_log, f, indent=2)
-
-        end_ts = datetime.now().isoformat()
-        run_info = {
-            "task": {
-                "instruction": instruction,
-                "initial_pos": initial_world_pose,
-                "max_steps_per_subgoal": args.max_steps_per_subgoal,
-                "diary_check_interval": args.diary_check_interval,
-                "max_corrections": args.max_corrections,
-            },
-            "llm_model": llm_model,
-            "monitor_model": monitor_model,
-            "models": {
-                "ltl_nl_planning": llm_model,
-                "subgoal_converter": monitor_model,
-                "live_diary_monitor": monitor_model,
-                "openvla_predict_url": args.openvla_predict_url,
-            },
-            "ltl_plan": ltl_plan,
-            "subgoal_count": len(subgoal_summaries),
-            "subgoal_summaries": subgoal_summaries,
-            "total_steps": sum(s["total_steps"] for s in subgoal_summaries),
-            "total_vlm_calls": sum(s.get("vlm_calls", 0) for s in subgoal_summaries),
-            "total_corrections": sum(s.get("corrections_used", 0) for s in subgoal_summaries),
-            "odometry_failed_over": pose_manager.failed_over,
-            "start_time": start_ts,
-            "end_time": end_ts,
-        }
-        write_json(run_dir / "run_info.json", run_info)
-        logger.info(
-            "Run complete. Saved to %s (%d subgoals, %d steps)",
-            run_dir,
-            run_info["subgoal_count"],
-            run_info["total_steps"],
-        )
     finally:
+        end_ts = datetime.now().isoformat()
+        try:
+            with open(run_dir / "trajectory_log.json", "w") as f:
+                json.dump(trajectory_log, f, indent=2)
+            run_info = {
+                "task": {
+                    "instruction": instruction,
+                    "initial_pos": initial_world_pose,
+                    "max_steps_per_subgoal": args.max_steps_per_subgoal,
+                    "diary_check_interval": args.diary_check_interval,
+                    "max_corrections": args.max_corrections,
+                },
+                "llm_model": llm_model,
+                "monitor_model": monitor_model,
+                "models": {
+                    "ltl_nl_planning": llm_model,
+                    "subgoal_converter": monitor_model,
+                    "live_diary_monitor": monitor_model,
+                    "openvla_predict_url": args.openvla_predict_url,
+                },
+                "ltl_plan": ltl_plan,
+                "subgoal_count": len(subgoal_summaries),
+                "subgoal_summaries": subgoal_summaries,
+                "total_steps": sum(s["total_steps"] for s in subgoal_summaries),
+                "total_vlm_calls": sum(s.get("vlm_calls", 0) for s in subgoal_summaries),
+                "total_corrections": sum(s.get("corrections_used", 0) for s in subgoal_summaries),
+                "odometry_failed_over": pose_manager.failed_over,
+                "start_time": start_ts,
+                "end_time": end_ts,
+            }
+            write_json(run_dir / "run_info.json", run_info)
+            logger.info(
+                "Run complete. Saved to %s (%d subgoals, %d steps)",
+                run_dir,
+                run_info["subgoal_count"],
+                run_info["total_steps"],
+            )
+        except Exception as exc:
+            logger.error("Failed to write run summary: %s", exc)
         stop_capture = True
         pose_manager.close()
         control.close()
