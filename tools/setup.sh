@@ -14,7 +14,7 @@ echo "--- Setting up conda environments ---"
 
 for envfile in rvln-sim_env.yml rvln-server_env.yml; do
     if [ -f "$envfile" ]; then
-        envname=$(head -5 "$envfile" | grep "^name:" | awk '{print $2}')
+        envname=$(grep -m1 "^name:" "$envfile" | awk '{print $2}')
         if conda info --envs 2>/dev/null | grep -q "^$envname "; then
             echo "Updating existing env: $envname"
             conda env update -f "$envfile" --prune
