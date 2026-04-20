@@ -26,10 +26,14 @@ def main():
 
     try:
         from huggingface_hub import snapshot_download
-        from huggingface_hub.errors import RepositoryNotFoundError
     except ImportError:
         print("Error: huggingface_hub is not installed. Run: pip install huggingface-hub", file=sys.stderr)
         sys.exit(1)
+
+    try:
+        from huggingface_hub.errors import RepositoryNotFoundError
+    except ImportError:
+        from huggingface_hub.utils import RepositoryNotFoundError
 
     dest = args.dest
     if dest.exists() and any(dest.glob("*.safetensors")):
@@ -45,7 +49,6 @@ def main():
         snapshot_download(
             repo_id=args.repo,
             local_dir=str(dest),
-            local_dir_use_symlinks=False,
         )
     except RepositoryNotFoundError as err:
         print(

@@ -63,10 +63,15 @@ def get_platform_binaries():
 
 def download_from_modelscope(filename, dest_dir):
     """Download a file from ModelScope using the CLI."""
-    cmd = f"modelscope download --dataset {MODELSCOPE_REPO_UE4} --include {filename} --local_dir {dest_dir}"
-    print(f"Running: {cmd}")
+    cmd = [
+        "modelscope", "download",
+        "--dataset", MODELSCOPE_REPO_UE4,
+        "--include", filename,
+        "--local_dir", dest_dir,
+    ]
+    print(f"Running: {' '.join(cmd)}")
     try:
-        subprocess.run(cmd, shell=True, check=True)
+        subprocess.run(cmd, check=True)
     except FileNotFoundError:
         print("Error: modelscope CLI not found. Install with: pip install modelscope", file=sys.stderr)
         sys.exit(1)
@@ -82,7 +87,7 @@ def extract_and_move(zip_path, dest_dir, is_textures=False):
         z.extractall(str(zip_path.parent))
 
     if is_textures:
-        folder_name = "textures"
+        folder_name = zip_path.stem
     else:
         folder_name = zip_path.stem
 
