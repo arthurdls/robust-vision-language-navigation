@@ -236,8 +236,8 @@ class FrameFeedServer:
             try:
                 with open(path, "rb") as f:
                     return f.read()
-            except OSError:
-                pass
+            except OSError as exc:
+                self._log(f"WARNING: Failed to read frame {path}: {exc}")
         if self._fallback_jpeg is None:
             self._fallback_jpeg = _generate_white_jpeg(self.frame_size)
         return self._fallback_jpeg

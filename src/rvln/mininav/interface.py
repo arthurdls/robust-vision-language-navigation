@@ -220,7 +220,7 @@ class HttpFrameCamera:
                 resp.raise_for_status()
                 frame = self._decode(resp.content)
             except Exception as exc:
-                logger.debug("Frame poll failed: %s", exc)
+                logger.warning("Frame poll failed: %s", exc)
                 frame = None
 
             if frame is not None:
@@ -270,9 +270,10 @@ class OpenVLAClient:
     def reset_model(self) -> None:
         try:
             resp = requests.post(self.reset_url, timeout=10)
+            resp.raise_for_status()
             logger.info("Model reset: %s", resp.status_code)
         except Exception as exc:
-            logger.warning("Model reset failed: %s", exc)
+            raise RuntimeError(f"OpenVLA model reset failed: {exc}") from exc
 
     def predict(self, image_bgr: np.ndarray, proprio: np.ndarray, instr: str) -> Optional[Dict[str, Any]]:
         img = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
@@ -286,18 +287,14 @@ class OpenVLAClient:
             "proprio": proprio.tolist(),
             "instr": instr,
         }
-        try:
-            resp = requests.post(
-                self.predict_url,
-                data=json.dumps(payload),
-                headers={"Content-Type": "application/json"},
-                timeout=self.timeout_s,
-            )
-            resp.raise_for_status()
-            return resp.json()
-        except Exception as exc:
-            logger.error("OpenVLA predict failed: %s", exc)
-            return None
+        resp = requests.post(
+            self.predict_url,
+            data=json.dumps(payload),
+            headers={"Content-Type": "application/json"},
+            timeout=self.timeout_s,
+        )
+        resp.raise_for_status()
+        return resp.json()
 
 
 def get_local_ip() -> str:
@@ -305,7 +302,8 @@ def get_local_ip() -> str:
     try:
         sock.connect(("8.8.8.8", 80))
         return sock.getsockname()[0]
-    except OSError:
+    except OSError as exc:
+        logger.warning("Could not detect local IP (%s), defaulting to 127.0.0.1", exc)
         return "127.0.0.1"
     finally:
         sock.close()
@@ -408,7 +406,8 @@ class OdometryPoseProvider:
             z = float(payload["z"])
             yaw = float(payload["yaw"])
             return PoseSample(x=x, y=y, z=z, yaw_deg=normalize_angle(yaw), ts=time.time())
-        except Exception:
+        except (KeyError, ValueError, TypeError) as exc:
+            logger.warning("Failed to parse pose payload: %s (data: %s)", exc, payload)
             return None
 
     def _poll_http(self) -> None:
@@ -420,8 +419,8 @@ class OdometryPoseProvider:
             pose = self._parse_pose(resp.json())
             if pose is not None:
                 self.last_sample = pose
-        except Exception:
-            return
+        except Exception as exc:
+            logger.warning("Odometry HTTP poll failed (%s): %s", self.http_url, exc)
 
     def _poll_udp(self) -> None:
         if self._udp_sock is None:
@@ -431,11 +430,13 @@ class OdometryPoseProvider:
                 data, _addr = self._udp_sock.recvfrom(65535)
             except BlockingIOError:
                 break
-            except Exception:
+            except Exception as exc:
+                logger.warning("Odometry UDP recv error: %s", exc)
                 break
             try:
                 payload = json.loads(data.decode("utf-8"))
-            except Exception:
+            except Exception as exc:
+                logger.warning("Odometry UDP packet decode failed: %s", exc)
                 continue
             pose = self._parse_pose(payload)
             if pose is not None:
@@ -530,9 +531,18 @@ def resolve_model_with_fallback(primary_model: str, fallback_model: str) -> str:
         return primary_model
     except Exception as exc:
         logger.warning(
-            "Model '%s' unavailable (%s). Falling back to '%s'.",
+            "Model '%s' unavailable (%s). Trying fallback '%s'.",
             primary_model, exc, fallback_model,
         )
+        fallback_provider = "gemini" if fallback_model.startswith("gemini") else "openai"
+        try:
+            LLMFactory.create(fallback_provider, model=fallback_model)
+        except Exception as fallback_exc:
+            raise RuntimeError(
+                f"Neither primary model '{primary_model}' nor fallback model "
+                f"'{fallback_model}' is available: {fallback_exc}"
+            ) from fallback_exc
+        logger.info("Using fallback model '%s'.", fallback_model)
         return fallback_model
 
 
@@ -708,17 +718,7 @@ def run_subgoal(
         cv2.imwrite(str(frame_path), frame)
 
         # 4. Call monitor.on_frame
-        try:
-            result = monitor.on_frame(frame_path, displacement=list(subgoal_rel_pose))
-        except Exception as exc:
-            logger.error("monitor.on_frame failed at step %d: %s", step, exc)
-            result = DiaryCheckResult(
-                action="continue",
-                new_instruction="",
-                reasoning="monitor_error",
-                diary_entry="",
-                completion_pct=monitor.last_completion_pct,
-            )
+        result = monitor.on_frame(frame_path, displacement=list(subgoal_rel_pose))
 
         if not use_async:
             # Sync mode: on_frame may return "stop" or "force_converge"
@@ -741,10 +741,6 @@ def run_subgoal(
             proprio=state_for_openvla(openvla_pose),
             instr=current_instruction.strip().lower(),
         )
-        if response is None:
-            stop_reason = "no_response"
-            total_steps = step
-            break
 
         action_poses = response.get("action")
         if not isinstance(action_poses, list) or len(action_poses) == 0:
@@ -833,19 +829,9 @@ def run_subgoal(
             last_pose = list(subgoal_rel_pose)
 
             if converged:
-                try:
-                    conv_result = monitor.on_convergence(
-                        frame_path, displacement=list(subgoal_rel_pose)
-                    )
-                except Exception as exc:
-                    logger.error("monitor.on_convergence failed at step %d: %s", step, exc)
-                    conv_result = DiaryCheckResult(
-                        action="stop",
-                        new_instruction="",
-                        reasoning="convergence_monitor_error",
-                        diary_entry="",
-                        completion_pct=monitor.last_completion_pct,
-                    )
+                conv_result = monitor.on_convergence(
+                    frame_path, displacement=list(subgoal_rel_pose)
+                )
 
                 if conv_result.action == "stop":
                     stop_reason = "monitor_complete"
@@ -1158,11 +1144,13 @@ def main() -> None:
             )
         except Exception as exc:
             logger.error("Failed to write run summary: %s", exc)
-        stop_capture = True
-        pose_manager.close()
-        control.close()
-        camera.release()
-        cv2.destroyAllWindows()
+            raise
+        finally:
+            stop_capture = True
+            pose_manager.close()
+            control.close()
+            camera.release()
+            cv2.destroyAllWindows()
 
 
 if __name__ == "__main__":

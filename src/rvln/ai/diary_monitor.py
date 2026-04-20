@@ -429,7 +429,7 @@ class LiveDiaryMonitor:
         self._save_convergence_artifact(response, prompt, grid)
 
         parsed = self._parse_json_response(response)
-        if not parsed:
+        if parsed is None:
             self._parse_failures += 1
             logger.warning(
                 "Convergence JSON parse failed (attempt 1), retrying. Raw: %s",
@@ -441,11 +441,10 @@ class LiveDiaryMonitor:
             )
             self._save_convergence_artifact(response, prompt, grid)
             parsed = self._parse_json_response(response)
-            if not parsed:
+            if parsed is None:
                 self._parse_failures += 1
-                logger.error(
-                    "Convergence JSON parse failed after retry. Raw: %s",
-                    response[:200],
+                raise RuntimeError(
+                    f"Convergence JSON parse failed after retry. Raw: {response[:200]}"
                 )
 
         pct = float(parsed.get("completion_percentage", self._last_completion_pct))
@@ -473,7 +472,9 @@ class LiveDiaryMonitor:
             )
             self._save_convergence_artifact(response, prompt, grid)
             parsed_retry = self._parse_json_response(response)
-            if parsed_retry.get("complete", False) or parsed_retry.get("diagnosis") == "complete":
+            if parsed_retry is not None and (
+                parsed_retry.get("complete", False) or parsed_retry.get("diagnosis") == "complete"
+            ):
                 pct_r = float(parsed_retry.get("completion_percentage", pct))
                 pct_r = max(0.0, min(1.0, pct_r))
                 self._last_completion_pct = pct_r
@@ -485,15 +486,10 @@ class LiveDiaryMonitor:
                     diary_entry="",
                     completion_pct=pct_r,
                 )
-            corrective = (parsed_retry.get("corrective_instruction") or "").strip()
+            corrective = ((parsed_retry or {}).get("corrective_instruction") or "").strip()
             if not corrective:
-                logger.error("Convergence retry also returned no instruction.")
-                return DiaryCheckResult(
-                    action="stop",
-                    new_instruction="",
-                    reasoning="no_corrective_instruction",
-                    diary_entry="",
-                    completion_pct=pct,
+                raise RuntimeError(
+                    f"Convergence retry returned no corrective instruction. Raw: {response[:200]}"
                 )
 
         self._corrections_used += 1
@@ -634,7 +630,7 @@ class LiveDiaryMonitor:
         )
 
         parsed = self._parse_json_response(response_global)
-        if not parsed:
+        if parsed is None:
             self._parse_failures += 1
             logger.warning(
                 "Checkpoint %d JSON parse failed, retrying. Raw: %s",
@@ -645,11 +641,10 @@ class LiveDiaryMonitor:
                 system_prompt=GENERAL_SYSTEM_PROMPT,
             )
             parsed = self._parse_json_response(response_global)
-            if not parsed:
+            if parsed is None:
                 self._parse_failures += 1
-                logger.error(
-                    "Checkpoint %d JSON parse failed after retry. Raw: %s",
-                    step, response_global[:200],
+                raise RuntimeError(
+                    f"Checkpoint {step} JSON parse failed after retry. Raw: {response_global[:200]}"
                 )
 
         self._save_checkpoint_artifact(
@@ -734,7 +729,7 @@ class LiveDiaryMonitor:
         )
 
         parsed = self._parse_json_response(response_global)
-        if not parsed:
+        if parsed is None:
             self._parse_failures += 1
             logger.warning(
                 "Async checkpoint ~%d JSON parse failed, retrying. Raw: %s",
@@ -745,11 +740,11 @@ class LiveDiaryMonitor:
                 system_prompt=GENERAL_SYSTEM_PROMPT,
             )
             parsed = self._parse_json_response(response_global)
-            if not parsed:
+            if parsed is None:
                 self._parse_failures += 1
-                logger.error(
-                    "Async checkpoint ~%d JSON parse failed after retry. Raw: %s",
-                    step, response_global[:200],
+                raise RuntimeError(
+                    f"Async checkpoint ~{step} JSON parse failed after retry. "
+                    f"Raw: {response_global[:200]}"
                 )
 
         self._save_checkpoint_artifact(
@@ -811,7 +806,7 @@ class LiveDiaryMonitor:
         self._save_convergence_artifact(response, prompt, grid)
 
         parsed = self._parse_json_response(response)
-        if not parsed:
+        if parsed is None:
             self._parse_failures += 1
             logger.warning(
                 "Async convergence JSON parse failed (attempt 1), retrying. Raw: %s",
@@ -823,11 +818,10 @@ class LiveDiaryMonitor:
             )
             self._save_convergence_artifact(response, prompt, grid)
             parsed = self._parse_json_response(response)
-            if not parsed:
+            if parsed is None:
                 self._parse_failures += 1
-                logger.error(
-                    "Async convergence JSON parse failed after retry. Raw: %s",
-                    response[:200],
+                raise RuntimeError(
+                    f"Async convergence JSON parse failed after retry. Raw: {response[:200]}"
                 )
 
         pct = float(parsed.get("completion_percentage", self._last_completion_pct))
@@ -855,7 +849,9 @@ class LiveDiaryMonitor:
             )
             self._save_convergence_artifact(response, prompt, grid)
             parsed_retry = self._parse_json_response(response)
-            if parsed_retry.get("complete", False) or parsed_retry.get("diagnosis") == "complete":
+            if parsed_retry is not None and (
+                parsed_retry.get("complete", False) or parsed_retry.get("diagnosis") == "complete"
+            ):
                 pct_r = float(parsed_retry.get("completion_percentage", pct))
                 pct_r = max(0.0, min(1.0, pct_r))
                 self._last_completion_pct = pct_r
@@ -867,15 +863,11 @@ class LiveDiaryMonitor:
                     diary_entry="",
                     completion_pct=pct_r,
                 )
-            corrective = (parsed_retry.get("corrective_instruction") or "").strip()
+            corrective = ((parsed_retry or {}).get("corrective_instruction") or "").strip()
             if not corrective:
-                logger.error("Async convergence retry also returned no instruction.")
-                return DiaryCheckResult(
-                    action="stop",
-                    new_instruction="",
-                    reasoning="no_corrective_instruction",
-                    diary_entry="",
-                    completion_pct=pct,
+                raise RuntimeError(
+                    f"Async convergence retry returned no corrective instruction. "
+                    f"Raw: {response[:200]}"
                 )
 
         self._corrections_used += 1
@@ -904,7 +896,13 @@ class LiveDiaryMonitor:
                     result = self._run_convergence_async(frame_path, displacement)
                 except Exception:
                     logger.exception("Error in async convergence check")
-                    continue
+                    result = DiaryCheckResult(
+                        action="stop",
+                        new_instruction="",
+                        reasoning="async_convergence_error",
+                        diary_entry="",
+                        completion_pct=self._last_completion_pct,
+                    )
                 with self._lock:
                     self._pending_result = result
                 continue
@@ -916,7 +914,13 @@ class LiveDiaryMonitor:
                     result = self._run_checkpoint_async()
                 except Exception:
                     logger.exception("Error in async checkpoint")
-                    continue
+                    result = DiaryCheckResult(
+                        action="force_converge",
+                        new_instruction="",
+                        reasoning="async_checkpoint_error",
+                        diary_entry="",
+                        completion_pct=self._last_completion_pct,
+                    )
                 with self._lock:
                     self._pending_result = result
                 self._last_checkpoint_time = now
@@ -927,6 +931,10 @@ class LiveDiaryMonitor:
     ) -> DiaryCheckResult:
         if parsed is None:
             parsed = self._parse_json_response(response)
+            if parsed is None:
+                raise RuntimeError(
+                    f"Global response JSON parse failed. Raw: {response[:200]}"
+                )
         pct = float(parsed.get("completion_percentage", self._last_completion_pct))
         pct = max(0.0, min(1.0, pct))
 
@@ -957,7 +965,8 @@ class LiveDiaryMonitor:
         )
 
     @staticmethod
-    def _parse_json_response(response: str) -> dict:
+    def _parse_json_response(response: str) -> Optional[dict]:
+        """Parse JSON from LLM response. Returns None on failure."""
         text = response.strip()
         if text.startswith("```"):
             lines = text.split("\n")
@@ -974,7 +983,7 @@ class LiveDiaryMonitor:
                 except json.JSONDecodeError:
                     pass
         logger.warning("Could not parse JSON from LLM response: %s", text[:200])
-        return {}
+        return None
 
     # ------------------------------------------------------------------
     # Cleanup

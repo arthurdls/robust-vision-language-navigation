@@ -76,7 +76,7 @@ class BaseLLM(ABC):
             # lazy import Pillow
             try:
                 from PIL import Image
-            except Exception:
+            except ImportError:
                 raise RuntimeError("Pillow is required. Install with `pip install pillow`")
 
             if not isinstance(image, np.ndarray):
@@ -126,7 +126,7 @@ class BaseLLM(ABC):
         else:
             try:
                 from PIL import Image as PILImage
-            except Exception:
+            except ImportError:
                 raise RuntimeError("Pillow is required. Install with `pip install pillow`")
             if not isinstance(image, np.ndarray):
                 raise TypeError(
@@ -357,32 +357,34 @@ class GeminiProvider(BaseLLM):
                 data = _normalize_sdk_response(resp)
 
                 try:
-                    # Standard path for genai SDK response
                     return data["candidates"][0]["content"]["parts"][0]["text"]
                 except (KeyError, IndexError, TypeError) as e:
-                    logger.debug("Failed to find standard genai text path: %s. Trying fallbacks.", e)
-                    pass # Continue to fallbacks
+                    logger.warning("Gemini standard text path failed: %s. Trying fallbacks.", e)
 
                 if "text" in data and data["text"]:
+                    logger.warning("Gemini: using top-level 'text' fallback.")
                     return data["text"]
 
-                # some versions put generation candidates/outputs in nested lists
-                # try a couple plausible locations without type branching
                 candidates = data.get("candidates") or data.get("outputs") or data.get("response", None)
                 if isinstance(candidates, list) and candidates:
                     first = candidates[0]
-                    # many SDKs put content under 'content' or 'text'
                     if isinstance(first, dict):
                         for key in ("content", "text", "output"):
                             if key in first and first[key]:
+                                logger.warning("Gemini: using candidates[0]['%s'] fallback.", key)
                                 return first[key]
-                # fallback: if there's an 'output' that is a dict with 'content' list
+
                 if isinstance(data.get("output"), dict):
                     out = data["output"]
                     if "content" in out:
+                        logger.warning("Gemini: using output.content fallback.")
                         return json.dumps(out["content"])
 
-                # final fallback: return normalized dict as JSON string
+                logger.error(
+                    "Gemini: could not extract text from response. "
+                    "Returning raw JSON. Keys: %s",
+                    list(data.keys()),
+                )
                 return json.dumps(data)
             except Exception as e:
                 last_exc = e
@@ -477,28 +479,28 @@ def _normalize_sdk_response(resp: Any) -> Dict[str, Any]:
     Turn an SDK response (OpenAIObject, genai object, dict, etc.) into a plain dict.
     Prefer `to_dict()` if available; otherwise use json round-trip fallback that uses __dict__.
     """
-    # 1) If the object provides a to_dict() (common in SDKs), use it.
     if hasattr(resp, "to_dict") and callable(getattr(resp, "to_dict")):
         try:
             return resp.to_dict()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning("to_dict() failed on %s: %s", type(resp).__name__, exc)
 
-    # 2) If it's already a dict-like object
     if isinstance(resp, dict):
         return resp
 
-    # 3) Try to cast to dict directly (some SDK objects implement mapping protocol)
     try:
         return dict(resp)
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.warning("dict() cast failed on %s: %s", type(resp).__name__, exc)
 
-    # 4) Fallback: JSON encode/decode using a default serializer for objects -> uses __dict__ where possible.
     try:
         return json.loads(json.dumps(resp, default=lambda o: getattr(o, "__dict__", str(o))))
-    except Exception:
-        # Last resort: return a minimal wrapper
+    except Exception as exc:
+        logger.error(
+            "All normalization methods failed for %s: %s. "
+            "Returning raw string wrapper.",
+            type(resp).__name__, exc,
+        )
         return {"raw_response": str(resp)}
 
 
