@@ -60,7 +60,7 @@ def _discover_default_frames(sample_cap: int) -> List[str]:
     """Glob results/**/frames/*.png from REPO_ROOT, return up to sample_cap paths."""
     try:
         from rvln.paths import REPO_ROOT
-    except Exception:
+    except ImportError:
         return []
     results_root = REPO_ROOT / "results"
     if not results_root.is_dir():

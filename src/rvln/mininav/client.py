@@ -18,7 +18,7 @@ import signal
 
 try:
     from planner import call_planner
-except Exception:
+except ImportError:
     call_planner = None
 
 global stop_capture, current_frame, trigger_new_instruction
@@ -542,8 +542,8 @@ class MiniNav:
             # Send data to the server
             client_socket.send(data_bytes)
 
-        except:
-            pass
+        except OSError as exc:
+            print(f"Warning: failed to send data to server: {exc}")
 
 
     def reset_state(self):
