@@ -197,6 +197,9 @@ class FrameFeedServer:
         cap = cv2.VideoCapture(device)
         if not cap.isOpened():
             self._log(f"Webcam {device} failed to open; falling back to white frame.")
+            print(f"\033[93mWARNING: Webcam {device} could not be opened. "
+                  f"Serving a generated white frame instead. "
+                  f"Use --frames_dir to serve from a directory of images.\033[0m")
             self._fallback_jpeg = _generate_white_jpeg(self.frame_size)
             return
         self._webcam_cap = cap
