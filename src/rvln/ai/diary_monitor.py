@@ -26,6 +26,7 @@ import json
 import logging
 import shutil
 import tempfile
+import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -229,6 +230,7 @@ class LiveDiaryMonitor:
         model: str = "gpt-4o",
         artifacts_dir: Optional[Path] = None,
         max_corrections: int = 15,
+        check_interval_s: Optional[float] = None,
     ):
         self._subgoal = subgoal
         self._check_interval = check_interval
@@ -236,8 +238,13 @@ class LiveDiaryMonitor:
         self._artifacts_dir = artifacts_dir
         self._max_corrections = max_corrections
 
+        # Time-based mode configuration
+        self._time_based: bool = check_interval_s is not None
+        self._check_interval_s: Optional[float] = check_interval_s
+
         self._llm: BaseLLM = self._make_llm(model)
         self._frame_paths: List[Path] = []
+        self._frame_timestamps: List[float] = []
         self._diary: List[str] = []
         self._step = 0
         self._corrections_used = 0
@@ -303,10 +310,22 @@ class LiveDiaryMonitor:
         """
         path = self._save_frame(frame_image_or_path)
         self._frame_paths.append(path)
+        self._frame_timestamps.append(time.time())
         self._step += 1
 
         if displacement is not None:
             self._last_displacement = list(displacement)
+
+        # In time-based mode, on_frame only stores frames; checkpoints are
+        # triggered externally (e.g. by a background thread in Task 2).
+        if self._time_based:
+            return DiaryCheckResult(
+                action="continue",
+                new_instruction="",
+                reasoning="",
+                diary_entry="",
+                completion_pct=self._last_completion_pct,
+            )
 
         if self._step % self._check_interval != 0 or self._step < self._check_interval:
             return DiaryCheckResult(
@@ -452,6 +471,47 @@ class LiveDiaryMonitor:
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
+
+    def _sample_frames_by_time(self) -> List[Path]:
+        """Select frames closest to each ``check_interval_s`` boundary.
+
+        Boundaries are placed at t=0, t=interval, t=2*interval, ... from the
+        first timestamp. For each boundary, the frame with the smallest
+        absolute time difference is chosen. The result is deduplicated while
+        preserving order.
+        """
+        if not self._frame_timestamps or self._check_interval_s is None:
+            return list(self._frame_paths)
+
+        t0 = self._frame_timestamps[0]
+        t_last = self._frame_timestamps[-1]
+        interval = self._check_interval_s
+
+        # Build boundary times: t0, t0+interval, t0+2*interval, ...
+        boundaries: List[float] = []
+        b = t0
+        while b <= t_last:
+            boundaries.append(b)
+            b += interval
+        # Always include a boundary at or beyond the last timestamp
+        if not boundaries or boundaries[-1] < t_last:
+            boundaries.append(t_last)
+
+        selected: List[Path] = []
+        seen_indices: set = set()
+        for boundary in boundaries:
+            best_idx = 0
+            best_diff = abs(self._frame_timestamps[0] - boundary)
+            for i, ts in enumerate(self._frame_timestamps):
+                diff = abs(ts - boundary)
+                if diff < best_diff:
+                    best_diff = diff
+                    best_idx = i
+            if best_idx not in seen_indices:
+                seen_indices.add(best_idx)
+                selected.append(self._frame_paths[best_idx])
+
+        return selected
 
     def _timed_query_vlm(self, grid: Any, prompt: str, label: str, **kwargs) -> str:
         t0 = time.time()
