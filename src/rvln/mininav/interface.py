@@ -39,6 +39,7 @@ from PIL import Image
 
 
 from rvln.paths import REPO_ROOT, load_env_vars
+from rvln.sim.env_setup import state_for_openvla
 from rvln.ai.utils.llm_providers import LLMFactory
 
 
@@ -74,14 +75,6 @@ def relative_pose(current_world: List[float], origin_world: List[float]) -> List
         float(current_world[2] - origin_world[2]),
         float(normalize_angle(current_world[3] - origin_world[3])),
     ]
-
-
-def state_for_openvla(current_pose: List[float]) -> np.ndarray:
-    out = [0.0, 0.0, 0.0, 0.0]
-    for i in range(min(4, len(current_pose))):
-        out[i] = float(current_pose[i])
-    arr = np.array(out, dtype=np.float32)
-    return arr
 
 
 def sanitize_name(text: str, max_len: int = 48) -> str:

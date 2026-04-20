@@ -207,7 +207,7 @@ class LLM_User_Interface():
                 "content": restated_task
             }]
 
-        self._history = self._initial_context
+        self._history = list(self._initial_context)
         self.ltl_nl_formula = {}
         self._ltl_is_confirmed = False
 
@@ -260,7 +260,7 @@ class LLM_User_Interface():
     def reset_to_baseline_context(self) -> None:
         """Resets model back to initial context.
         """
-        self._history = self._initial_context
+        self._history = list(self._initial_context)
 
     def evaluate_interface(self, dataset_path: str, reset_after_each_command=False) -> None:
         """Evaluates LLM-User Interface on a natural language to LTL-NL convertion database.

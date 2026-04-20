@@ -280,7 +280,7 @@ class OpenAIProvider(BaseLLM):
             except Exception as e:
                 # quick heuristic: if it's a BadRequestError from openai give up immediately
                 status_code = getattr(getattr(e, "response", None), "status_code", None)
-                if status_code and 400 <= status_code < 500:
+                if status_code and 400 <= status_code < 500 and status_code != 429:
                     logger.error("Client error (won't retry): %s", e)
                     raise
 
