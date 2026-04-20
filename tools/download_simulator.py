@@ -123,6 +123,7 @@ def main():
     group = parser.add_mutually_exclusive_group()
     group.add_argument("--env-only", action="store_true", help="Download simulator only (skip textures)")
     group.add_argument("--textures-only", action="store_true", help="Download textures only (skip simulator)")
+    parser.add_argument("--force", action="store_true", help="Re-download even if already installed")
     args = parser.parse_args()
 
     binaries = get_platform_binaries()
@@ -136,18 +137,21 @@ def main():
         to_download.append(("textures", binaries["textures"], True))
 
     for name, filename, is_tex in to_download:
+        target = dest / Path(filename).stem
+        if target.exists() and not args.force:
+            print(f"{name} already installed at {target}")
+            continue
+
         zip_path = dest / filename
-        if zip_path.exists():
-            print(f"{filename} already downloaded at {zip_path}")
-        else:
+        if not zip_path.exists():
             print(f"\nDownloading {name}: {filename}")
             download_from_modelscope(filename, str(dest))
 
-        if not (dest / filename).exists():
-            print(f"Error: expected {dest / filename} after download", file=sys.stderr)
+        if not zip_path.exists():
+            print(f"Error: expected {zip_path} after download", file=sys.stderr)
             continue
 
-        extract_and_move(dest / filename, dest, is_textures=is_tex)
+        extract_and_move(zip_path, dest, is_textures=is_tex)
 
     print(f"\nSimulator files installed to {dest}")
     print("Set UnrealEnv environment variable if needed:")
