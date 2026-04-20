@@ -661,9 +661,10 @@ def main() -> None:
     signal.signal(signal.SIGTERM, server.request_stop)
 
     local_ip = _get_local_ip()
-    openvla_host = args.openvla_host or local_ip
+    display_ip = args.host if args.host not in ("0.0.0.0", "::") else local_ip
+    openvla_host = args.openvla_host or display_ip
     if args.frame_port > 0:
-        _print_connection_info(local_ip, args.port, args.frame_port, openvla_host)
+        _print_connection_info(display_ip, args.port, args.frame_port, openvla_host)
 
     server.run()
 
