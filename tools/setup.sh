@@ -31,8 +31,12 @@ echo "--- Installing flash-attn for rvln-server ---"
 if conda info --envs 2>/dev/null | grep -q "^rvln-server "; then
     conda run --no-banner -n rvln-server pip install flash-attn --no-build-isolation || {
         echo ""
-        echo "Warning: flash-attn installation failed (needs CUDA 11.6+ and a compatible GPU)."
-        echo "If you need it, install manually after fixing CUDA:"
+        echo "Warning: flash-attn installation failed (see error above)."
+        echo "Common causes:"
+        echo "  - ninja not installed:  conda install -n rvln-server ninja"
+        echo "  - nvcc not found:       make sure the CUDA toolkit is on PATH"
+        echo "  - torch/CUDA mismatch:  conda run -n rvln-server python -c 'import torch; print(torch.version.cuda)'"
+        echo "To retry manually:"
         echo "  conda activate rvln-server && pip install flash-attn --no-build-isolation"
     }
 else
