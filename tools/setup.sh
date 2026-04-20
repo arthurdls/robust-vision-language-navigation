@@ -29,7 +29,7 @@ done
 echo ""
 echo "--- Installing flash-attn for rvln-server ---"
 if conda info --envs 2>/dev/null | grep -q "^rvln-server "; then
-    conda run --no-banner -n rvln-server pip install flash-attn --no-build-isolation || {
+    conda run -n rvln-server pip install flash-attn --no-build-isolation || {
         echo ""
         echo "Warning: flash-attn installation failed (see error above)."
         echo "Common causes:"
