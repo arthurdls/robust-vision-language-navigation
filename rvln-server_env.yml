@@ -18,14 +18,15 @@ channels:
 dependencies:
   - python>=3.10,<3.12
   - pip
+  # Install torch via conda (before pip runs) so flash-attn can find it at build time.
+  - pytorch>=2.2.0
+  - torchvision>=0.16.0
 
   - pip:
       - numpy
       - pillow
       - flask
       # OpenVLA model stack (versions aligned with UAV-Flow/OpenVLA-UAV/requirements-min.txt)
-      - torch>=2.2.0
-      - torchvision>=0.16.0
       - transformers==4.40.1
       - timm==0.9.10
       - tokenizers==0.19.1

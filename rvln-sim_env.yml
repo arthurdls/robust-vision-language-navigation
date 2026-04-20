@@ -38,6 +38,7 @@ dependencies:
       - pandas
       - pydantic
       - scikit-learn
+      - torch>=2.2.0
       - sentence-transformers
       - sympy
       - tqdm
