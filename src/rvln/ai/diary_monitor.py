@@ -30,7 +30,7 @@ import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 
@@ -256,6 +256,19 @@ class LiveDiaryMonitor:
         self._last_displacement: List[float] = [0.0, 0.0, 0.0, 0.0]
         self._temp_dir: Optional[str] = None
 
+        self._lock = threading.Lock()
+        self._stop_event = threading.Event()
+        self._pending_result: Optional[DiaryCheckResult] = None
+        self._convergence_request: Optional[Tuple[Path, List[float]]] = None
+        self._last_checkpoint_time: float = time.time()
+        self._monitor_thread: Optional[threading.Thread] = None
+
+        if self._time_based:
+            self._monitor_thread = threading.Thread(
+                target=self._monitor_loop, daemon=True,
+            )
+            self._monitor_thread.start()
+
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
@@ -292,6 +305,23 @@ class LiveDiaryMonitor:
     def vlm_rtts(self) -> List[Dict[str, Any]]:
         return list(self._vlm_rtts)
 
+    def poll_result(self) -> Optional[DiaryCheckResult]:
+        """Return and clear any pending async result.
+        Returns None if no result is ready or if in frame-based mode."""
+        if not self._time_based:
+            return None
+        with self._lock:
+            result = self._pending_result
+            self._pending_result = None
+        return result
+
+    def request_convergence(
+        self, frame_path: Union[Path, str], displacement: List[float],
+    ) -> None:
+        """Queue a convergence check for the background thread."""
+        with self._lock:
+            self._convergence_request = (Path(frame_path), list(displacement))
+
     def on_frame(
         self,
         frame_image_or_path: Union[np.ndarray, Path, str],
@@ -309,16 +339,16 @@ class LiveDiaryMonitor:
         displacement : [x, y, z, yaw] relative to subtask start position
         """
         path = self._save_frame(frame_image_or_path)
-        self._frame_paths.append(path)
-        self._frame_timestamps.append(time.time())
-        self._step += 1
 
-        if displacement is not None:
-            self._last_displacement = list(displacement)
-
-        # In time-based mode, on_frame only stores frames; checkpoints are
-        # triggered externally (e.g. by a background thread in Task 2).
+        # In time-based mode, frame data updates must be under the lock
+        # because the background thread reads them concurrently.
         if self._time_based:
+            with self._lock:
+                self._frame_paths.append(path)
+                self._frame_timestamps.append(time.time())
+                self._step += 1
+                if displacement is not None:
+                    self._last_displacement = list(displacement)
             return DiaryCheckResult(
                 action="continue",
                 new_instruction="",
@@ -326,6 +356,13 @@ class LiveDiaryMonitor:
                 diary_entry="",
                 completion_pct=self._last_completion_pct,
             )
+
+        self._frame_paths.append(path)
+        self._frame_timestamps.append(time.time())
+        self._step += 1
+
+        if displacement is not None:
+            self._last_displacement = list(displacement)
 
         if self._step % self._check_interval != 0 or self._step < self._check_interval:
             return DiaryCheckResult(
@@ -633,6 +670,257 @@ class LiveDiaryMonitor:
 
         return result
 
+    def _run_checkpoint_async(self) -> DiaryCheckResult:
+        """Run a checkpoint from the background thread (time-based mode).
+
+        Snapshots frame data under the lock, then releases the lock before
+        making VLM calls.
+        """
+        with self._lock:
+            if len(self._frame_paths) < 2:
+                return DiaryCheckResult(
+                    action="continue",
+                    new_instruction="",
+                    reasoning="Not enough frames for async checkpoint.",
+                    diary_entry="",
+                    completion_pct=self._last_completion_pct,
+                )
+            prev_path = self._frame_paths[-2]
+            curr_path = self._frame_paths[-1]
+            step = self._step
+            displacement = list(self._last_displacement)
+
+        # --- Local query: what changed ---
+        grid_two = build_frame_grid([prev_path, curr_path])
+        prompt_local = LOCAL_PROMPT_TEMPLATE.format(subgoal=self._subgoal)
+        change_text = self._timed_query_vlm(
+            grid_two, prompt_local, "local_checkpoint_async",
+            system_prompt=GENERAL_SYSTEM_PROMPT,
+        )
+        # Use displacement snapshot for the diary entry
+        d = displacement
+        disp_str = (
+            f"[x: {d[0] / 100:.2f} m, y: {d[1] / 100:.2f} m, "
+            f"z: {d[2] / 100:.2f} m, yaw: {d[3]:.1f}\u00b0]"
+        )
+        diary_entry = f"Steps ~{step} {disp_str}: {change_text}"
+        self._diary.append(diary_entry)
+
+        # --- Global query: assess progress ---
+        sampled = self._sample_frames_by_time()
+        if not sampled:
+            return DiaryCheckResult(
+                action="continue",
+                new_instruction="",
+                reasoning="No sampled frames for global grid.",
+                diary_entry=diary_entry,
+                completion_pct=self._last_completion_pct,
+            )
+
+        sampled = sampled[-self.MAX_GLOBAL_FRAMES:]
+
+        grid_global = build_frame_grid(sampled)
+        diary_blob = "\n".join(self._diary)
+        prompt_global = GLOBAL_PROMPT_TEMPLATE.format(
+            subgoal=self._subgoal,
+            diary=diary_blob,
+            prev_completion_pct=self._last_completion_pct,
+            displacement=disp_str,
+        )
+
+        response_global = self._timed_query_vlm(
+            grid_global, prompt_global, "global_checkpoint_async",
+            system_prompt=GENERAL_SYSTEM_PROMPT,
+        )
+
+        parsed = self._parse_json_response(response_global)
+        if not parsed:
+            self._parse_failures += 1
+            logger.warning(
+                "Async checkpoint ~%d JSON parse failed, retrying. Raw: %s",
+                step, response_global[:200],
+            )
+            response_global = self._timed_query_vlm(
+                grid_global, prompt_global, "global_checkpoint_async_retry",
+                system_prompt=GENERAL_SYSTEM_PROMPT,
+            )
+            parsed = self._parse_json_response(response_global)
+            if not parsed:
+                self._parse_failures += 1
+                logger.error(
+                    "Async checkpoint ~%d JSON parse failed after retry. Raw: %s",
+                    step, response_global[:200],
+                )
+
+        self._save_checkpoint_artifact(
+            step, grid_two, grid_global,
+            prompt_local, change_text,
+            prompt_global, response_global,
+        )
+
+        result = self._parse_global_response(
+            response_global, diary_entry, parsed=parsed,
+        )
+
+        self._last_completion_pct = result.completion_pct
+        self._high_water_mark = max(self._high_water_mark, result.completion_pct)
+        self._diary.append(
+            f"Checkpoint ~{step}: completion = {result.completion_pct:.2f}"
+        )
+
+        return result
+
+    def _run_convergence_async(
+        self, frame_path: Path, displacement: List[float],
+    ) -> DiaryCheckResult:
+        """Run a convergence check from the background thread."""
+        if self._corrections_used >= self._max_corrections:
+            logger.warning(
+                "Max corrections (%d) exhausted. Ending run.",
+                self._max_corrections,
+            )
+            return DiaryCheckResult(
+                action="stop",
+                new_instruction="",
+                reasoning=f"Max corrections ({self._max_corrections}) exhausted.",
+                diary_entry="",
+                completion_pct=self._last_completion_pct,
+            )
+
+        self._last_displacement = list(displacement)
+        disp_str = self._format_displacement()
+        diary_blob = "\n".join(self._diary) if self._diary else "(no diary entries yet)"
+        prompt = CONVERGENCE_PROMPT_TEMPLATE.format(
+            subgoal=self._subgoal,
+            diary=diary_blob,
+            prev_completion_pct=self._last_completion_pct,
+            displacement=disp_str,
+        )
+
+        sampled = self._sample_frames_by_time()
+        if not sampled or sampled[-1] != frame_path:
+            sampled.append(frame_path)
+        sampled = sampled[-self.MAX_GLOBAL_FRAMES:]
+
+        grid = build_frame_grid(sampled)
+        response = self._timed_query_vlm(
+            grid, prompt, "convergence_async",
+            system_prompt=GENERAL_SYSTEM_PROMPT,
+        )
+
+        self._save_convergence_artifact(response, prompt, grid)
+
+        parsed = self._parse_json_response(response)
+        if not parsed:
+            self._parse_failures += 1
+            logger.warning(
+                "Async convergence JSON parse failed (attempt 1), retrying. Raw: %s",
+                response[:200],
+            )
+            response = self._timed_query_vlm(
+                grid, prompt, "convergence_async_retry",
+                system_prompt=GENERAL_SYSTEM_PROMPT,
+            )
+            self._save_convergence_artifact(response, prompt, grid)
+            parsed = self._parse_json_response(response)
+            if not parsed:
+                self._parse_failures += 1
+                logger.error(
+                    "Async convergence JSON parse failed after retry. Raw: %s",
+                    response[:200],
+                )
+
+        pct = float(parsed.get("completion_percentage", self._last_completion_pct))
+        pct = max(0.0, min(1.0, pct))
+        self._last_completion_pct = pct
+        self._high_water_mark = max(self._high_water_mark, pct)
+
+        if parsed.get("complete", False) or parsed.get("diagnosis") == "complete":
+            return DiaryCheckResult(
+                action="stop",
+                new_instruction="",
+                reasoning=f"Subgoal complete on async convergence. Raw: {response}",
+                diary_entry="",
+                completion_pct=pct,
+            )
+
+        corrective = parsed.get("corrective_instruction") or ""
+        if not corrective:
+            logger.warning(
+                "Async convergence response missing corrective_instruction, retrying."
+            )
+            response = self._timed_query_vlm(
+                grid, prompt, "convergence_async_instruction_retry",
+                system_prompt=GENERAL_SYSTEM_PROMPT,
+            )
+            self._save_convergence_artifact(response, prompt, grid)
+            parsed_retry = self._parse_json_response(response)
+            if parsed_retry.get("complete", False) or parsed_retry.get("diagnosis") == "complete":
+                pct_r = float(parsed_retry.get("completion_percentage", pct))
+                pct_r = max(0.0, min(1.0, pct_r))
+                self._last_completion_pct = pct_r
+                self._high_water_mark = max(self._high_water_mark, pct_r)
+                return DiaryCheckResult(
+                    action="stop",
+                    new_instruction="",
+                    reasoning=f"Subgoal complete on async convergence (retry). Raw: {response}",
+                    diary_entry="",
+                    completion_pct=pct_r,
+                )
+            corrective = (parsed_retry.get("corrective_instruction") or "").strip()
+            if not corrective:
+                logger.error("Async convergence retry also returned no instruction.")
+                return DiaryCheckResult(
+                    action="stop",
+                    new_instruction="",
+                    reasoning="no_corrective_instruction",
+                    diary_entry="",
+                    completion_pct=pct,
+                )
+
+        self._corrections_used += 1
+        return DiaryCheckResult(
+            action="command",
+            new_instruction=corrective,
+            reasoning=f"Async convergence diagnosis: {parsed.get('diagnosis', 'unknown')}. Raw: {response}",
+            diary_entry="",
+            completion_pct=pct,
+        )
+
+    def _monitor_loop(self) -> None:
+        """Background thread main loop for time-based mode."""
+        while not self._stop_event.is_set():
+            if self._stop_event.wait(timeout=0.05):
+                break
+
+            # Check for convergence request (higher priority)
+            with self._lock:
+                conv_req = self._convergence_request
+                self._convergence_request = None
+
+            if conv_req is not None:
+                frame_path, displacement = conv_req
+                try:
+                    result = self._run_convergence_async(frame_path, displacement)
+                except Exception:
+                    logger.exception("Error in async convergence check")
+                    continue
+                with self._lock:
+                    self._pending_result = result
+                continue
+
+            # Check if checkpoint interval has elapsed
+            now = time.time()
+            if now - self._last_checkpoint_time >= (self._check_interval_s or 0):
+                try:
+                    result = self._run_checkpoint_async()
+                except Exception:
+                    logger.exception("Error in async checkpoint")
+                    continue
+                with self._lock:
+                    self._pending_result = result
+                self._last_checkpoint_time = now
+
     def _parse_global_response(
         self, response: str, diary_entry: str,
         parsed: Optional[dict] = None,
@@ -693,7 +981,11 @@ class LiveDiaryMonitor:
     # ------------------------------------------------------------------
 
     def cleanup(self) -> None:
-        """Remove temporary frame directory if it was created."""
+        """Stop background thread and remove temporary frame directory."""
+        self._stop_event.set()
+        if self._monitor_thread is not None:
+            self._monitor_thread.join(timeout=5.0)
+            self._monitor_thread = None
         if self._temp_dir is not None:
             try:
                 shutil.rmtree(self._temp_dir, ignore_errors=True)
