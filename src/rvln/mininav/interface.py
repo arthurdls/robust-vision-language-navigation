@@ -618,6 +618,7 @@ def run_subgoal(
     action_pose_mode: str,
     trajectory_log: List[Dict[str, Any]],
     check_interval_s: Optional[float] = None,
+    max_seconds: Optional[float] = None,
     stall_window: int = 3,
     stall_threshold: float = 0.05,
     stall_completion_floor: float = 0.8,
@@ -657,6 +658,7 @@ def run_subgoal(
 
     use_async = check_interval_s is not None
     last_correction_time = time.time() if use_async else None
+    subgoal_start_time = time.time()
     subgoal_rel_pose = [0.0, 0.0, 0.0, 0.0]
     frame_path = None
 
@@ -668,6 +670,46 @@ def run_subgoal(
         if stop_capture:
             stop_reason = "interrupted"
             break
+
+        # 1b. Check max_seconds (time-based budget for async mode)
+        if max_seconds is not None and (time.time() - subgoal_start_time) >= max_seconds:
+            total_steps = step
+            elapsed = time.time() - subgoal_start_time
+            control.send_command(frame_offset + step, np.array([0.0, 0.0, 0.0, 0.0], dtype=np.float32))
+            logger.warning(
+                "Max seconds (%.1f) reached at step %d (completion: %.0f%%). Asking operator for help.",
+                elapsed, step, monitor.last_completion_pct * 100,
+            )
+            print(f"\n{'='*60}")
+            print(f"MAX TIME REACHED ({elapsed:.1f}s) - subgoal: {subgoal_nl}")
+            print(f"Completion: {monitor.last_completion_pct:.0%}")
+            print(f"Current instruction: {current_instruction}")
+            print(f"{'='*60}")
+            human_input = input("New instruction (or 'skip' to end subgoal, 'abort' to stop): ").strip()
+            if human_input.lower() == "abort":
+                stop_reason = "operator_abort"
+                break
+            elif human_input and human_input.lower() != "skip":
+                override_history.append({
+                    "step": step,
+                    "type": "operator_help",
+                    "old_instruction": current_instruction,
+                    "new_instruction": human_input,
+                    "reasoning": f"Max seconds ({elapsed:.1f}s) reached.",
+                })
+                current_instruction = human_input
+                openvla_pose_origin = list(subgoal_rel_pose)
+                small_count = 0
+                last_pose = None
+                if use_async:
+                    last_correction_time = time.time()
+                last_correction_step = step
+                subgoal_start_time = time.time()
+                openvla.reset_model()
+                continue
+            else:
+                stop_reason = "max_seconds"
+                break
 
         # 2. Async mode: poll for pending monitor results
         if use_async:
@@ -1129,6 +1171,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--llm_fallback_model", type=str, default="gpt-4o-mini")
     parser.add_argument("--monitor_fallback_model", type=str, default="gpt-4o")
     parser.add_argument("--max_steps_per_subgoal", type=int, default=300)
+    parser.add_argument("--max_seconds_per_subgoal", type=float, default=None,
+        help="Time budget per subgoal in seconds (async mode). Prompts operator when exceeded.")
     parser.add_argument("--diary_check_interval", type=int, default=10)
     parser.add_argument(
         "--diary_check_interval_s",
@@ -1307,6 +1351,7 @@ def main() -> None:
                 action_pose_mode=args.action_pose_mode,
                 trajectory_log=trajectory_log,
                 check_interval_s=check_interval_s,
+                max_seconds=args.max_seconds_per_subgoal,
                 stall_window=args.stall_window,
                 stall_threshold=args.stall_threshold,
                 stall_completion_floor=args.stall_completion_floor,
