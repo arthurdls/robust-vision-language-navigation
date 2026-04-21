@@ -618,6 +618,9 @@ def run_subgoal(
     action_pose_mode: str,
     trajectory_log: List[Dict[str, Any]],
     check_interval_s: Optional[float] = None,
+    stall_window: int = 3,
+    stall_threshold: float = 0.05,
+    stall_completion_floor: float = 0.8,
 ) -> Dict[str, Any]:
     from rvln.ai.diary_monitor import DiaryCheckResult, LiveDiaryMonitor
     from rvln.ai.subgoal_converter import SubgoalConverter
@@ -636,6 +639,9 @@ def run_subgoal(
         artifacts_dir=diary_artifacts,
         max_corrections=max_corrections,
         check_interval_s=check_interval_s,
+        stall_window=stall_window,
+        stall_threshold=stall_threshold,
+        stall_completion_floor=stall_completion_floor,
     )
 
     openvla.reset_model()
@@ -704,6 +710,39 @@ def run_subgoal(
                         stop_reason = "convergence_no_command"
                         break
 
+                if async_result.action == "ask_help":
+                    control.send_command(frame_offset + step, np.array([0.0, 0.0, 0.0, 0.0], dtype=np.float32))
+                    logger.warning(
+                        "Stall detected at step %d (completion: %.0f%%). Asking operator for help.",
+                        step, async_result.completion_pct * 100,
+                    )
+                    print(f"\n{'='*60}")
+                    print(f"STALL DETECTED - subgoal: {subgoal_nl}")
+                    print(f"Completion: {async_result.completion_pct:.0%}")
+                    print(f"Current instruction: {current_instruction}")
+                    print(f"Reasoning: {async_result.reasoning}")
+                    print(f"{'='*60}")
+                    human_input = input("New instruction (or 'skip' to continue, 'abort' to stop): ").strip()
+                    if human_input.lower() == "abort":
+                        stop_reason = "operator_abort"
+                        total_steps = step
+                        break
+                    if human_input and human_input.lower() != "skip":
+                        override_history.append({
+                            "step": step,
+                            "type": "operator_help",
+                            "old_instruction": current_instruction,
+                            "new_instruction": human_input,
+                            "reasoning": async_result.reasoning,
+                        })
+                        current_instruction = human_input
+                        openvla_pose_origin = list(subgoal_rel_pose)
+                        small_count = 0
+                        last_pose = None
+                        last_correction_time = time.time()
+                        last_correction_step = step
+                        openvla.reset_model()
+
         # 3. Grab frame, compute pose
         ok, frame = camera.read()
         if not ok or frame is None:
@@ -733,6 +772,38 @@ def run_subgoal(
                     "type": "force_converge",
                     "reasoning": result.reasoning,
                 })
+
+            if result.action == "ask_help":
+                control.send_command(frame_offset + step, np.array([0.0, 0.0, 0.0, 0.0], dtype=np.float32))
+                logger.warning(
+                    "Stall detected at step %d (completion: %.0f%%). Asking operator for help.",
+                    step, result.completion_pct * 100,
+                )
+                print(f"\n{'='*60}")
+                print(f"STALL DETECTED - subgoal: {subgoal_nl}")
+                print(f"Completion: {result.completion_pct:.0%}")
+                print(f"Current instruction: {current_instruction}")
+                print(f"Reasoning: {result.reasoning}")
+                print(f"{'='*60}")
+                human_input = input("New instruction (or 'skip' to continue, 'abort' to stop): ").strip()
+                if human_input.lower() == "abort":
+                    stop_reason = "operator_abort"
+                    total_steps = step
+                    break
+                if human_input and human_input.lower() != "skip":
+                    override_history.append({
+                        "step": step,
+                        "type": "operator_help",
+                        "old_instruction": current_instruction,
+                        "new_instruction": human_input,
+                        "reasoning": result.reasoning,
+                    })
+                    current_instruction = human_input
+                    openvla_pose_origin = list(subgoal_rel_pose)
+                    small_count = 0
+                    last_pose = None
+                    last_correction_step = step
+                    openvla.reset_model()
 
         # 5. openvla.predict() and send commands (identical for both modes)
         openvla_pose = [c - o for c, o in zip(subgoal_rel_pose, openvla_pose_origin)]
@@ -937,6 +1008,12 @@ def parse_args() -> argparse.Namespace:
         ),
     )
     parser.add_argument("--max_corrections", type=int, default=15)
+    parser.add_argument("--stall_window", type=int, default=3,
+        help="Number of consecutive checkpoints with flat completion to trigger help request.")
+    parser.add_argument("--stall_threshold", type=float, default=0.05,
+        help="Max completion delta across stall_window checkpoints to count as stalled.")
+    parser.add_argument("--stall_completion_floor", type=float, default=0.8,
+        help="Don't trigger stall detection above this completion level.")
     parser.add_argument("--command_dt_s", type=float, default=0.1)
     parser.add_argument(
         "--action_pose_mode",
@@ -1098,6 +1175,9 @@ def main() -> None:
                 action_pose_mode=args.action_pose_mode,
                 trajectory_log=trajectory_log,
                 check_interval_s=check_interval_s,
+                stall_window=args.stall_window,
+                stall_threshold=args.stall_threshold,
+                stall_completion_floor=args.stall_completion_floor,
             )
             frame_offset += result["total_steps"]
             subgoal_summaries.append(result)
