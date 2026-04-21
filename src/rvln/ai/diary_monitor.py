@@ -402,11 +402,11 @@ class LiveDiaryMonitor:
 
         if self._corrections_used >= self._max_corrections:
             logger.warning(
-                "Max corrections (%d) exhausted. Ending run.",
+                "Max corrections (%d) exhausted. Asking for help.",
                 self._max_corrections,
             )
             return DiaryCheckResult(
-                action="stop",
+                action="ask_help",
                 new_instruction="",
                 reasoning=f"Max corrections ({self._max_corrections}) exhausted.",
                 diary_entry="",
@@ -808,11 +808,11 @@ class LiveDiaryMonitor:
         """Run a convergence check from the background thread."""
         if self._corrections_used >= self._max_corrections:
             logger.warning(
-                "Max corrections (%d) exhausted. Ending run.",
+                "Max corrections (%d) exhausted. Asking for help.",
                 self._max_corrections,
             )
             return DiaryCheckResult(
-                action="stop",
+                action="ask_help",
                 new_instruction="",
                 reasoning=f"Max corrections ({self._max_corrections}) exhausted.",
                 diary_entry="",

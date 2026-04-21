@@ -660,8 +660,10 @@ def run_subgoal(
     subgoal_rel_pose = [0.0, 0.0, 0.0, 0.0]
     frame_path = None
 
+    step_base = 0
     try:
-      for step in range(max_steps):
+     while True:
+      for step in range(step_base, step_base + max_steps):
         # 1. Check stop_capture
         if stop_capture:
             stop_reason = "interrupted"
@@ -691,7 +693,39 @@ def run_subgoal(
                     if conv_dict["action"] == "stop":
                         stop_reason = "monitor_complete"
                         break
-                    if conv_dict.get("new_instruction"):
+                    if conv_dict["action"] == "ask_help":
+                        control.send_command(frame_offset + step, np.array([0.0, 0.0, 0.0, 0.0], dtype=np.float32))
+                        logger.warning(
+                            "Convergence exhausted corrections at step %d (completion: %.0f%%). Asking operator for help.",
+                            step, conv_dict["completion_pct"] * 100,
+                        )
+                        print(f"\n{'='*60}")
+                        print(f"MAX CORRECTIONS REACHED - subgoal: {subgoal_nl}")
+                        print(f"Completion: {conv_dict['completion_pct']:.0%}")
+                        print(f"Current instruction: {current_instruction}")
+                        print(f"Reasoning: {conv_dict['reasoning']}")
+                        print(f"{'='*60}")
+                        human_input = input("New instruction (or 'skip' to continue, 'abort' to stop): ").strip()
+                        if human_input.lower() == "abort":
+                            stop_reason = "operator_abort"
+                            total_steps = step
+                            break
+                        if human_input and human_input.lower() != "skip":
+                            override_history.append({
+                                "step": step,
+                                "type": "operator_help",
+                                "old_instruction": current_instruction,
+                                "new_instruction": human_input,
+                                "reasoning": conv_dict["reasoning"],
+                            })
+                            current_instruction = human_input
+                            openvla_pose_origin = list(subgoal_rel_pose)
+                            small_count = 0
+                            last_pose = None
+                            last_correction_time = time.time()
+                            last_correction_step = step
+                            openvla.reset_model()
+                    elif conv_dict.get("new_instruction"):
                         override_history.append({
                             "step": step,
                             "type": f"convergence_{conv_dict['action']}",
@@ -866,7 +900,39 @@ def run_subgoal(
                 if conv_dict["action"] == "stop":
                     stop_reason = "monitor_complete"
                     break
-                if conv_dict.get("new_instruction"):
+                if conv_dict["action"] == "ask_help":
+                    control.send_command(frame_offset + step, np.array([0.0, 0.0, 0.0, 0.0], dtype=np.float32))
+                    logger.warning(
+                        "Convergence exhausted corrections at step %d (completion: %.0f%%). Asking operator for help.",
+                        step, conv_dict["completion_pct"] * 100,
+                    )
+                    print(f"\n{'='*60}")
+                    print(f"MAX CORRECTIONS REACHED - subgoal: {subgoal_nl}")
+                    print(f"Completion: {conv_dict['completion_pct']:.0%}")
+                    print(f"Current instruction: {current_instruction}")
+                    print(f"Reasoning: {conv_dict['reasoning']}")
+                    print(f"{'='*60}")
+                    human_input = input("New instruction (or 'skip' to continue, 'abort' to stop): ").strip()
+                    if human_input.lower() == "abort":
+                        stop_reason = "operator_abort"
+                        total_steps = step
+                        break
+                    if human_input and human_input.lower() != "skip":
+                        override_history.append({
+                            "step": step,
+                            "type": "operator_help",
+                            "old_instruction": current_instruction,
+                            "new_instruction": human_input,
+                            "reasoning": conv_dict["reasoning"],
+                        })
+                        current_instruction = human_input
+                        openvla_pose_origin = list(subgoal_rel_pose)
+                        small_count = 0
+                        last_pose = None
+                        last_correction_time = time.time()
+                        last_correction_step = step
+                        openvla.reset_model()
+                elif conv_dict.get("new_instruction"):
                     override_history.append({
                         "step": step,
                         "type": f"convergence_{conv_dict['action']}",
@@ -908,7 +974,38 @@ def run_subgoal(
                     stop_reason = "monitor_complete"
                     break
 
-                if conv_result.new_instruction:
+                if conv_result.action == "ask_help":
+                    control.send_command(frame_offset + step, np.array([0.0, 0.0, 0.0, 0.0], dtype=np.float32))
+                    logger.warning(
+                        "Convergence exhausted corrections at step %d (completion: %.0f%%). Asking operator for help.",
+                        step, conv_result.completion_pct * 100,
+                    )
+                    print(f"\n{'='*60}")
+                    print(f"MAX CORRECTIONS REACHED - subgoal: {subgoal_nl}")
+                    print(f"Completion: {conv_result.completion_pct:.0%}")
+                    print(f"Current instruction: {current_instruction}")
+                    print(f"Reasoning: {conv_result.reasoning}")
+                    print(f"{'='*60}")
+                    human_input = input("New instruction (or 'skip' to continue, 'abort' to stop): ").strip()
+                    if human_input.lower() == "abort":
+                        stop_reason = "operator_abort"
+                        total_steps = step
+                        break
+                    if human_input and human_input.lower() != "skip":
+                        override_history.append({
+                            "step": step,
+                            "type": "operator_help",
+                            "old_instruction": current_instruction,
+                            "new_instruction": human_input,
+                            "reasoning": conv_result.reasoning,
+                        })
+                        current_instruction = human_input
+                        openvla_pose_origin = list(subgoal_rel_pose)
+                        small_count = 0
+                        last_pose = None
+                        last_correction_step = step
+                        openvla.reset_model()
+                elif conv_result.new_instruction:
                     override_history.append({
                         "step": step,
                         "type": f"convergence_{conv_result.action}",
@@ -926,8 +1023,43 @@ def run_subgoal(
                     stop_reason = "convergence_no_command"
                     break
       else:
-          stop_reason = "max_steps"
-          total_steps = max_steps
+          total_steps = step + 1
+          control.send_command(frame_offset + step, np.array([0.0, 0.0, 0.0, 0.0], dtype=np.float32))
+          logger.warning(
+              "Max steps (%d) reached (completion: %.0f%%). Asking operator for help.",
+              total_steps, monitor.last_completion_pct * 100,
+          )
+          print(f"\n{'='*60}")
+          print(f"MAX STEPS REACHED - subgoal: {subgoal_nl}")
+          print(f"Completion: {monitor.last_completion_pct:.0%}")
+          print(f"Current instruction: {current_instruction}")
+          print(f"{'='*60}")
+          human_input = input("New instruction (or 'skip' to end subgoal, 'abort' to stop): ").strip()
+          if human_input.lower() == "abort":
+              stop_reason = "operator_abort"
+              break
+          elif human_input and human_input.lower() != "skip":
+              override_history.append({
+                  "step": step,
+                  "type": "operator_help",
+                  "old_instruction": current_instruction,
+                  "new_instruction": human_input,
+                  "reasoning": f"Max steps ({total_steps}) reached.",
+              })
+              current_instruction = human_input
+              openvla_pose_origin = list(subgoal_rel_pose)
+              small_count = 0
+              last_pose = None
+              if use_async:
+                  last_correction_time = time.time()
+              last_correction_step = step
+              step_base = step + 1
+              openvla.reset_model()
+              continue
+          else:
+              stop_reason = "max_steps"
+              break
+      break
     except Exception as exc:
         stop_reason = f"error: {exc}"
         logger.error("run_subgoal failed at step %d: %s", total_steps, exc)
