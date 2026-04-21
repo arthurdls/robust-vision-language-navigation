@@ -509,8 +509,8 @@ def main():
     setup_env_and_imports()
     batch = import_batch_module()
 
-    from rvln.ai.llm_interface import LLM_User_Interface
-    from rvln.ai.ltl_planner import LTL_Symbolic_Planner
+    from rvln.ai.llm_interface import LLMUserInterface
+    from rvln.ai.ltl_planner import LTLSymbolicPlanner
 
     os.chdir(str(UAV_FLOW_EVAL))
     server_url = "http://127.0.0.1:{}".format(args.server_port) + "/predict"
@@ -519,8 +519,8 @@ def main():
 
     env = setup_sim_env(args.env_id, int(args.time_dilation), int(args.seed), batch)
 
-    llm_interface = LLM_User_Interface(model=args.llm_model)
-    planner = LTL_Symbolic_Planner(llm_interface)
+    llm_interface = LLMUserInterface(model=args.llm_model)
+    planner = LTLSymbolicPlanner(llm_interface)
 
     drone_cam_id = DRONE_CAM_ID
     if not args.use_default_cam:

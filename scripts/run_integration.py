@@ -56,6 +56,13 @@ from rvln.paths import (
     REPO_ROOT,
     UAV_FLOW_EVAL,
 )
+from rvln.config import (
+    DEFAULT_DIARY_CHECK_INTERVAL,
+    DEFAULT_LLM_MODEL,
+    DEFAULT_MAX_CORRECTIONS,
+    DEFAULT_MAX_STEPS_PER_SUBGOAL,
+    DEFAULT_VLM_MODEL,
+)
 from rvln.sim.env_setup import (
     apply_action_poses,
     import_batch_module,
@@ -73,9 +80,6 @@ from rvln.sim.env_setup import (
 SYSTEM_TASKS_DIR = REPO_ROOT / "tasks" / "system"
 INTEGRATION_RESULTS_DIR = REPO_ROOT / "results" / "integration_results"
 
-DEFAULT_MAX_STEPS_PER_SUBGOAL = 300
-DEFAULT_DIARY_CHECK_INTERVAL = 10
-DEFAULT_MAX_CORRECTIONS = 15
 SMALL_DELTA_POS = 3.0
 SMALL_DELTA_YAW = 1.0
 
@@ -263,6 +267,14 @@ def _run_subgoal(
             stop_reason = "monitor_complete"
             total_steps = step
             break
+        if result.action == "ask_help":
+            logger.warning(
+                "Monitor ask_help at step %d (completion: %.0f%%): %s",
+                step, result.completion_pct * 100, result.reasoning,
+            )
+            stop_reason = "ask_help"
+            total_steps = step
+            break
         if result.action == "force_converge":
             logger.info("Monitor force_converge at step %d: %s", step, result.reasoning)
             override_history.append({
@@ -375,6 +387,16 @@ def _run_subgoal(
                 stop_reason = "monitor_complete"
                 break
 
+            if conv_result.action == "ask_help":
+                logger.warning(
+                    "Convergence ask_help at step %d (completion: %.0f%%): %s",
+                    step, conv_result.completion_pct * 100, conv_result.reasoning,
+                )
+                in_correction = False
+                stop_reason = "ask_help"
+                total_steps = step
+                break
+
             if conv_result.new_instruction:
                 logger.info(
                     "Supervisor %s at step %d: '%s'",
@@ -463,8 +485,8 @@ def run_integrated_control_loop(
 
     Returns the run_info dict written to disk.
     """
-    from rvln.ai.llm_interface import LLM_User_Interface
-    from rvln.ai.ltl_planner import LTL_Symbolic_Planner
+    from rvln.ai.llm_interface import LLMUserInterface
+    from rvln.ai.ltl_planner import LTLSymbolicPlanner
 
     instruction = task["instruction"]
     initial_pos = normalize_initial_pos(task["initial_pos"])
@@ -490,8 +512,8 @@ def run_integrated_control_loop(
 
     # --- LTL planning phase ---
     logger.info("Planning instruction: '%s'", instruction)
-    llm_interface = LLM_User_Interface(model=llm_model)
-    planner = LTL_Symbolic_Planner(llm_interface)
+    llm_interface = LLMUserInterface(model=llm_model)
+    planner = LTLSymbolicPlanner(llm_interface)
     planner.plan_from_natural_language(instruction)
 
     ltl_plan = {
@@ -661,13 +683,13 @@ def main():
     # LLM / monitor models
     parser.add_argument(
         "--llm_model",
-        default="gpt-4o-mini",
-        help="LLM for LTL decomposition (default: gpt-4o-mini)",
+        default=DEFAULT_LLM_MODEL,
+        help=f"LLM for LTL decomposition (default: {DEFAULT_LLM_MODEL})",
     )
     parser.add_argument(
         "--monitor_model",
-        default="gpt-4o",
-        help="VLM for diary monitor and subgoal converter (default: gpt-4o)",
+        default=DEFAULT_VLM_MODEL,
+        help=f"VLM for diary monitor and subgoal converter (default: {DEFAULT_VLM_MODEL})",
     )
 
     # Diary parameters (override task JSON values)

@@ -544,8 +544,8 @@ def main():
     parser.add_argument(
         "--model",
         type=str,
-        default="gpt-4o",
-        help="VLM model for diary monitoring and subgoal conversion (default: gpt-4o).",
+        default="gpt-5.4",
+        help="VLM model for diary monitoring and subgoal conversion (default: gpt-5.4).",
     )
     parser.add_argument(
         "--runs",
