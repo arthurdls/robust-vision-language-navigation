@@ -7,6 +7,7 @@ def test_no_stall_when_not_enough_history():
     m._completion_history = [0.1, 0.12]
     m._stall_window = 3
     m._stall_threshold = 0.05
+    m._stall_completion_floor = 0.8
     assert m._is_stalled() is False
 
 
