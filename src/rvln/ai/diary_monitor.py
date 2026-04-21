@@ -46,7 +46,7 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class DiaryCheckResult:
-    action: str           # "continue", "stop", "override", or "command"
+    action: str           # "continue", "stop", "override", "command", "ask_help", or "force_converge"
     new_instruction: str  # populated when action is "override" or "command"
     reasoning: str
     diary_entry: str      # latest diary entry (what changed)
@@ -231,6 +231,9 @@ class LiveDiaryMonitor:
         artifacts_dir: Optional[Path] = None,
         max_corrections: int = 15,
         check_interval_s: Optional[float] = None,
+        stall_window: int = 3,
+        stall_threshold: float = 0.05,
+        stall_completion_floor: float = 0.8,
     ):
         self._subgoal = subgoal
         self._check_interval = check_interval
@@ -254,6 +257,10 @@ class LiveDiaryMonitor:
         self._last_completion_pct: float = 0.0
         self._high_water_mark: float = 0.0
         self._last_displacement: List[float] = [0.0, 0.0, 0.0, 0.0]
+        self._stall_window = stall_window
+        self._stall_threshold = stall_threshold
+        self._stall_completion_floor = stall_completion_floor
+        self._completion_history: List[float] = []
         self._temp_dir: Optional[str] = None
 
         self._lock = threading.Lock()
@@ -570,6 +577,16 @@ class LiveDiaryMonitor:
             f"[x: {d[0] / 100:.2f} m, y: {d[1] / 100:.2f} m, "
             f"z: {d[2] / 100:.2f} m, yaw: {d[3]:.1f}°]"
         )
+
+    def _is_stalled(self) -> bool:
+        """Return True if completion has plateaued over the last stall_window checkpoints."""
+        history = self._completion_history
+        if len(history) < self._stall_window:
+            return False
+        recent = history[-self._stall_window:]
+        if min(recent) >= self._stall_completion_floor:
+            return False
+        return max(recent) - min(recent) < self._stall_threshold
 
     def _save_frame(self, frame: Any) -> Path:
         if isinstance(frame, (str, Path)):
