@@ -12,6 +12,15 @@ Pipeline:
 6) Pose source:
    - Primary: external odometry feed (HTTP poll or UDP stream)
    - Fallback: dead-reckoning from sent commands.
+
+Operator help: when the monitor detects a stall (completion plateau),
+exhausts its correction budget, or hits the step/time limit, the drone
+pauses and the operator is prompted with four options:
+  [1] Provide a new low-level OpenVLA instruction for the current subgoal.
+  [2] Replan from a new high-level natural-language instruction (re-runs
+      the LTL planner from the drone's current position).
+  [3] Skip (continue or end the current subgoal).
+  [4] Abort the mission.
 """
 
 from __future__ import annotations
@@ -666,6 +675,23 @@ def run_subgoal(
     stall_threshold: float = 0.05,
     stall_completion_floor: float = 0.8,
 ) -> Dict[str, Any]:
+    """Execute a single subgoal with OpenVLA, diary monitoring, and operator help.
+
+    Converts the subgoal to an OpenVLA instruction, then runs a frame loop
+    that calls OpenVLA for actions and the diary monitor for progress checks.
+    The drone pauses and prompts the operator when:
+      - Checkpoint stall is detected (completion plateau).
+      - The convergence correction budget is exhausted.
+      - The step budget (max_steps) or time budget (max_seconds) is reached.
+
+    The operator can provide a new low-level instruction, request a full
+    mission replan, skip, or abort. On replan the function returns with
+    stop_reason="replan" and replan_instruction set.
+
+    Returns a dict with: subgoal, converted_instruction, total_steps,
+    stop_reason, corrections_used, last_completion_pct, peak_completion,
+    vlm_calls, next_origin, replan_instruction.
+    """
     from rvln.ai.diary_monitor import DiaryCheckResult, LiveDiaryMonitor
     from rvln.ai.subgoal_converter import SubgoalConverter
 

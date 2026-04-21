@@ -1,15 +1,16 @@
 #!/usr/bin/env python3
 """
-Integrated LTL planner + LiveDiaryMonitor control loop.
+Integrated LTL planner + LiveDiaryMonitor control loop (simulation).
 
 Combines the LTL-NL neuro-symbolic planner (multi-step instruction decomposition
 via Spot automaton) with the LiveDiaryMonitor (diary-based subgoal supervision
-with convergence corrections).
+with convergence corrections and stall detection).
 
 For each subgoal produced by the planner:
   1. SubgoalConverter rewrites the NL predicate into a short OpenVLA instruction.
   2. A fresh LiveDiaryMonitor supervises execution with periodic VLM checkpoints,
-     completion tracking, and corrective commands on convergence.
+     completion tracking (including peak_completion), and corrective commands
+     on convergence.
   3. When the monitor confirms completion (or the step budget is exhausted),
      the planner advances to the next subgoal.
 

@@ -4,16 +4,25 @@ Live diary-based subgoal completion monitor with supervisor capabilities.
 Every N steps during normal execution: builds a local 2-frame grid
 (what changed?) and a global sampled grid (is the subgoal complete?
 is the drone on-track?), tracks estimated completion percentage and
-displacement, and returns stop / continue / override / command.
+displacement, and returns an action: continue / stop / override /
+command / ask_help / force_converge.
 
 On convergence (drone stops): evaluates whether the subgoal is truly
 complete or whether corrective commands should be issued to OpenVLA.
+If the correction budget is exhausted, returns ask_help so the runner
+can prompt the human operator.
+
+Stall detection: tracks completion percentage history across checkpoints.
+If completion plateaus (spread < stall_threshold over the last
+stall_window checkpoints), returns ask_help instead of continue.
+Stall detection is suppressed when completion is already high
+(above stall_completion_floor).
 
 Key behaviours:
   - Completion percentage is reported as-is from the LLM (no clamping).
-    A separate high-water mark tracks the peak value for analysis.
+    A separate peak_completion value tracks the maximum reached.
   - The global prompt asks the LLM for a ``should_override`` flag (rather
-    than separate overshot / off-track flags).  When true and a
+    than separate overshot / off-track flags). When true and a
     corrective_instruction is provided, the runner replaces the current
     OpenVLA instruction.
   - The system prompt emphasises completion strictness (never mark complete
@@ -207,18 +216,49 @@ class LiveDiaryMonitor:
     """Real-time diary-based subgoal completion monitor with supervisor capabilities.
 
     Designed to monitor a SINGLE subgoal (one predicate from the LTL planner).
-    Operates in two modes:
+    Operates in three modes:
 
     1. PASSIVE MONITORING (during normal execution):
-       Every N steps: builds local 2-frame grid, builds global sampled grid
-       (capped at 9 frames for a 3x3 layout), maintains running diary with
-       displacement and completion percentage, and returns stop/continue/override.
+       Every N steps (or N seconds in async mode): builds local 2-frame grid,
+       builds global sampled grid (capped at 9 frames for a 3x3 layout),
+       maintains running diary with displacement and completion percentage,
+       and returns continue / stop / force_converge / ask_help.
 
     2. SUPERVISOR MODE (when drone converges / stops prematurely):
        When the control loop detects convergence but the subgoal is not complete,
-       the monitor takes over and issues corrective commands directly to OpenVLA
-       until the subgoal is achieved, a max correction budget is exhausted, or
-       the monitor determines the subgoal was overshot and issues a reversal.
+       the monitor issues corrective commands directly to OpenVLA until the
+       subgoal is achieved or the correction budget is exhausted.
+
+    3. STALL DETECTION (during passive monitoring):
+       Tracks completion percentage history across checkpoints. If completion
+       plateaus over the last ``stall_window`` checkpoints (spread below
+       ``stall_threshold``), returns ask_help so the runner can prompt the
+       human operator. Suppressed when completion exceeds
+       ``stall_completion_floor``. When the correction budget is exhausted
+       during supervisor mode, also returns ask_help instead of stopping.
+
+    Parameters
+    ----------
+    subgoal : str
+        Natural-language description of the current subgoal.
+    check_interval : int
+        Run a checkpoint every N frames (sync mode).
+    model : str
+        LLM model name for VLM queries.
+    artifacts_dir : Path, optional
+        Directory to save checkpoint and convergence artifacts.
+    max_corrections : int
+        Maximum corrective commands before asking for help.
+    check_interval_s : float, optional
+        If set, enables async (time-based) mode with checkpoints every N seconds.
+    stall_window : int
+        Number of consecutive checkpoints to consider for stall detection.
+    stall_threshold : float
+        Maximum spread (max - min) of completion across the stall window
+        to count as stalled.
+    stall_completion_floor : float
+        Suppress stall detection when the minimum recent completion
+        exceeds this value.
     """
 
     MAX_GLOBAL_FRAMES = 9
@@ -391,7 +431,7 @@ class LiveDiaryMonitor:
 
         Evaluates whether the subgoal is truly complete or if corrective commands
         are needed. Returns 'stop' if complete, 'command' with a corrective
-        instruction if not.
+        instruction if not, or 'ask_help' if the correction budget is exhausted.
         """
         path = self._save_frame(latest_frame)
         if not self._frame_paths or self._frame_paths[-1] != path:

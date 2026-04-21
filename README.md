@@ -22,7 +22,10 @@ OpenVLA Server (VLA model, returns drone actions)
 Unreal Sim (UnrealCV gym environment)
     ^
     |  periodic frames
-LiveDiaryMonitor (VLM diary: continue / stop / correct)
+LiveDiaryMonitor (VLM diary: continue / stop / correct / ask_help)
+    |
+    v  on stall, budget exhaustion, or time limit
+Operator Help (new instruction / replan / skip / abort)
 ```
 
 ## Prerequisites
@@ -173,11 +176,24 @@ Action mapping:
 
 Artifacts (frames, diary logs, trajectory, run_info.json) land in `results/hardware/run_<timestamp>/` (override with `--results_dir`) and have the same shape as the simulator runs, so `scripts/playback.py` and the offline goal-adherence tools work on them unchanged.
 
+### Operator help
+
+When the monitor detects a stall, exhausts its correction budget, or hits the step/time limit, the drone pauses and the operator is prompted:
+
+```
+[1] New low-level instruction   - replace the OpenVLA command, stay in current subgoal
+[2] Replan from high-level      - re-run LTL planner with a new mission instruction
+[3] Skip                        - continue or end the current subgoal
+[4] Abort                       - stop the mission
+```
+
+Stall detection is controlled by `--stall_window` (default 3 checkpoints), `--stall_threshold` (default 0.05), and `--stall_completion_floor` (default 0.8). A time budget can be set with `--max_seconds_per_subgoal`.
+
 ### Safety checklist before arming
 
 - Test the full pipeline against `rvln.mininav.mock_server` first and inspect the CSV.
-- Cap `--max_steps_per_subgoal` and `--max_corrections` to conservative values for the first flight.
-- Keep a manual override channel on the drone; the pipeline will send commands at `--command_dt_s` (default 0.1 s) until a subgoal completes, a `stop` action is issued, or you Ctrl-C.
+- Cap `--max_steps_per_subgoal`, `--max_corrections`, and `--max_seconds_per_subgoal` to conservative values for the first flight.
+- Keep a manual override channel on the drone; the pipeline will send commands at `--command_dt_s` (default 0.1 s) until a subgoal completes, a `stop` action is issued, the operator intervenes, or you Ctrl-C.
 
 ## Conda Environments
 
@@ -211,7 +227,7 @@ Tasks live under `tasks/{system,ltl,goal_adherence,uav_flow,uav_flow_instruction
 }
 ```
 
-`initial_pos` is `[x, y, z, pitch, yaw]` in Unreal coordinates. `diary_check_interval` controls how often (in steps) the diary monitor is invoked, and `max_corrections` caps how many corrective commands it may issue per subgoal.
+`initial_pos` is `[x, y, z, pitch, yaw]` in Unreal coordinates. `diary_check_interval` controls how often (in steps) the diary monitor is invoked, and `max_corrections` caps how many corrective commands it may issue per subgoal before asking the operator for help.
 
 ## Common Issues
 

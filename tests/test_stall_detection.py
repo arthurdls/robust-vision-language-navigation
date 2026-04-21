@@ -1,3 +1,9 @@
+"""Tests for LiveDiaryMonitor stall detection.
+
+Covers the _is_stalled() heuristic (plateau detection across checkpoint
+completion history) and its integration into _run_checkpoint() which
+returns action="ask_help" when a stall is detected.
+"""
 from unittest.mock import patch, MagicMock
 from pathlib import Path
 
