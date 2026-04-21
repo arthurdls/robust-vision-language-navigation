@@ -30,7 +30,6 @@ UNREAL_ENV_ROOT = REPO_ROOT / "runtime" / "unreal"
 # Legacy alias: gym / older docs refer to a top-level "envs" tree
 ENVS_DIR = UNREAL_ENV_ROOT
 
-# Batch eval script (invoked via runpy by scripts/run_old_original_eval.py)
 EVAL_DIR = _RVLN_PKG / "eval"
 BATCH_SCRIPT = EVAL_DIR / "batch_runner.py"
 # Working directory when invoking the batch runner (relative paths like debug.jpg)

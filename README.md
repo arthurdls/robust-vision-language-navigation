@@ -100,7 +100,6 @@ The Unreal download target is `runtime/unreal/` (matching `rvln.paths.UNREAL_ENV
 | `scripts/run_ltl.py` | LTL-only control loop (no diary supervision) |
 | `scripts/run_goal_adherence.py` | Single-subgoal goal adherence experiments |
 | `scripts/run_repl.py` | Interactive REPL for drone commands |
-| `scripts/run_old_original_eval.py` | Legacy UAV-Flow batch evaluation runner |
 | `scripts/playback.py` | FPV viewer and MP4 encoder for saved runs |
 | `scripts/scout_locations.py` | Position scouting helper for task authoring |
 | `scripts/start_mock_hardware.py` | Simulated MiniNav drone-side hardware (TCP control sink + HTTP frame feed) |
