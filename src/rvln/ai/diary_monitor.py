@@ -676,9 +676,19 @@ class LiveDiaryMonitor:
 
         self._last_completion_pct = result.completion_pct
         self._high_water_mark = max(self._high_water_mark, result.completion_pct)
+        self._completion_history.append(result.completion_pct)
         self._diary.append(
             f"Checkpoint {step}: completion = {result.completion_pct:.2f}"
         )
+
+        if result.action == "continue" and self._is_stalled():
+            return DiaryCheckResult(
+                action="ask_help",
+                new_instruction="",
+                reasoning=f"Stall detected: completion plateau over last {self._stall_window} checkpoints.",
+                diary_entry=diary_entry,
+                completion_pct=result.completion_pct,
+            )
 
         return result
 
@@ -776,9 +786,19 @@ class LiveDiaryMonitor:
 
         self._last_completion_pct = result.completion_pct
         self._high_water_mark = max(self._high_water_mark, result.completion_pct)
+        self._completion_history.append(result.completion_pct)
         self._diary.append(
             f"Checkpoint ~{step}: completion = {result.completion_pct:.2f}"
         )
+
+        if result.action == "continue" and self._is_stalled():
+            return DiaryCheckResult(
+                action="ask_help",
+                new_instruction="",
+                reasoning=f"Stall detected: completion plateau over last {self._stall_window} checkpoints.",
+                diary_entry=diary_entry,
+                completion_pct=result.completion_pct,
+            )
 
         return result
 
