@@ -600,6 +600,49 @@ def _convergence_loop(
     return None
 
 
+def _ask_operator_for_help(
+    subgoal_nl: str,
+    header: str,
+    completion_pct: float,
+    current_instruction: str,
+    reasoning: str = "",
+) -> Tuple[str, str]:
+    """Prompt operator for help when the drone is stuck.
+
+    Returns (choice, value) where choice is one of:
+      "instruction" - new low-level OpenVLA instruction (value = the instruction)
+      "replan"      - new high-level mission instruction to re-plan (value = the instruction)
+      "skip"        - continue or end subgoal without changes
+      "abort"       - stop the mission entirely
+    """
+    print(f"\n{'='*60}")
+    print(f"{header} - subgoal: {subgoal_nl}")
+    print(f"Completion: {completion_pct:.0%}")
+    print(f"Current instruction: {current_instruction}")
+    if reasoning:
+        print(f"Reasoning: {reasoning}")
+    print(f"{'='*60}")
+    print("[1] New low-level instruction (e.g. 'move forward 1m')")
+    print("[2] Replan from new high-level instruction")
+    print("[3] Skip (continue/end subgoal)")
+    print("[4] Abort mission")
+    choice = input("Choice [1/2/3/4]: ").strip()
+    if choice == "1":
+        instr = input("Instruction: ").strip()
+        if instr:
+            return ("instruction", instr)
+        return ("skip", "")
+    elif choice == "2":
+        instr = input("New mission instruction: ").strip()
+        if instr:
+            return ("replan", instr)
+        return ("skip", "")
+    elif choice == "4":
+        return ("abort", "")
+    else:
+        return ("skip", "")
+
+
 def run_subgoal(
     subgoal_nl: str,
     subgoal_index: int,
@@ -654,6 +697,7 @@ def run_subgoal(
     last_correction_step = -check_interval
     stop_reason = "max_steps"
     total_steps = 0
+    replan_instruction = ""
     override_history: List[Dict[str, Any]] = []
 
     use_async = check_interval_s is not None
@@ -680,24 +724,27 @@ def run_subgoal(
                 "Max seconds (%.1f) reached at step %d (completion: %.0f%%). Asking operator for help.",
                 elapsed, step, monitor.last_completion_pct * 100,
             )
-            print(f"\n{'='*60}")
-            print(f"MAX TIME REACHED ({elapsed:.1f}s) - subgoal: {subgoal_nl}")
-            print(f"Completion: {monitor.last_completion_pct:.0%}")
-            print(f"Current instruction: {current_instruction}")
-            print(f"{'='*60}")
-            human_input = input("New instruction (or 'skip' to end subgoal, 'abort' to stop): ").strip()
-            if human_input.lower() == "abort":
+            choice, value = _ask_operator_for_help(
+                subgoal_nl, f"MAX TIME REACHED ({elapsed:.1f}s)", monitor.last_completion_pct,
+                current_instruction,
+            )
+            if choice == "abort":
                 stop_reason = "operator_abort"
                 break
-            elif human_input and human_input.lower() != "skip":
+            elif choice == "replan":
+                stop_reason = "replan"
+                replan_instruction = value
+                total_steps = step
+                break
+            elif choice == "instruction":
                 override_history.append({
                     "step": step,
                     "type": "operator_help",
                     "old_instruction": current_instruction,
-                    "new_instruction": human_input,
+                    "new_instruction": value,
                     "reasoning": f"Max seconds ({elapsed:.1f}s) reached.",
                 })
-                current_instruction = human_input
+                current_instruction = value
                 openvla_pose_origin = list(subgoal_rel_pose)
                 small_count = 0
                 last_pose = None
@@ -741,26 +788,28 @@ def run_subgoal(
                             "Convergence exhausted corrections at step %d (completion: %.0f%%). Asking operator for help.",
                             step, conv_dict["completion_pct"] * 100,
                         )
-                        print(f"\n{'='*60}")
-                        print(f"MAX CORRECTIONS REACHED - subgoal: {subgoal_nl}")
-                        print(f"Completion: {conv_dict['completion_pct']:.0%}")
-                        print(f"Current instruction: {current_instruction}")
-                        print(f"Reasoning: {conv_dict['reasoning']}")
-                        print(f"{'='*60}")
-                        human_input = input("New instruction (or 'skip' to continue, 'abort' to stop): ").strip()
-                        if human_input.lower() == "abort":
+                        choice, value = _ask_operator_for_help(
+                            subgoal_nl, "MAX CORRECTIONS REACHED", conv_dict["completion_pct"],
+                            current_instruction, conv_dict["reasoning"],
+                        )
+                        if choice == "abort":
                             stop_reason = "operator_abort"
                             total_steps = step
                             break
-                        if human_input and human_input.lower() != "skip":
+                        elif choice == "replan":
+                            stop_reason = "replan"
+                            replan_instruction = value
+                            total_steps = step
+                            break
+                        elif choice == "instruction":
                             override_history.append({
                                 "step": step,
                                 "type": "operator_help",
                                 "old_instruction": current_instruction,
-                                "new_instruction": human_input,
+                                "new_instruction": value,
                                 "reasoning": conv_dict["reasoning"],
                             })
-                            current_instruction = human_input
+                            current_instruction = value
                             openvla_pose_origin = list(subgoal_rel_pose)
                             small_count = 0
                             last_pose = None
@@ -792,26 +841,28 @@ def run_subgoal(
                         "Stall detected at step %d (completion: %.0f%%). Asking operator for help.",
                         step, async_result.completion_pct * 100,
                     )
-                    print(f"\n{'='*60}")
-                    print(f"STALL DETECTED - subgoal: {subgoal_nl}")
-                    print(f"Completion: {async_result.completion_pct:.0%}")
-                    print(f"Current instruction: {current_instruction}")
-                    print(f"Reasoning: {async_result.reasoning}")
-                    print(f"{'='*60}")
-                    human_input = input("New instruction (or 'skip' to continue, 'abort' to stop): ").strip()
-                    if human_input.lower() == "abort":
+                    choice, value = _ask_operator_for_help(
+                        subgoal_nl, "STALL DETECTED", async_result.completion_pct,
+                        current_instruction, async_result.reasoning,
+                    )
+                    if choice == "abort":
                         stop_reason = "operator_abort"
                         total_steps = step
                         break
-                    if human_input and human_input.lower() != "skip":
+                    elif choice == "replan":
+                        stop_reason = "replan"
+                        replan_instruction = value
+                        total_steps = step
+                        break
+                    elif choice == "instruction":
                         override_history.append({
                             "step": step,
                             "type": "operator_help",
                             "old_instruction": current_instruction,
-                            "new_instruction": human_input,
+                            "new_instruction": value,
                             "reasoning": async_result.reasoning,
                         })
-                        current_instruction = human_input
+                        current_instruction = value
                         openvla_pose_origin = list(subgoal_rel_pose)
                         small_count = 0
                         last_pose = None
@@ -855,26 +906,28 @@ def run_subgoal(
                     "Stall detected at step %d (completion: %.0f%%). Asking operator for help.",
                     step, result.completion_pct * 100,
                 )
-                print(f"\n{'='*60}")
-                print(f"STALL DETECTED - subgoal: {subgoal_nl}")
-                print(f"Completion: {result.completion_pct:.0%}")
-                print(f"Current instruction: {current_instruction}")
-                print(f"Reasoning: {result.reasoning}")
-                print(f"{'='*60}")
-                human_input = input("New instruction (or 'skip' to continue, 'abort' to stop): ").strip()
-                if human_input.lower() == "abort":
+                choice, value = _ask_operator_for_help(
+                    subgoal_nl, "STALL DETECTED", result.completion_pct,
+                    current_instruction, result.reasoning,
+                )
+                if choice == "abort":
                     stop_reason = "operator_abort"
                     total_steps = step
                     break
-                if human_input and human_input.lower() != "skip":
+                elif choice == "replan":
+                    stop_reason = "replan"
+                    replan_instruction = value
+                    total_steps = step
+                    break
+                elif choice == "instruction":
                     override_history.append({
                         "step": step,
                         "type": "operator_help",
                         "old_instruction": current_instruction,
-                        "new_instruction": human_input,
+                        "new_instruction": value,
                         "reasoning": result.reasoning,
                     })
-                    current_instruction = human_input
+                    current_instruction = value
                     openvla_pose_origin = list(subgoal_rel_pose)
                     small_count = 0
                     last_pose = None
@@ -948,26 +1001,28 @@ def run_subgoal(
                         "Convergence exhausted corrections at step %d (completion: %.0f%%). Asking operator for help.",
                         step, conv_dict["completion_pct"] * 100,
                     )
-                    print(f"\n{'='*60}")
-                    print(f"MAX CORRECTIONS REACHED - subgoal: {subgoal_nl}")
-                    print(f"Completion: {conv_dict['completion_pct']:.0%}")
-                    print(f"Current instruction: {current_instruction}")
-                    print(f"Reasoning: {conv_dict['reasoning']}")
-                    print(f"{'='*60}")
-                    human_input = input("New instruction (or 'skip' to continue, 'abort' to stop): ").strip()
-                    if human_input.lower() == "abort":
+                    choice, value = _ask_operator_for_help(
+                        subgoal_nl, "MAX CORRECTIONS REACHED", conv_dict["completion_pct"],
+                        current_instruction, conv_dict["reasoning"],
+                    )
+                    if choice == "abort":
                         stop_reason = "operator_abort"
                         total_steps = step
                         break
-                    if human_input and human_input.lower() != "skip":
+                    elif choice == "replan":
+                        stop_reason = "replan"
+                        replan_instruction = value
+                        total_steps = step
+                        break
+                    elif choice == "instruction":
                         override_history.append({
                             "step": step,
                             "type": "operator_help",
                             "old_instruction": current_instruction,
-                            "new_instruction": human_input,
+                            "new_instruction": value,
                             "reasoning": conv_dict["reasoning"],
                         })
-                        current_instruction = human_input
+                        current_instruction = value
                         openvla_pose_origin = list(subgoal_rel_pose)
                         small_count = 0
                         last_pose = None
@@ -1022,26 +1077,28 @@ def run_subgoal(
                         "Convergence exhausted corrections at step %d (completion: %.0f%%). Asking operator for help.",
                         step, conv_result.completion_pct * 100,
                     )
-                    print(f"\n{'='*60}")
-                    print(f"MAX CORRECTIONS REACHED - subgoal: {subgoal_nl}")
-                    print(f"Completion: {conv_result.completion_pct:.0%}")
-                    print(f"Current instruction: {current_instruction}")
-                    print(f"Reasoning: {conv_result.reasoning}")
-                    print(f"{'='*60}")
-                    human_input = input("New instruction (or 'skip' to continue, 'abort' to stop): ").strip()
-                    if human_input.lower() == "abort":
+                    choice, value = _ask_operator_for_help(
+                        subgoal_nl, "MAX CORRECTIONS REACHED", conv_result.completion_pct,
+                        current_instruction, conv_result.reasoning,
+                    )
+                    if choice == "abort":
                         stop_reason = "operator_abort"
                         total_steps = step
                         break
-                    if human_input and human_input.lower() != "skip":
+                    elif choice == "replan":
+                        stop_reason = "replan"
+                        replan_instruction = value
+                        total_steps = step
+                        break
+                    elif choice == "instruction":
                         override_history.append({
                             "step": step,
                             "type": "operator_help",
                             "old_instruction": current_instruction,
-                            "new_instruction": human_input,
+                            "new_instruction": value,
                             "reasoning": conv_result.reasoning,
                         })
-                        current_instruction = human_input
+                        current_instruction = value
                         openvla_pose_origin = list(subgoal_rel_pose)
                         small_count = 0
                         last_pose = None
@@ -1071,24 +1128,27 @@ def run_subgoal(
               "Max steps (%d) reached (completion: %.0f%%). Asking operator for help.",
               total_steps, monitor.last_completion_pct * 100,
           )
-          print(f"\n{'='*60}")
-          print(f"MAX STEPS REACHED - subgoal: {subgoal_nl}")
-          print(f"Completion: {monitor.last_completion_pct:.0%}")
-          print(f"Current instruction: {current_instruction}")
-          print(f"{'='*60}")
-          human_input = input("New instruction (or 'skip' to end subgoal, 'abort' to stop): ").strip()
-          if human_input.lower() == "abort":
+          choice, value = _ask_operator_for_help(
+              subgoal_nl, "MAX STEPS REACHED", monitor.last_completion_pct,
+              current_instruction, f"Max steps ({total_steps}) reached.",
+          )
+          if choice == "abort":
               stop_reason = "operator_abort"
               break
-          elif human_input and human_input.lower() != "skip":
+          elif choice == "replan":
+              stop_reason = "replan"
+              replan_instruction = value
+              total_steps = step + 1
+              break
+          elif choice == "instruction":
               override_history.append({
                   "step": step,
                   "type": "operator_help",
                   "old_instruction": current_instruction,
-                  "new_instruction": human_input,
+                  "new_instruction": value,
                   "reasoning": f"Max steps ({total_steps}) reached.",
               })
-              current_instruction = human_input
+              current_instruction = value
               openvla_pose_origin = list(subgoal_rel_pose)
               small_count = 0
               last_pose = None
@@ -1136,6 +1196,7 @@ def run_subgoal(
         "peak_completion": monitor.peak_completion,
         "vlm_calls": monitor.vlm_calls,
         "next_origin": list(next_world_origin),
+        "replan_instruction": replan_instruction,
     }
 
 
@@ -1358,6 +1419,19 @@ def main() -> None:
             )
             frame_offset += result["total_steps"]
             subgoal_summaries.append(result)
+
+            if result["stop_reason"] == "replan":
+                new_instruction = result["replan_instruction"]
+                logger.info("Replanning from new instruction: %s", new_instruction)
+                instruction = new_instruction
+                planner.plan_from_natural_language(new_instruction)
+                ltl_plan = {
+                    "ltl_nl_formula": llm_interface.ltl_nl_formula.get("ltl_nl_formula", ""),
+                    "pi_predicates": dict(planner.pi_map),
+                }
+                current_subgoal = planner.get_next_predicate()
+                continue
+
             planner.advance_state(current_subgoal)
             current_subgoal = planner.get_next_predicate()
 
