@@ -17,6 +17,7 @@ try:
 except ImportError:
     Image = None  # type: ignore[assignment,misc]
 
+from ...config import DEFAULT_VLM_MODEL
 from .llm_providers import BaseLLM, LLMFactory
 
 logger = logging.getLogger(__name__)
@@ -121,7 +122,7 @@ def build_frame_grid(
 # VLM image queries (provider-agnostic via BaseLLM)
 # ---------------------------------------------------------------------------
 
-def _get_llm(model: str = "gpt-4o") -> BaseLLM:
+def _get_llm(model: str = DEFAULT_VLM_MODEL) -> BaseLLM:
     """Resolve a model string to a BaseLLM instance via LLMFactory."""
     if model.startswith("gemini"):
         return LLMFactory.create("gemini", model=model)
@@ -135,7 +136,7 @@ def _pil_to_numpy(img: "Image.Image") -> np.ndarray:
 def query_vlm(
     grid_image: Union["Image.Image", np.ndarray],
     prompt: str,
-    model: str = "gpt-4o",
+    model: str = DEFAULT_VLM_MODEL,
     llm: Optional[BaseLLM] = None,
     system_prompt: Optional[str] = None,
 ) -> str:

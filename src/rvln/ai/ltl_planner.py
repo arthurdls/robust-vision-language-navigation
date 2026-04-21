@@ -7,7 +7,7 @@ from typing import Optional
 
 import spot
 
-from .llm_interface import LLM_User_Interface
+from .llm_interface import LLMUserInterface
 
 
 def _predicate_key_to_index(key: str) -> int:
@@ -36,13 +36,13 @@ def _normalize_pi_predicates(raw: dict) -> dict:
     return dict(sorted(result.items(), key=lambda x: _predicate_key_to_index(x[0])))
 
 
-class LTL_Symbolic_Planner:
+class LTLSymbolicPlanner:
     """
-    Integrates LLM_User_Interface to parse NL to LTL-NL, then uses Spot
+    Integrates LLMUserInterface to parse NL to LTL-NL, then uses Spot
     to manage the automaton state and determine the next action.
     """
 
-    def __init__(self, llm_interface: LLM_User_Interface):
+    def __init__(self, llm_interface: LLMUserInterface):
         self.llm_interface = llm_interface
         self.current_automaton_state = 0
         self.automaton = None
@@ -238,3 +238,4 @@ class LTL_Symbolic_Planner:
                     f"[LTL Planner] Task '{finished_task_nl}' completed but no outgoing edge; "
                     "marking mission complete."
                 )
+

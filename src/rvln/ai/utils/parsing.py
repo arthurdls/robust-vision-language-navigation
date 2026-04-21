@@ -89,23 +89,40 @@ def parse_ltl_nl(formula: str, predicate_map: dict[str, str]) -> str:
 
 
 def extract_json(text: str) -> dict:
-    """
-    Extract the first JSON object from a blob of text.
-    Returns the JSON or raises exception.
+    """Extract the first JSON object from a blob of text.
+
+    Handles markdown code fences (```json ... ```) and raw JSON.
+    Returns the parsed dict or raises SyntaxError.
     """
     if not text:
-        raise SyntaxError("JSON text not parseable")
+        raise SyntaxError("JSON text not parseable: empty input")
 
+    import re
+    # Try markdown code fence first
+    fence_match = re.search(r'```(?:json)?\s*\n?(.*?)\n?\s*```', text, re.DOTALL)
+    if fence_match:
+        try:
+            return json.loads(fence_match.group(1).strip())
+        except json.JSONDecodeError:
+            pass
+
+    # Try parsing the full text as JSON
+    stripped = text.strip()
+    try:
+        return json.loads(stripped)
+    except json.JSONDecodeError:
+        pass
+
+    # Fall back to finding the outermost braces
     start = text.find("{")
     if start == -1:
-        raise SyntaxError("JSON text not parseable")
+        raise SyntaxError("JSON text not parseable: no opening brace found")
     end = text.rfind("}")
     if end == -1 or end < start:
-        raise SyntaxError("JSON text not parseable")
+        raise SyntaxError("JSON text not parseable: no valid closing brace found")
 
     candidate = text[start : end + 1]
-
     try:
         return json.loads(candidate)
-    except Exception as e:
-        raise SyntaxError("JSON text not parseable")
+    except json.JSONDecodeError as e:
+        raise SyntaxError(f"JSON text not parseable: {e}") from e

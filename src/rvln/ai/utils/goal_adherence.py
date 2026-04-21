@@ -1,10 +1,12 @@
 """
-Goal adherence utilities: prompt templates, offline diary-based completion
-checking, and higher-level frame analysis helpers.
+Goal adherence utilities: offline diary-based completion checking and
+higher-level frame analysis helpers.
 
 Low-level vision primitives (build_frame_grid, query_vlm, etc.) live in
 vision.py; this module builds on them for goal-adherence-specific workflows
 such as the offline ``check_subtask_completed_diary`` helper.
+
+Prompt templates are defined in ``rvln.ai.prompts``.
 """
 
 import json
@@ -12,6 +14,14 @@ import logging
 from pathlib import Path
 from typing import Any, List, Optional, Union
 
+from ...config import DEFAULT_VLM_MODEL
+from ..prompts import (
+    DEFAULT_TEMPORAL_PROMPT,
+    DRONE_GOAL_MONITOR_CONTEXT,
+    PROMPT_SUBTASK_COMPLETE,
+    SUBTASK_COMPLETE_DIARY_PROMPT,
+    WHAT_CHANGED_PROMPT,
+)
 from .vision import (
     build_frame_grid,
     get_ordered_frames_from_dir,
@@ -21,43 +31,10 @@ from .vision import (
 
 logger = logging.getLogger(__name__)
 
-# ---------------------------------------------------------------------------
-# Prompt templates
-# ---------------------------------------------------------------------------
-
-DEFAULT_TEMPORAL_PROMPT = (
-    "These images are sequential frames from a single video, in temporal order "
-    "(left to right, top to bottom). Describe what is happening across the frames."
-)
-
-DRONE_GOAL_MONITOR_CONTEXT = (
-    "You are a goal adherence monitor for a drone. "
-    "The frames are from the drone's first-person view. "
-)
-
-PROMPT_SUBTASK_COMPLETE = (
-    "Given the diary of what changed between each pair of moments and the grid "
-    "of frames so far, has the drone completed this subtask? Answer with exactly: "
-    "Yes the subtask is complete. OR: No the subtask is not complete."
-)
-
 
 def build_prompt_what_changed(subtask: str) -> str:
     """Build the 'what changed' prompt: concise, one sentence, key facts only."""
-    return (
-        f"{DRONE_GOAL_MONITOR_CONTEXT}The relevant subtask is: {subtask}\n\n"
-        "These two images are consecutive moments in time (first then second). "
-        "In **one short sentence**, state what changed between the first and "
-        "second image relative to this subtask. Be concise: no extraneous "
-        "detail, no repetition of the subtask. Your description must be "
-        "**strictly relevant** to the subtask (e.g. for \"move past the "
-        "traffic light\", the light changing color is not relevant—only "
-        "whether the drone's position relative to the light changed). "
-        "Include only key facts that directly bear on the subtask: object "
-        "appeared or disappeared, got bigger or smaller, or the drone passed "
-        "it. Examples: object of interest got closer/bigger; object no longer "
-        "visible or much smaller; object came into view."
-    )
+    return WHAT_CHANGED_PROMPT.format(subtask=subtask)
 
 
 # ---------------------------------------------------------------------------
@@ -68,7 +45,7 @@ def analyze_temporal_frames(
     frame_paths: Union[Path, str, List[Path]],
     n: int,
     prompt: Union[str, None] = None,
-    model: str = "gpt-4o",
+    model: str = DEFAULT_VLM_MODEL,
     **grid_kwargs: Any,
 ) -> str:
     """Load frames, sample every n, build grid, query the VLM."""
@@ -102,7 +79,7 @@ def parse_yes_no_response(text: str) -> Optional[bool]:
 def query_what_changed_between_frames(
     grid_image: Any,
     subtask: str,
-    model: str = "gpt-4o",
+    model: str = DEFAULT_VLM_MODEL,
     **kw: Any,
 ) -> str:
     """Ask what changed between the two frames in a 2-frame grid."""
@@ -115,7 +92,7 @@ def check_subtask_complete_diary(
     subtask: str,
     n: int,
     artifacts_dir: Optional[Path] = None,
-    model: str = "gpt-4o",
+    model: str = DEFAULT_VLM_MODEL,
     **grid_kwargs: Any,
 ) -> dict:
     """Offline diary-based completion check over a sequence of saved frames."""
@@ -194,10 +171,8 @@ def check_subtask_complete_diary(
             continue
         grid_full = build_frame_grid(sampled, **grid_kwargs)
         diary_blob = "\n".join(diary)
-        prompt_b = (
-            f"{DRONE_GOAL_MONITOR_CONTEXT}Subtask: {subtask}\n\n"
-            f"Diary of what changed between consecutive moments:\n{diary_blob}\n\n"
-            f"{PROMPT_SUBTASK_COMPLETE}"
+        prompt_b = SUBTASK_COMPLETE_DIARY_PROMPT.format(
+            subtask=subtask, diary_blob=diary_blob,
         )
         response_b = query_vlm(grid_full, prompt_b, model=model)
 
