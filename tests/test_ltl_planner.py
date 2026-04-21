@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
 """
-Robustness tests for LTL_Symbolic_Planner using Spot (no LLM).
+Robustness tests for LTLSymbolicPlanner using Spot (no LLM).
 Run with conda env rvln-sim:  conda run -n rvln-sim python test_ltl_planner_robustness.py
 """
 
-import spot  # noqa: F401  - verify Spot is available
+import pytest
+
+spot = pytest.importorskip("spot", reason="spot (conda-forge) not available outside rvln-sim")
 
 from rvln.ai.ltl_planner import (
-    LTL_Symbolic_Planner,
+    LTLSymbolicPlanner,
     _predicate_key_to_index,
     _normalize_pi_predicates,
 )
@@ -56,7 +58,7 @@ def test_plan_valid_simple():
         "pi_predicates": {"pi_1": "Deliver Coke to Location A"},
         "ltl_nl_formula": "F pi_1",
     }
-    planner = LTL_Symbolic_Planner(mock)
+    planner = LTLSymbolicPlanner(mock)
     planner.plan_from_natural_language("Deliver Coke to Location A")
     assert planner.pi_map == {"pi_1": "Deliver Coke to Location A"}
     assert planner.automaton is not None
@@ -80,7 +82,7 @@ def test_plan_valid_sequence():
         },
         "ltl_nl_formula": "F pi_3 & (!pi_3 U pi_2) & (!pi_2 U pi_1)",
     }
-    planner = LTL_Symbolic_Planner(mock)
+    planner = LTLSymbolicPlanner(mock)
     planner.plan_from_natural_language("Go to A then B then C")
     assert len(planner.pi_map) == 3
     order = []
@@ -109,7 +111,7 @@ def test_plan_valid_complex():
         },
         "ltl_nl_formula": "F pi_1 & (!pi_1 U (pi_2 | pi_3))",
     }
-    planner = LTL_Symbolic_Planner(mock)
+    planner = LTLSymbolicPlanner(mock)
     planner.plan_from_natural_language("Pen to D after drink or apple to E")
     assert len(planner.pi_map) == 3
     first = planner.get_next_predicate()
@@ -121,7 +123,7 @@ def test_plan_invalid_instruction():
     """Reject empty or non-string instruction."""
     mock = MockLLM()
     mock.ltl_nl_formula = {"pi_predicates": {"pi_1": "X"}, "ltl_nl_formula": "F pi_1"}
-    planner = LTL_Symbolic_Planner(mock)
+    planner = LTLSymbolicPlanner(mock)
     for bad in ("", "   ", None, 123):
         try:
             planner.plan_from_natural_language(bad)
@@ -134,7 +136,7 @@ def test_plan_invalid_instruction():
 def test_plan_invalid_data():
     """Reject missing/empty LLM data."""
     mock = MockLLM()
-    planner = LTL_Symbolic_Planner(mock)
+    planner = LTLSymbolicPlanner(mock)
     # Empty data
     mock.ltl_nl_formula = None
     try:
@@ -196,7 +198,7 @@ def test_plan_invalid_formula():
         "pi_predicates": {"pi_1": "X"},
         "ltl_nl_formula": "G pi_1",  # G (always) may not be supported for monitor
     }
-    planner = LTL_Symbolic_Planner(mock)
+    planner = LTLSymbolicPlanner(mock)
     try:
         planner.plan_from_natural_language("always X")
         # Spot may still accept G; if so, try a clearly invalid formula
@@ -211,7 +213,7 @@ def test_plan_invalid_formula():
 def test_get_next_without_plan():
     """get_next_predicate returns None when not planned."""
     mock = MockLLM()
-    planner = LTL_Symbolic_Planner(mock)
+    planner = LTLSymbolicPlanner(mock)
     assert planner.get_next_predicate() is None
     print("  [OK] get_next without plan")
 
@@ -223,7 +225,7 @@ def test_advance_unknown_task():
         "pi_predicates": {"pi_1": "Task A"},
         "ltl_nl_formula": "F pi_1",
     }
-    planner = LTL_Symbolic_Planner(mock)
+    planner = LTLSymbolicPlanner(mock)
     planner.plan_from_natural_language("A")
     before = planner.current_automaton_state
     planner.advance_state("Unknown task description")
@@ -238,7 +240,7 @@ def test_advance_no_edge_sink():
         "pi_predicates": {"pi_1": "Only task"},
         "ltl_nl_formula": "F pi_1",
     }
-    planner = LTL_Symbolic_Planner(mock)
+    planner = LTLSymbolicPlanner(mock)
     planner.plan_from_natural_language("Only task")
     _ = planner.get_next_predicate()  # set _last_returned_predicate_key so advance_state knows which task
     planner.advance_state("Only task")
@@ -255,7 +257,7 @@ def test_normalize_key_variants():
         "pi_predicates": {"p1": "First", "p2": "Second"},
         "ltl_nl_formula": "F p1 & (!p2 U p1)",
     }
-    planner = LTL_Symbolic_Planner(mock)
+    planner = LTLSymbolicPlanner(mock)
     planner.plan_from_natural_language("First then Second")
     assert planner.pi_map.get("pi_1") == "First"
     assert planner.pi_map.get("pi_2") == "Second"

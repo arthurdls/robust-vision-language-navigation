@@ -49,6 +49,9 @@ server = [
     "flash-attn",
 ]
 
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
 [tool.setuptools.packages.find]
 where = ["src"]
 include = ["rvln*", "gym_unrealcv*"]
