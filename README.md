@@ -1,8 +1,8 @@
 # Robust Vision-Language Navigation
 
-Neuro-symbolic LTL planner with vision-language supervision for UAV control in simulation.
+Neuro-symbolic LTL planner with vision-language supervision for UAV control in simulation and on real hardware (MiniNav).
 
-This system decomposes multi-step natural language instructions into an LTL formula, converts each subgoal into short OpenVLA commands, and supervises execution with a diary-based VLM monitor that can issue corrections. It runs in an Unreal Engine simulation environment via UnrealCV.
+This system decomposes multi-step natural language instructions into an LTL formula, converts each subgoal into short OpenVLA commands, and supervises execution with a diary-based VLM monitor that can issue corrections, detect stalls, and request operator help. It runs in both an Unreal Engine simulation (via UnrealCV) and on real drones (via MiniNav TCP).
 
 ## Architecture
 
@@ -19,14 +19,42 @@ SubgoalConverter (LLM -> short OpenVLA command)
 OpenVLA Server (VLA model, returns drone actions)
     |
     v  action: [dx, dy, dz, dyaw]
-Unreal Sim (UnrealCV gym environment)
-    ^
-    |  periodic frames
-LiveDiaryMonitor (VLM diary: continue / stop / correct / ask_help)
-    |
-    v  on stall, budget exhaustion, or time limit
-Operator Help (new instruction / replan / skip / abort)
+Unreal Sim / MiniNav Hardware
+    ^                       |
+    |  periodic frames      |  convergence (drone stops)
+    v                       v
+LiveDiaryMonitor -----> Supervisor Mode
+  |  checkpoint every       |  evaluate: complete / stopped short / overshot
+  |  N steps (frame-based)  |  issue corrective command to OpenVLA
+  |  or N seconds (async)   |  if budget exhausted -> ask_help
+  |                         |
+  |  stall detection:       |
+  |  completion plateau     |
+  |  over last K checks     |
+  |  -> ask_help            |
+  v                         v
+Operator Help (hardware) or stop_reason="ask_help" (simulation)
+  [1] New low-level instruction
+  [2] Replan from new high-level instruction
+  [3] Skip subgoal
+  [4] Abort mission
 ```
+
+### Checkpoint Modes
+
+The LiveDiaryMonitor supports two checkpoint modes:
+
+- **Frame-based (default)**: `on_frame()` runs a VLM checkpoint every `diary_check_interval` steps. Used by `run_integration.py` (simulation). Synchronous: the control loop blocks during VLM calls.
+- **Time-based (async)**: When `check_interval_s` is set, a background thread runs VLM checkpoints every N seconds. The control loop continues sending commands concurrently. Used by `run_hardware.py` (MiniNav) where blocking on VLM calls would stall the command stream.
+
+### Operator Help
+
+When the monitor detects a stall (completion plateau over the last `stall_window` checkpoints), exhausts its correction budget, or hits the step/time limit:
+
+- **Hardware (`run_hardware.py`)**: The drone pauses and the operator is prompted with four options: new instruction, replan, skip, or abort.
+- **Simulation (`run_integration.py`)**: The subgoal ends with `stop_reason="ask_help"` in the run summary. No interactive prompt (simulation runs are typically unattended).
+
+Stall detection is controlled by `--stall_window` (default 3), `--stall_threshold` (default 0.05), and `--stall_completion_floor` (default 0.8).
 
 ## Prerequisites
 
@@ -73,6 +101,7 @@ Most commands are also wrapped in the `Makefile` (`make setup`, `make download-w
 ```
 robust-vision-language-navigation/
   src/rvln/               Python package (pip install -e .)
+    config.py             Centralized model and numeric defaults
     paths.py              Centralized path constants and env loading
     ai/                   LTL planner, diary monitor, subgoal converter, LLM providers
     sim/                  Unreal sim env setup, pose utilities, scene JSON overlays
