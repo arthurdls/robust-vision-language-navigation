@@ -4,7 +4,7 @@ Single-file real-drone integration runner.
 
 Pipeline:
 1) Prompt user for an instruction (unless provided via CLI).
-2) LTL decomposition with LLM_User_Interface + LTL_Symbolic_Planner.
+2) LTL decomposition with LLMUserInterface + LTLSymbolicPlanner.
 3) Subgoal conversion + LiveDiaryMonitor supervision.
 4) OpenVLA /predict + /reset calls.
 5) Real command streaming to drone server using boieng wire format:
@@ -49,6 +49,7 @@ from PIL import Image
 
 from rvln.paths import REPO_ROOT, load_env_vars
 from rvln.sim.env_setup import state_for_openvla
+from rvln.sim.transforms import normalize_angle, parse_position, relative_pose
 from rvln.ai.utils.llm_providers import LLMFactory
 
 
@@ -61,29 +62,6 @@ ACTION_SMALL_DELTA_YAW = 1.0
 ACTION_SMALL_STEPS = 10
 
 stop_capture = False
-
-
-def normalize_angle(angle_deg: float) -> float:
-    angle_deg = angle_deg % 360.0
-    if angle_deg > 180.0:
-        angle_deg -= 360.0
-    return angle_deg
-
-
-def parse_position(s: str) -> List[float]:
-    parts = [p.strip() for p in s.split(",")]
-    if len(parts) != 4:
-        raise ValueError("Position must be x,y,z,yaw")
-    return [float(p) for p in parts]
-
-
-def relative_pose(current_world: List[float], origin_world: List[float]) -> List[float]:
-    return [
-        float(current_world[0] - origin_world[0]),
-        float(current_world[1] - origin_world[1]),
-        float(current_world[2] - origin_world[2]),
-        float(normalize_angle(current_world[3] - origin_world[3])),
-    ]
 
 
 def sanitize_name(text: str, max_len: int = 48) -> str:
@@ -652,6 +630,63 @@ def _ask_operator_for_help(
         return ("skip", "")
 
 
+@dataclass
+class OperatorHelpResult:
+    """Result of prompting the operator for help."""
+    stop_reason: Optional[str]  # Set if the loop should break ("operator_abort", "replan", "max_steps", "max_seconds")
+    replan_instruction: str
+    new_instruction: Optional[str]  # Set if choice was "instruction"
+    reasoning: str
+
+
+def _handle_ask_help(
+    control: DroneControlClient,
+    frame_offset: int,
+    step: int,
+    subgoal_nl: str,
+    header: str,
+    completion_pct: float,
+    current_instruction: str,
+    reasoning: str = "",
+) -> OperatorHelpResult:
+    """Zero the drone, prompt operator, and return a structured result.
+
+    The caller is responsible for applying instruction changes and resetting
+    state (openvla origin, small_count, etc.) when new_instruction is set.
+    """
+    control.send_command(
+        frame_offset + step,
+        np.array([0.0, 0.0, 0.0, 0.0], dtype=np.float32),
+    )
+    logger.warning(
+        "%s at step %d (completion: %.0f%%). Asking operator for help.",
+        header, step, completion_pct * 100,
+    )
+    choice, value = _ask_operator_for_help(
+        subgoal_nl, header, completion_pct, current_instruction, reasoning,
+    )
+    if choice == "abort":
+        return OperatorHelpResult(
+            stop_reason="operator_abort", replan_instruction="",
+            new_instruction=None, reasoning=reasoning,
+        )
+    elif choice == "replan":
+        return OperatorHelpResult(
+            stop_reason="replan", replan_instruction=value,
+            new_instruction=None, reasoning=reasoning,
+        )
+    elif choice == "instruction":
+        return OperatorHelpResult(
+            stop_reason=None, replan_instruction="",
+            new_instruction=value, reasoning=reasoning,
+        )
+    else:
+        return OperatorHelpResult(
+            stop_reason=header.lower().replace(" ", "_").strip("_"),
+            replan_instruction="", new_instruction=None, reasoning=reasoning,
+        )
+
+
 def run_subgoal(
     subgoal_nl: str,
     subgoal_index: int,
@@ -734,460 +769,393 @@ def run_subgoal(
 
     step_base = 0
     try:
-     while True:
-      for step in range(step_base, step_base + max_steps):
-        # 1. Check stop_capture
-        if stop_capture:
-            stop_reason = "interrupted"
-            break
-
-        # 1b. Check max_seconds (time-based budget for async mode)
-        if max_seconds is not None and (time.time() - subgoal_start_time) >= max_seconds:
-            total_steps = step
-            elapsed = time.time() - subgoal_start_time
-            control.send_command(frame_offset + step, np.array([0.0, 0.0, 0.0, 0.0], dtype=np.float32))
-            logger.warning(
-                "Max seconds (%.1f) reached at step %d (completion: %.0f%%). Asking operator for help.",
-                elapsed, step, monitor.last_completion_pct * 100,
-            )
-            choice, value = _ask_operator_for_help(
-                subgoal_nl, f"MAX TIME REACHED ({elapsed:.1f}s)", monitor.last_completion_pct,
-                current_instruction,
-            )
-            if choice == "abort":
-                stop_reason = "operator_abort"
-                break
-            elif choice == "replan":
-                stop_reason = "replan"
-                replan_instruction = value
-                total_steps = step
-                break
-            elif choice == "instruction":
-                override_history.append({
-                    "step": step,
-                    "type": "operator_help",
-                    "old_instruction": current_instruction,
-                    "new_instruction": value,
-                    "reasoning": f"Max seconds ({elapsed:.1f}s) reached.",
-                })
-                current_instruction = value
-                openvla_pose_origin = list(subgoal_rel_pose)
-                small_count = 0
-                last_pose = None
-                if use_async:
-                    last_correction_time = time.time()
-                last_correction_step = step
-                subgoal_start_time = time.time()
-                openvla.reset_model()
-                continue
-            else:
-                stop_reason = "max_seconds"
-                break
-
-        # 2. Async mode: poll for pending monitor results
-        if use_async:
-            async_result = monitor.poll_result()
-            if async_result is not None:
-                if async_result.action == "stop":
-                    stop_reason = "monitor_complete"
-                    total_steps = step
+        while True:
+            for step in range(step_base, step_base + max_steps):
+                # 1. Check stop_capture
+                if stop_capture:
+                    stop_reason = "interrupted"
                     break
-                if async_result.action == "force_converge":
+
+                # 1b. Check max_seconds (time-based budget for async mode)
+                if max_seconds is not None and (time.time() - subgoal_start_time) >= max_seconds:
+                    total_steps = step
+                    elapsed = time.time() - subgoal_start_time
+                    help_result = _handle_ask_help(
+                        control, frame_offset, step, subgoal_nl,
+                        f"MAX TIME REACHED ({elapsed:.1f}s)",
+                        monitor.last_completion_pct, current_instruction,
+                    )
+                    if help_result.stop_reason:
+                        stop_reason = help_result.stop_reason
+                        replan_instruction = help_result.replan_instruction
+                        total_steps = step
+                        break
                     override_history.append({
                         "step": step,
-                        "type": "force_converge",
-                        "reasoning": async_result.reasoning,
+                        "type": "operator_help",
+                        "old_instruction": current_instruction,
+                        "new_instruction": help_result.new_instruction,
+                        "reasoning": help_result.reasoning,
                     })
-                    conv_dict = _convergence_loop(
-                        monitor, control, pose_manager, command_dt_s,
-                        frame_offset, step, frame_path, subgoal_rel_pose,
-                    )
-                    if conv_dict is None:
-                        stop_reason = "interrupted"
-                        break
-                    if conv_dict["action"] == "stop":
-                        stop_reason = "monitor_complete"
-                        break
-                    if conv_dict["action"] == "ask_help":
-                        control.send_command(frame_offset + step, np.array([0.0, 0.0, 0.0, 0.0], dtype=np.float32))
-                        logger.warning(
-                            "Convergence exhausted corrections at step %d (completion: %.0f%%). Asking operator for help.",
-                            step, conv_dict["completion_pct"] * 100,
-                        )
-                        choice, value = _ask_operator_for_help(
-                            subgoal_nl, "MAX CORRECTIONS REACHED", conv_dict["completion_pct"],
-                            current_instruction, conv_dict["reasoning"],
-                        )
-                        if choice == "abort":
-                            stop_reason = "operator_abort"
+                    current_instruction = help_result.new_instruction
+                    openvla_pose_origin = list(subgoal_rel_pose)
+                    small_count = 0
+                    last_pose = None
+                    if use_async:
+                        last_correction_time = time.time()
+                    last_correction_step = step
+                    subgoal_start_time = time.time()
+                    openvla.reset_model()
+                    continue
+
+                # 2. Async mode: poll for pending monitor results
+                if use_async:
+                    async_result = monitor.poll_result()
+                    if async_result is not None:
+                        if async_result.action == "stop":
+                            stop_reason = "monitor_complete"
                             total_steps = step
                             break
-                        elif choice == "replan":
-                            stop_reason = "replan"
-                            replan_instruction = value
-                            total_steps = step
-                            break
-                        elif choice == "instruction":
+                        if async_result.action == "force_converge":
+                            override_history.append({
+                                "step": step,
+                                "type": "force_converge",
+                                "reasoning": async_result.reasoning,
+                            })
+                            conv_dict = _convergence_loop(
+                                monitor, control, pose_manager, command_dt_s,
+                                frame_offset, step, frame_path, subgoal_rel_pose,
+                            )
+                            if conv_dict is None:
+                                stop_reason = "interrupted"
+                                break
+                            if conv_dict["action"] == "stop":
+                                stop_reason = "monitor_complete"
+                                break
+                            if conv_dict["action"] == "ask_help":
+                                help_result = _handle_ask_help(
+                                    control, frame_offset, step, subgoal_nl,
+                                    "MAX CORRECTIONS REACHED", conv_dict["completion_pct"],
+                                    current_instruction, conv_dict["reasoning"],
+                                )
+                                if help_result.stop_reason:
+                                    stop_reason = help_result.stop_reason
+                                    replan_instruction = help_result.replan_instruction
+                                    total_steps = step
+                                    break
+                                override_history.append({
+                                    "step": step,
+                                    "type": "operator_help",
+                                    "old_instruction": current_instruction,
+                                    "new_instruction": help_result.new_instruction,
+                                    "reasoning": help_result.reasoning,
+                                })
+                                current_instruction = help_result.new_instruction
+                                openvla_pose_origin = list(subgoal_rel_pose)
+                                small_count = 0
+                                last_pose = None
+                                last_correction_time = time.time()
+                                last_correction_step = step
+                                openvla.reset_model()
+                            elif conv_dict.get("new_instruction"):
+                                override_history.append({
+                                    "step": step,
+                                    "type": f"convergence_{conv_dict['action']}",
+                                    "old_instruction": current_instruction,
+                                    "new_instruction": conv_dict["new_instruction"],
+                                    "reasoning": conv_dict["reasoning"],
+                                })
+                                current_instruction = conv_dict["new_instruction"]
+                                openvla_pose_origin = list(subgoal_rel_pose)
+                                small_count = 0
+                                last_pose = None
+                                last_correction_time = time.time()
+                                last_correction_step = step
+                                openvla.reset_model()
+                            else:
+                                stop_reason = "convergence_no_command"
+                                break
+
+                        if async_result.action == "ask_help":
+                            help_result = _handle_ask_help(
+                                control, frame_offset, step, subgoal_nl,
+                                "STALL DETECTED", async_result.completion_pct,
+                                current_instruction, async_result.reasoning,
+                            )
+                            if help_result.stop_reason:
+                                stop_reason = help_result.stop_reason
+                                replan_instruction = help_result.replan_instruction
+                                total_steps = step
+                                break
                             override_history.append({
                                 "step": step,
                                 "type": "operator_help",
                                 "old_instruction": current_instruction,
-                                "new_instruction": value,
-                                "reasoning": conv_dict["reasoning"],
+                                "new_instruction": help_result.new_instruction,
+                                "reasoning": help_result.reasoning,
                             })
-                            current_instruction = value
+                            current_instruction = help_result.new_instruction
                             openvla_pose_origin = list(subgoal_rel_pose)
                             small_count = 0
                             last_pose = None
                             last_correction_time = time.time()
                             last_correction_step = step
                             openvla.reset_model()
-                    elif conv_dict.get("new_instruction"):
-                        override_history.append({
-                            "step": step,
-                            "type": f"convergence_{conv_dict['action']}",
-                            "old_instruction": current_instruction,
-                            "new_instruction": conv_dict["new_instruction"],
-                            "reasoning": conv_dict["reasoning"],
-                        })
-                        current_instruction = conv_dict["new_instruction"]
-                        openvla_pose_origin = list(subgoal_rel_pose)
-                        small_count = 0
-                        last_pose = None
-                        last_correction_time = time.time()
-                        last_correction_step = step
-                        openvla.reset_model()
-                    else:
-                        stop_reason = "convergence_no_command"
+
+                # 3. Grab frame, compute pose
+                ok, frame = camera.read()
+                if not ok or frame is None:
+                    time.sleep(0.05)
+                    continue
+
+                world_pose = pose_manager.get_world_pose()
+                subgoal_rel_pose = relative_pose(world_pose, origin_world)
+
+                global_frame_idx = frame_offset + step
+                frame_path = frames_dir / f"frame_{global_frame_idx:06d}.png"
+                cv2.imwrite(str(frame_path), frame)
+
+                # 4. Call monitor.on_frame
+                result = monitor.on_frame(frame_path, displacement=list(subgoal_rel_pose))
+
+                if not use_async:
+                    # Sync mode: on_frame may return "stop" or "force_converge"
+                    if result.action == "stop":
+                        stop_reason = "monitor_complete"
+                        total_steps = step
                         break
 
-                if async_result.action == "ask_help":
-                    control.send_command(frame_offset + step, np.array([0.0, 0.0, 0.0, 0.0], dtype=np.float32))
-                    logger.warning(
-                        "Stall detected at step %d (completion: %.0f%%). Asking operator for help.",
-                        step, async_result.completion_pct * 100,
-                    )
-                    choice, value = _ask_operator_for_help(
-                        subgoal_nl, "STALL DETECTED", async_result.completion_pct,
-                        current_instruction, async_result.reasoning,
-                    )
-                    if choice == "abort":
-                        stop_reason = "operator_abort"
-                        total_steps = step
-                        break
-                    elif choice == "replan":
-                        stop_reason = "replan"
-                        replan_instruction = value
-                        total_steps = step
-                        break
-                    elif choice == "instruction":
+                    if result.action == "force_converge":
+                        override_history.append({
+                            "step": step,
+                            "type": "force_converge",
+                            "reasoning": result.reasoning,
+                        })
+
+                    if result.action == "ask_help":
+                        help_result = _handle_ask_help(
+                            control, frame_offset, step, subgoal_nl,
+                            "STALL DETECTED", result.completion_pct,
+                            current_instruction, result.reasoning,
+                        )
+                        if help_result.stop_reason:
+                            stop_reason = help_result.stop_reason
+                            replan_instruction = help_result.replan_instruction
+                            total_steps = step
+                            break
                         override_history.append({
                             "step": step,
                             "type": "operator_help",
                             "old_instruction": current_instruction,
-                            "new_instruction": value,
-                            "reasoning": async_result.reasoning,
+                            "new_instruction": help_result.new_instruction,
+                            "reasoning": help_result.reasoning,
                         })
-                        current_instruction = value
+                        current_instruction = help_result.new_instruction
                         openvla_pose_origin = list(subgoal_rel_pose)
                         small_count = 0
                         last_pose = None
-                        last_correction_time = time.time()
                         last_correction_step = step
                         openvla.reset_model()
 
-        # 3. Grab frame, compute pose
-        ok, frame = camera.read()
-        if not ok or frame is None:
-            time.sleep(0.05)
-            continue
+                # 5. openvla.predict() and send commands (identical for both modes)
+                openvla_pose = [c - o for c, o in zip(subgoal_rel_pose, openvla_pose_origin)]
+                response = openvla.predict(
+                    image_bgr=frame,
+                    proprio=state_for_openvla(openvla_pose),
+                    instr=current_instruction.strip().lower(),
+                )
 
-        world_pose = pose_manager.get_world_pose()
-        subgoal_rel_pose = relative_pose(world_pose, origin_world)
+                action_poses = response.get("action")
+                if not isinstance(action_poses, list) or len(action_poses) == 0:
+                    stop_reason = "empty_action"
+                    total_steps = step
+                    break
 
-        global_frame_idx = frame_offset + step
-        frame_path = frames_dir / f"frame_{global_frame_idx:06d}.png"
-        cv2.imwrite(str(frame_path), frame)
+                for action_pose in action_poses:
+                    if not (isinstance(action_pose, (list, tuple)) and len(action_pose) >= 4):
+                        continue
+                    current_world = pose_manager.get_world_pose()
+                    current_rel = relative_pose(current_world, origin_world)
+                    cmd = to_command_from_action_pose(action_pose, current_rel, action_pose_mode)
+                    control.send_command(global_frame_idx, cmd)
+                    pose_manager.update_from_command(cmd, command_dt_s)
+                    updated_rel = relative_pose(pose_manager.get_world_pose(), origin_world)
+                    trajectory_log.append({
+                        "state": [
+                            [updated_rel[0], updated_rel[1], updated_rel[2]],
+                            [0, updated_rel[3], 0],
+                        ]
+                    })
+                    time.sleep(command_dt_s)
 
-        # 4. Call monitor.on_frame
-        result = monitor.on_frame(frame_path, displacement=list(subgoal_rel_pose))
+                # 6. Convergence detection
+                total_steps = step + 1
+                world_pose = pose_manager.get_world_pose()
+                subgoal_rel_pose = relative_pose(world_pose, origin_world)
 
-        if not use_async:
-            # Sync mode: on_frame may return "stop" or "force_converge"
-            if result.action == "stop":
-                stop_reason = "monitor_complete"
-                total_steps = step
-                break
+                if use_async:
+                    # Async mode: time-based convergence guard
+                    converged = False
+                    elapsed_since_correction = time.time() - last_correction_time
+                    if last_pose is not None and elapsed_since_correction >= check_interval_s:
+                        diffs = [abs(a - b) for a, b in zip(subgoal_rel_pose, last_pose)]
+                        if all(d < ACTION_SMALL_DELTA_POS for d in diffs[:3]) and diffs[3] < ACTION_SMALL_DELTA_YAW:
+                            small_count += 1
+                        else:
+                            small_count = 0
+                        if small_count >= ACTION_SMALL_STEPS:
+                            converged = True
+                    last_pose = list(subgoal_rel_pose)
 
-            if result.action == "force_converge":
+                    if converged:
+                        conv_dict = _convergence_loop(
+                            monitor, control, pose_manager, command_dt_s,
+                            frame_offset, step, frame_path, subgoal_rel_pose,
+                        )
+                        if conv_dict is None:
+                            stop_reason = "interrupted"
+                            break
+                        if conv_dict["action"] == "stop":
+                            stop_reason = "monitor_complete"
+                            break
+                        if conv_dict["action"] == "ask_help":
+                            help_result = _handle_ask_help(
+                                control, frame_offset, step, subgoal_nl,
+                                "MAX CORRECTIONS REACHED", conv_dict["completion_pct"],
+                                current_instruction, conv_dict["reasoning"],
+                            )
+                            if help_result.stop_reason:
+                                stop_reason = help_result.stop_reason
+                                replan_instruction = help_result.replan_instruction
+                                total_steps = step
+                                break
+                            override_history.append({
+                                "step": step,
+                                "type": "operator_help",
+                                "old_instruction": current_instruction,
+                                "new_instruction": help_result.new_instruction,
+                                "reasoning": help_result.reasoning,
+                            })
+                            current_instruction = help_result.new_instruction
+                            openvla_pose_origin = list(subgoal_rel_pose)
+                            small_count = 0
+                            last_pose = None
+                            last_correction_time = time.time()
+                            last_correction_step = step
+                            openvla.reset_model()
+                        elif conv_dict.get("new_instruction"):
+                            override_history.append({
+                                "step": step,
+                                "type": f"convergence_{conv_dict['action']}",
+                                "old_instruction": current_instruction,
+                                "new_instruction": conv_dict["new_instruction"],
+                                "reasoning": conv_dict["reasoning"],
+                            })
+                            current_instruction = conv_dict["new_instruction"]
+                            openvla_pose_origin = list(subgoal_rel_pose)
+                            small_count = 0
+                            last_pose = None
+                            last_correction_time = time.time()
+                            last_correction_step = step
+                            openvla.reset_model()
+                        else:
+                            stop_reason = "convergence_no_command"
+                            break
+                else:
+                    # Sync mode: step-based convergence guard (original behavior)
+                    converged = result.action == "force_converge"
+                    steps_since_correction = step - last_correction_step
+
+                    if last_pose is not None and steps_since_correction >= check_interval:
+                        diffs = [abs(a - b) for a, b in zip(subgoal_rel_pose, last_pose)]
+                        if all(d < ACTION_SMALL_DELTA_POS for d in diffs[:3]) and diffs[3] < ACTION_SMALL_DELTA_YAW:
+                            small_count += 1
+                        else:
+                            small_count = 0
+                        if small_count >= ACTION_SMALL_STEPS:
+                            converged = True
+                    last_pose = list(subgoal_rel_pose)
+
+                    if converged:
+                        conv_result = monitor.on_convergence(
+                            frame_path, displacement=list(subgoal_rel_pose)
+                        )
+
+                        if conv_result.action == "stop":
+                            stop_reason = "monitor_complete"
+                            break
+
+                        if conv_result.action == "ask_help":
+                            help_result = _handle_ask_help(
+                                control, frame_offset, step, subgoal_nl,
+                                "MAX CORRECTIONS REACHED", conv_result.completion_pct,
+                                current_instruction, conv_result.reasoning,
+                            )
+                            if help_result.stop_reason:
+                                stop_reason = help_result.stop_reason
+                                replan_instruction = help_result.replan_instruction
+                                total_steps = step
+                                break
+                            override_history.append({
+                                "step": step,
+                                "type": "operator_help",
+                                "old_instruction": current_instruction,
+                                "new_instruction": help_result.new_instruction,
+                                "reasoning": help_result.reasoning,
+                            })
+                            current_instruction = help_result.new_instruction
+                            openvla_pose_origin = list(subgoal_rel_pose)
+                            small_count = 0
+                            last_pose = None
+                            last_correction_step = step
+                            openvla.reset_model()
+                        elif conv_result.new_instruction:
+                            override_history.append({
+                                "step": step,
+                                "type": f"convergence_{conv_result.action}",
+                                "old_instruction": current_instruction,
+                                "new_instruction": conv_result.new_instruction,
+                                "reasoning": conv_result.reasoning,
+                            })
+                            current_instruction = conv_result.new_instruction
+                            openvla_pose_origin = list(subgoal_rel_pose)
+                            small_count = 0
+                            last_pose = None
+                            last_correction_step = step
+                            openvla.reset_model()
+                        else:
+                            stop_reason = "convergence_no_command"
+                            break
+            else:
+                total_steps = step + 1
+                help_result = _handle_ask_help(
+                    control, frame_offset, step, subgoal_nl,
+                    "MAX STEPS REACHED", monitor.last_completion_pct,
+                    current_instruction, f"Max steps ({total_steps}) reached.",
+                )
+                if help_result.stop_reason:
+                    stop_reason = help_result.stop_reason
+                    replan_instruction = help_result.replan_instruction
+                    total_steps = step + 1
+                    break
                 override_history.append({
                     "step": step,
-                    "type": "force_converge",
-                    "reasoning": result.reasoning,
+                    "type": "operator_help",
+                    "old_instruction": current_instruction,
+                    "new_instruction": help_result.new_instruction,
+                    "reasoning": help_result.reasoning,
                 })
-
-            if result.action == "ask_help":
-                control.send_command(frame_offset + step, np.array([0.0, 0.0, 0.0, 0.0], dtype=np.float32))
-                logger.warning(
-                    "Stall detected at step %d (completion: %.0f%%). Asking operator for help.",
-                    step, result.completion_pct * 100,
-                )
-                choice, value = _ask_operator_for_help(
-                    subgoal_nl, "STALL DETECTED", result.completion_pct,
-                    current_instruction, result.reasoning,
-                )
-                if choice == "abort":
-                    stop_reason = "operator_abort"
-                    total_steps = step
-                    break
-                elif choice == "replan":
-                    stop_reason = "replan"
-                    replan_instruction = value
-                    total_steps = step
-                    break
-                elif choice == "instruction":
-                    override_history.append({
-                        "step": step,
-                        "type": "operator_help",
-                        "old_instruction": current_instruction,
-                        "new_instruction": value,
-                        "reasoning": result.reasoning,
-                    })
-                    current_instruction = value
-                    openvla_pose_origin = list(subgoal_rel_pose)
-                    small_count = 0
-                    last_pose = None
-                    last_correction_step = step
-                    openvla.reset_model()
-
-        # 5. openvla.predict() and send commands (identical for both modes)
-        openvla_pose = [c - o for c, o in zip(subgoal_rel_pose, openvla_pose_origin)]
-        response = openvla.predict(
-            image_bgr=frame,
-            proprio=state_for_openvla(openvla_pose),
-            instr=current_instruction.strip().lower(),
-        )
-
-        action_poses = response.get("action")
-        if not isinstance(action_poses, list) or len(action_poses) == 0:
-            stop_reason = "empty_action"
-            total_steps = step
-            break
-
-        for action_pose in action_poses:
-            if not (isinstance(action_pose, (list, tuple)) and len(action_pose) >= 4):
-                continue
-            current_world = pose_manager.get_world_pose()
-            current_rel = relative_pose(current_world, origin_world)
-            cmd = to_command_from_action_pose(action_pose, current_rel, action_pose_mode)
-            control.send_command(global_frame_idx, cmd)
-            pose_manager.update_from_command(cmd, command_dt_s)
-            updated_rel = relative_pose(pose_manager.get_world_pose(), origin_world)
-            trajectory_log.append({
-                "state": [
-                    [updated_rel[0], updated_rel[1], updated_rel[2]],
-                    [0, updated_rel[3], 0],
-                ]
-            })
-            time.sleep(command_dt_s)
-
-        # 6. Convergence detection
-        total_steps = step + 1
-        world_pose = pose_manager.get_world_pose()
-        subgoal_rel_pose = relative_pose(world_pose, origin_world)
-
-        if use_async:
-            # Async mode: time-based convergence guard
-            converged = False
-            elapsed_since_correction = time.time() - last_correction_time
-            if last_pose is not None and elapsed_since_correction >= check_interval_s:
-                diffs = [abs(a - b) for a, b in zip(subgoal_rel_pose, last_pose)]
-                if all(d < ACTION_SMALL_DELTA_POS for d in diffs[:3]) and diffs[3] < ACTION_SMALL_DELTA_YAW:
-                    small_count += 1
-                else:
-                    small_count = 0
-                if small_count >= ACTION_SMALL_STEPS:
-                    converged = True
-            last_pose = list(subgoal_rel_pose)
-
-            if converged:
-                conv_dict = _convergence_loop(
-                    monitor, control, pose_manager, command_dt_s,
-                    frame_offset, step, frame_path, subgoal_rel_pose,
-                )
-                if conv_dict is None:
-                    stop_reason = "interrupted"
-                    break
-                if conv_dict["action"] == "stop":
-                    stop_reason = "monitor_complete"
-                    break
-                if conv_dict["action"] == "ask_help":
-                    control.send_command(frame_offset + step, np.array([0.0, 0.0, 0.0, 0.0], dtype=np.float32))
-                    logger.warning(
-                        "Convergence exhausted corrections at step %d (completion: %.0f%%). Asking operator for help.",
-                        step, conv_dict["completion_pct"] * 100,
-                    )
-                    choice, value = _ask_operator_for_help(
-                        subgoal_nl, "MAX CORRECTIONS REACHED", conv_dict["completion_pct"],
-                        current_instruction, conv_dict["reasoning"],
-                    )
-                    if choice == "abort":
-                        stop_reason = "operator_abort"
-                        total_steps = step
-                        break
-                    elif choice == "replan":
-                        stop_reason = "replan"
-                        replan_instruction = value
-                        total_steps = step
-                        break
-                    elif choice == "instruction":
-                        override_history.append({
-                            "step": step,
-                            "type": "operator_help",
-                            "old_instruction": current_instruction,
-                            "new_instruction": value,
-                            "reasoning": conv_dict["reasoning"],
-                        })
-                        current_instruction = value
-                        openvla_pose_origin = list(subgoal_rel_pose)
-                        small_count = 0
-                        last_pose = None
-                        last_correction_time = time.time()
-                        last_correction_step = step
-                        openvla.reset_model()
-                elif conv_dict.get("new_instruction"):
-                    override_history.append({
-                        "step": step,
-                        "type": f"convergence_{conv_dict['action']}",
-                        "old_instruction": current_instruction,
-                        "new_instruction": conv_dict["new_instruction"],
-                        "reasoning": conv_dict["reasoning"],
-                    })
-                    current_instruction = conv_dict["new_instruction"]
-                    openvla_pose_origin = list(subgoal_rel_pose)
-                    small_count = 0
-                    last_pose = None
+                current_instruction = help_result.new_instruction
+                openvla_pose_origin = list(subgoal_rel_pose)
+                small_count = 0
+                last_pose = None
+                if use_async:
                     last_correction_time = time.time()
-                    last_correction_step = step
-                    openvla.reset_model()
-                else:
-                    stop_reason = "convergence_no_command"
-                    break
-        else:
-            # Sync mode: step-based convergence guard (original behavior)
-            converged = result.action == "force_converge"
-            steps_since_correction = step - last_correction_step
-
-            if last_pose is not None and steps_since_correction >= check_interval:
-                diffs = [abs(a - b) for a, b in zip(subgoal_rel_pose, last_pose)]
-                if all(d < ACTION_SMALL_DELTA_POS for d in diffs[:3]) and diffs[3] < ACTION_SMALL_DELTA_YAW:
-                    small_count += 1
-                else:
-                    small_count = 0
-                if small_count >= ACTION_SMALL_STEPS:
-                    converged = True
-            last_pose = list(subgoal_rel_pose)
-
-            if converged:
-                conv_result = monitor.on_convergence(
-                    frame_path, displacement=list(subgoal_rel_pose)
-                )
-
-                if conv_result.action == "stop":
-                    stop_reason = "monitor_complete"
-                    break
-
-                if conv_result.action == "ask_help":
-                    control.send_command(frame_offset + step, np.array([0.0, 0.0, 0.0, 0.0], dtype=np.float32))
-                    logger.warning(
-                        "Convergence exhausted corrections at step %d (completion: %.0f%%). Asking operator for help.",
-                        step, conv_result.completion_pct * 100,
-                    )
-                    choice, value = _ask_operator_for_help(
-                        subgoal_nl, "MAX CORRECTIONS REACHED", conv_result.completion_pct,
-                        current_instruction, conv_result.reasoning,
-                    )
-                    if choice == "abort":
-                        stop_reason = "operator_abort"
-                        total_steps = step
-                        break
-                    elif choice == "replan":
-                        stop_reason = "replan"
-                        replan_instruction = value
-                        total_steps = step
-                        break
-                    elif choice == "instruction":
-                        override_history.append({
-                            "step": step,
-                            "type": "operator_help",
-                            "old_instruction": current_instruction,
-                            "new_instruction": value,
-                            "reasoning": conv_result.reasoning,
-                        })
-                        current_instruction = value
-                        openvla_pose_origin = list(subgoal_rel_pose)
-                        small_count = 0
-                        last_pose = None
-                        last_correction_step = step
-                        openvla.reset_model()
-                elif conv_result.new_instruction:
-                    override_history.append({
-                        "step": step,
-                        "type": f"convergence_{conv_result.action}",
-                        "old_instruction": current_instruction,
-                        "new_instruction": conv_result.new_instruction,
-                        "reasoning": conv_result.reasoning,
-                    })
-                    current_instruction = conv_result.new_instruction
-                    openvla_pose_origin = list(subgoal_rel_pose)
-                    small_count = 0
-                    last_pose = None
-                    last_correction_step = step
-                    openvla.reset_model()
-                else:
-                    stop_reason = "convergence_no_command"
-                    break
-      else:
-          total_steps = step + 1
-          control.send_command(frame_offset + step, np.array([0.0, 0.0, 0.0, 0.0], dtype=np.float32))
-          logger.warning(
-              "Max steps (%d) reached (completion: %.0f%%). Asking operator for help.",
-              total_steps, monitor.last_completion_pct * 100,
-          )
-          choice, value = _ask_operator_for_help(
-              subgoal_nl, "MAX STEPS REACHED", monitor.last_completion_pct,
-              current_instruction, f"Max steps ({total_steps}) reached.",
-          )
-          if choice == "abort":
-              stop_reason = "operator_abort"
-              break
-          elif choice == "replan":
-              stop_reason = "replan"
-              replan_instruction = value
-              total_steps = step + 1
-              break
-          elif choice == "instruction":
-              override_history.append({
-                  "step": step,
-                  "type": "operator_help",
-                  "old_instruction": current_instruction,
-                  "new_instruction": value,
-                  "reasoning": f"Max steps ({total_steps}) reached.",
-              })
-              current_instruction = value
-              openvla_pose_origin = list(subgoal_rel_pose)
-              small_count = 0
-              last_pose = None
-              if use_async:
-                  last_correction_time = time.time()
-              last_correction_step = step
-              step_base = step + 1
-              openvla.reset_model()
-              continue
-          else:
-              stop_reason = "max_steps"
-              break
-      break
+                last_correction_step = step
+                step_base = step + 1
+                openvla.reset_model()
+                continue
+            break
     except Exception as exc:
         stop_reason = f"error: {exc}"
         logger.error("run_subgoal failed at step %d: %s", total_steps, exc)
@@ -1401,11 +1369,11 @@ def main() -> None:
     ltl_plan: Dict[str, Any] = {}
 
     try:
-        from rvln.ai.llm_interface import LLM_User_Interface
-        from rvln.ai.ltl_planner import LTL_Symbolic_Planner
+        from rvln.ai.llm_interface import LLMUserInterface
+        from rvln.ai.ltl_planner import LTLSymbolicPlanner
 
-        llm_interface = LLM_User_Interface(model=llm_model)
-        planner = LTL_Symbolic_Planner(llm_interface)
+        llm_interface = LLMUserInterface(model=llm_model)
+        planner = LTLSymbolicPlanner(llm_interface)
         planner.plan_from_natural_language(instruction)
 
         ltl_plan = {

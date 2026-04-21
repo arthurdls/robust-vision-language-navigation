@@ -39,10 +39,17 @@ import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
 import numpy as np
 
+from ..config import DEFAULT_VLM_MODEL
+from .prompts import (
+    DIARY_SYSTEM_PROMPT as GENERAL_SYSTEM_PROMPT,
+    DIARY_LOCAL_PROMPT as LOCAL_PROMPT_TEMPLATE,
+    DIARY_GLOBAL_PROMPT as GLOBAL_PROMPT_TEMPLATE,
+    DIARY_CONVERGENCE_PROMPT as CONVERGENCE_PROMPT_TEMPLATE,
+)
 from .utils.llm_providers import BaseLLM, LLMFactory
 from .utils.vision import build_frame_grid, query_vlm, sample_frames_every_n
 
@@ -50,163 +57,18 @@ logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
+DiaryAction = Literal["continue", "stop", "override", "command", "ask_help", "force_converge"]
+
 # Result dataclass
 # ---------------------------------------------------------------------------
 
 @dataclass
 class DiaryCheckResult:
-    action: str           # "continue", "stop", "override", "command", "ask_help", or "force_converge"
+    action: DiaryAction
     new_instruction: str  # populated when action is "override" or "command"
     reasoning: str
     diary_entry: str      # latest diary entry (what changed)
     completion_pct: float = 0.0  # latest estimated completion percentage
-
-
-# ---------------------------------------------------------------------------
-# System prompts (general -- not per-task)
-# ---------------------------------------------------------------------------
-
-GENERAL_SYSTEM_PROMPT = """\
-You are a completion monitor for an autonomous drone executing a single subgoal.
-You watch first-person video frames and a running diary to decide whether the
-subgoal is done, and issue corrections when the drone stops prematurely.
-
-COMPLETION CRITERIA — mark complete only with high confidence:
-- MOVEMENT ("move past X"): drone has passed the landmark.
-- BETWEEN ("go between X and Y"): drone is positioned between both landmarks.
-- APPROACH ("approach X"): target fills a large portion of the frame.
-- VISUAL SEARCH ("turn until you see X"): target is clearly visible in the
-  frame. It does NOT need to be perfectly centered — anywhere in the frame is
-  acceptable as long as it is identifiable.
-- ABOVE ("go above X"): target is visible below — requires being positioned
-  over the target, not just at a higher altitude.
-- BELOW ("go below X"): target is visible above.
-- TRAVERSAL ("move through X"): drone has passed through the structure.
-Never set completion_percentage to 1.0 unless certain. Cap at 0.95 when unsure.
-
-DISPLACEMENT: [x, y, z, yaw] relative to subtask start. x/y are fixed to the
-initial heading (x = forward, y = lateral at start). z = altitude. Meters.
-yaw = heading change in degrees.
-
-DURING NORMAL FLIGHT — your primary job is to detect completion and problems:
-- If the subgoal is complete, set "complete" to true.
-- If the drone is actively making things worse (e.g., moving away from the target,
-  overshooting), set "should_stop" to true so it can be corrected.
-- Otherwise, let the drone execute its instruction without interference.
-
-ORIENTATION TOLERANCE — avoid oscillating corrections:
-- When the subgoal involves turning toward or facing an object, the target does
-  NOT need to be at the exact center of the frame. If the target is visible
-  anywhere in the frame, the orientation is good enough — mark it complete
-  rather than issuing further yaw corrections.
-
-WHEN THE DRONE STOPS (convergence corrections):
-- Decide if the subgoal is complete, stopped short, or overshot.
-- Issue ONE single-action corrective command — the drone cannot execute compound
-  instructions like "ascend and move forward". Pick the single axis that is the
-  biggest bottleneck right now; the other axes will be addressed in subsequent
-  correction cycles. The diary highlights the most visually obvious changes,
-  which may not reflect the real bottleneck — check displacement data and think
-  about what the subgoal actually requires.
-- Retreat commands must reference the target object (e.g., "move back from the
-  [object]") — the drone does not understand bare "move backward X meters".
-- Keep corrections small (under 1.0 meters) for frequent re-evaluation."""
-
-LOCAL_PROMPT_TEMPLATE = """\
-The subgoal is: {subgoal}
-
-What changed between these two consecutive frames relative to this subgoal?
-Answer in ONE short sentence with only the key facts that directly bear on the subgoal."""
-
-GLOBAL_PROMPT_TEMPLATE = """\
-Subgoal: {subgoal}
-
-Previous estimated completion: {prev_completion_pct}
-Current displacement from start: [x, y, z, yaw] = {displacement}
-
-Diary of changes observed so far:
-{diary}
-
-The grid shows up to the 9 most recent sampled frames (left to right, top to
-bottom, in temporal order). If there are more than 9 diary entries, earlier frames
-are no longer visible in the grid — rely on the diary text for that history.
-
-Based on the diary and the grid of sampled frames, respond with EXACTLY ONE JSON
-object (no markdown fences):
-
-{{
-  "complete": true/false,
-  "completion_percentage": 0.0 to 1.0,
-  "on_track": true/false,
-  "should_stop": true/false
-}}
-
-- "complete": true ONLY if you are highly confident the subgoal has been fully
-  accomplished. Do NOT mark complete for partial progress.
-- "completion_percentage": your best estimate of how close the subgoal is to
-  completion (0.0 = not started, 1.0 = fully done). NEVER set 1.0 unless you
-  are highly confident — use at most 0.95 when unsure.
-- "on_track": true if the drone is making any progress toward the subgoal.
-- "should_stop": true only if the drone is actively making things worse (e.g.,
-  overshooting, moving away from target). The drone will be stopped and a
-  correction issued. Do NOT set true for slow progress."""
-
-CONVERGENCE_PROMPT_TEMPLATE = """\
-Subgoal: {subgoal}
-
-Previous estimated completion: {prev_completion_pct}
-Current displacement from start: [x, y, z, yaw] = {displacement}
-
-Diary of changes observed so far:
-{diary}
-
-The drone has stopped moving. The grid shows up to the 9 most recent sampled
-frames (left to right, top to bottom, in temporal order). If there are more
-than 9 diary entries, earlier frames are no longer visible in the grid — rely
-on the diary text for that history.
-
-Given the diary and the sampled frames, is the subgoal complete? If not, did
-the drone stop short or overshoot?
-
-Respond with EXACTLY ONE JSON object (no markdown fences):
-
-{{
-  "complete": true/false,
-  "completion_percentage": 0.0 to 1.0,
-  "diagnosis": "stopped_short" or "overshot" or "complete",
-  "corrective_instruction": "..." or null
-}}
-
-- "complete": true ONLY if you are highly confident the subgoal has been fully
-  accomplished. Do NOT mark complete for partial progress. When in doubt, keep
-  it false and issue a corrective instruction.
-- "completion_percentage": your best estimate of how close the subgoal is to
-  completion (0.0 = not started, 1.0 = fully done). NEVER set 1.0 unless you
-  are highly confident the subtask is fully complete — use at most 0.95 if the
-  result looks close but you are not certain.
-- "diagnosis": "complete" if done, "stopped_short" if the drone needs to keep
-  going, "overshot" if the drone went past the goal.
-- "corrective_instruction": REQUIRED if not complete — a single-action drone
-  command to fix the biggest gap (not compound — one action per correction).
-  null only if complete.
-
-  Useful corrective patterns:
-    * "Turn toward <landmark>" — re-orient the drone toward a visible or
-      expected landmark so the policy can locate it.
-    * "Turn right/left <N> degrees" — precise yaw adjustment when the target
-      is off-screen or partially visible.
-    * "Move forward <N> meters" / "Move closer to <landmark>" — close a gap.
-    * "Ascend/Descend <N> meters" — altitude correction.
-  Prefer a turn command when the target is not visible in the latest frame;
-  the underlying policy needs to see the target to navigate toward it.
-
-  IMPORTANT — orientation tolerance: if the subgoal is about turning toward or
-  facing a target and the target is already visible in the frame (even if
-  off-center), mark the subgoal complete instead of issuing further turn
-  corrections. Small yaw offsets are acceptable. Do NOT oscillate between
-  left and right turn corrections trying to perfectly center the target."""
-
-
 
 # ---------------------------------------------------------------------------
 # LiveDiaryMonitor
@@ -267,7 +129,7 @@ class LiveDiaryMonitor:
         self,
         subgoal: str,
         check_interval: int,
-        model: str = "gpt-4o",
+        model: str = DEFAULT_VLM_MODEL,
         artifacts_dir: Optional[Path] = None,
         max_corrections: int = 15,
         check_interval_s: Optional[float] = None,
@@ -552,19 +414,29 @@ class LiveDiaryMonitor:
     # Internal helpers
     # ------------------------------------------------------------------
 
-    def _sample_frames_by_time(self) -> List[Path]:
+    def _sample_frames_by_time(
+        self,
+        frame_paths: Optional[List[Path]] = None,
+        frame_timestamps: Optional[List[float]] = None,
+    ) -> List[Path]:
         """Select frames closest to each ``check_interval_s`` boundary.
 
         Boundaries are placed at t=0, t=interval, t=2*interval, ... from the
         first timestamp. For each boundary, the frame with the smallest
         absolute time difference is chosen. The result is deduplicated while
         preserving order.
-        """
-        if not self._frame_timestamps or self._check_interval_s is None:
-            return list(self._frame_paths)
 
-        t0 = self._frame_timestamps[0]
-        t_last = self._frame_timestamps[-1]
+        ``frame_paths`` and ``frame_timestamps`` may be pre-snapshotted copies
+        taken under the lock by callers running on background threads.
+        """
+        paths = frame_paths if frame_paths is not None else self._frame_paths
+        timestamps = frame_timestamps if frame_timestamps is not None else self._frame_timestamps
+
+        if not timestamps or self._check_interval_s is None:
+            return list(paths)
+
+        t0 = timestamps[0]
+        t_last = timestamps[-1]
         interval = self._check_interval_s
 
         # Build boundary times: t0, t0+interval, t0+2*interval, ...
@@ -581,15 +453,15 @@ class LiveDiaryMonitor:
         seen_indices: set = set()
         for boundary in boundaries:
             best_idx = 0
-            best_diff = abs(self._frame_timestamps[0] - boundary)
-            for i, ts in enumerate(self._frame_timestamps):
+            best_diff = abs(timestamps[0] - boundary)
+            for i, ts in enumerate(timestamps):
                 diff = abs(ts - boundary)
                 if diff < best_diff:
                     best_diff = diff
                     best_idx = i
             if best_idx not in seen_indices:
                 seen_indices.add(best_idx)
-                selected.append(self._frame_paths[best_idx])
+                selected.append(paths[best_idx])
 
         return selected
 
@@ -751,6 +623,8 @@ class LiveDiaryMonitor:
             curr_path = self._frame_paths[-1]
             step = self._step
             displacement = list(self._last_displacement)
+            frame_paths_snap = list(self._frame_paths)
+            frame_timestamps_snap = list(self._frame_timestamps)
 
         # --- Local query: what changed ---
         grid_two = build_frame_grid([prev_path, curr_path])
@@ -769,7 +643,7 @@ class LiveDiaryMonitor:
         self._diary.append(diary_entry)
 
         # --- Global query: assess progress ---
-        sampled = self._sample_frames_by_time()
+        sampled = self._sample_frames_by_time(frame_paths_snap, frame_timestamps_snap)
         if not sampled:
             return DiaryCheckResult(
                 action="continue",
@@ -869,7 +743,10 @@ class LiveDiaryMonitor:
             displacement=disp_str,
         )
 
-        sampled = self._sample_frames_by_time()
+        with self._lock:
+            frame_paths_snap = list(self._frame_paths)
+            frame_timestamps_snap = list(self._frame_timestamps)
+        sampled = self._sample_frames_by_time(frame_paths_snap, frame_timestamps_snap)
         if not sampled or sampled[-1] != frame_path:
             sampled.append(frame_path)
         sampled = sampled[-self.MAX_GLOBAL_FRAMES:]
@@ -1068,6 +945,8 @@ class LiveDiaryMonitor:
 
     def cleanup(self) -> None:
         """Stop background thread and remove temporary frame directory."""
+        if not hasattr(self, "_stop_event"):
+            return
         self._stop_event.set()
         if self._monitor_thread is not None:
             self._monitor_thread.join(timeout=5.0)
