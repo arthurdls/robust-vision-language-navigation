@@ -255,7 +255,7 @@ class LiveDiaryMonitor:
         self._vlm_calls = 0
         self._vlm_rtts: List[Dict[str, Any]] = []
         self._last_completion_pct: float = 0.0
-        self._high_water_mark: float = 0.0
+        self._peak_completion: float = 0.0
         self._last_displacement: List[float] = [0.0, 0.0, 0.0, 0.0]
         self._stall_window = stall_window
         self._stall_threshold = stall_threshold
@@ -297,8 +297,8 @@ class LiveDiaryMonitor:
         return self._last_completion_pct
 
     @property
-    def high_water_mark(self) -> float:
-        return self._high_water_mark
+    def peak_completion(self) -> float:
+        return self._peak_completion
 
     @property
     def parse_failures(self) -> int:
@@ -457,7 +457,7 @@ class LiveDiaryMonitor:
         pct = float(parsed.get("completion_percentage", self._last_completion_pct))
         pct = max(0.0, min(1.0, pct))
         self._last_completion_pct = pct
-        self._high_water_mark = max(self._high_water_mark, pct)
+        self._peak_completion = max(self._peak_completion, pct)
 
         if parsed.get("complete", False) or parsed.get("diagnosis") == "complete":
             return DiaryCheckResult(
@@ -485,7 +485,7 @@ class LiveDiaryMonitor:
                 pct_r = float(parsed_retry.get("completion_percentage", pct))
                 pct_r = max(0.0, min(1.0, pct_r))
                 self._last_completion_pct = pct_r
-                self._high_water_mark = max(self._high_water_mark, pct_r)
+                self._peak_completion = max(self._peak_completion, pct_r)
                 return DiaryCheckResult(
                     action="stop",
                     new_instruction="",
@@ -675,7 +675,7 @@ class LiveDiaryMonitor:
         )
 
         self._last_completion_pct = result.completion_pct
-        self._high_water_mark = max(self._high_water_mark, result.completion_pct)
+        self._peak_completion = max(self._peak_completion, result.completion_pct)
         self._completion_history.append(result.completion_pct)
         self._diary.append(
             f"Checkpoint {step}: completion = {result.completion_pct:.2f}"
@@ -785,7 +785,7 @@ class LiveDiaryMonitor:
         )
 
         self._last_completion_pct = result.completion_pct
-        self._high_water_mark = max(self._high_water_mark, result.completion_pct)
+        self._peak_completion = max(self._peak_completion, result.completion_pct)
         self._completion_history.append(result.completion_pct)
         self._diary.append(
             f"Checkpoint ~{step}: completion = {result.completion_pct:.2f}"
@@ -864,7 +864,7 @@ class LiveDiaryMonitor:
         pct = float(parsed.get("completion_percentage", self._last_completion_pct))
         pct = max(0.0, min(1.0, pct))
         self._last_completion_pct = pct
-        self._high_water_mark = max(self._high_water_mark, pct)
+        self._peak_completion = max(self._peak_completion, pct)
 
         if parsed.get("complete", False) or parsed.get("diagnosis") == "complete":
             return DiaryCheckResult(
@@ -892,7 +892,7 @@ class LiveDiaryMonitor:
                 pct_r = float(parsed_retry.get("completion_percentage", pct))
                 pct_r = max(0.0, min(1.0, pct_r))
                 self._last_completion_pct = pct_r
-                self._high_water_mark = max(self._high_water_mark, pct_r)
+                self._peak_completion = max(self._peak_completion, pct_r)
                 return DiaryCheckResult(
                     action="stop",
                     new_instruction="",

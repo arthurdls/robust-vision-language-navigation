@@ -412,7 +412,7 @@ def _run_subgoal(
         "override_history": override_history,
         "corrections_used": monitor.corrections_used,
         "last_completion_pct": monitor.last_completion_pct,
-        "high_water_mark": monitor.high_water_mark,
+        "peak_completion": monitor.peak_completion,
         "parse_failures": monitor.parse_failures,
         "vlm_calls": monitor.vlm_calls,
         "stop_reason": stop_reason,
@@ -436,7 +436,7 @@ def _run_subgoal(
         "stop_reason": stop_reason,
         "corrections_used": monitor.corrections_used,
         "last_completion_pct": monitor.last_completion_pct,
-        "high_water_mark": monitor.high_water_mark,
+        "peak_completion": monitor.peak_completion,
         "vlm_calls": monitor.vlm_calls,
         "next_origin": [next_origin_x, next_origin_y, next_origin_z, next_origin_yaw],
     }
