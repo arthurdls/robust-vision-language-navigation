@@ -19,7 +19,7 @@ DEFAULT_DIARY_MODE = "frame"  # "frame" (sync, step-based) or "time" (async, tim
 
 # Frame-mode budget / checkpoint interval
 DEFAULT_MAX_STEPS_PER_SUBGOAL = 300
-DEFAULT_DIARY_CHECK_INTERVAL = 10
+DEFAULT_DIARY_CHECK_INTERVAL = 20
 
 # Time-mode budget / checkpoint interval
 DEFAULT_MAX_SECONDS_PER_SUBGOAL = 120.0
