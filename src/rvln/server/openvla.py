@@ -102,14 +102,14 @@ class OpenVLAActionAgent:
 
         self.unnorm_key = cfg.get("unnorm_key", "sim")
         self.do_sample = cfg.get("do_sample", False)
-        if torch.cuda.is_available():
+        if self.device_mode != "cpu":
             self._alltime_peak_vram = torch.cuda.max_memory_allocated(self.gpu_id) / (1024 ** 3)
         else:
             self._alltime_peak_vram = 0.0
 
         if self.device_mode == "auto":
             self._validate_device_split()
-            if torch.cuda.is_available():
+            if self.device_mode != "cpu":
                 self._alltime_peak_vram = max(
                     self._alltime_peak_vram,
                     torch.cuda.max_memory_allocated(self.gpu_id) / (1024 ** 3),
@@ -236,7 +236,7 @@ class OpenVLAActionAgent:
         rss_gb = rss_bytes / (1024 ** 3)
         peak_rss_gb = peak_rss_bytes / (1024 ** 3)
 
-        if torch.cuda.is_available():
+        if self.device_mode != "cpu":
             gpu_id = self.gpu_id
             current_vram = torch.cuda.memory_allocated(gpu_id) / (1024 ** 3)
             reserved_vram = torch.cuda.memory_reserved(gpu_id) / (1024 ** 3)
@@ -273,10 +273,10 @@ class OpenVLAActionAgent:
                 log.info(f"Inference time: {time.time() - start_time:.3f}s")
 
                 request_peak = None
-                if torch.cuda.is_available():
+                if self.device_mode != "cpu":
                     request_peak = torch.cuda.max_memory_allocated(self.gpu_id) / (1024 ** 3)
                 self._log_memory_usage(request_peak_vram_gb=request_peak)
-                if torch.cuda.is_available():
+                if self.device_mode != "cpu":
                     torch.cuda.reset_peak_memory_stats(self.gpu_id)
 
                 pred_action = pred_action[None, :]
@@ -360,5 +360,5 @@ class OpenVLAActionAgent:
             return pred_action
         finally:
             del inputs
-            if torch.cuda.is_available():
+            if self.device_mode != "cpu":
                 torch.cuda.empty_cache()
