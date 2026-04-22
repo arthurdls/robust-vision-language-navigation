@@ -78,9 +78,18 @@ class OpenVLAActionAgent:
 
         self.unnorm_key = cfg.get("unnorm_key", "sim")
         self.do_sample = cfg.get("do_sample", False)
+        if torch.cuda.is_available():
+            self._alltime_peak_vram = torch.cuda.max_memory_allocated(self.gpu_id) / (1024 ** 3)
+        else:
+            self._alltime_peak_vram = 0.0
 
         if self.device_mode == "auto":
             self._validate_device_split()
+            if torch.cuda.is_available():
+                self._alltime_peak_vram = max(
+                    self._alltime_peak_vram,
+                    torch.cuda.max_memory_allocated(self.gpu_id) / (1024 ** 3),
+                )
 
         self.app = Flask(__name__)
         self._setup_routes()
@@ -137,30 +146,36 @@ class OpenVLAActionAgent:
                 self.act(dummy_image, dummy_prompt)
             log.info("Device split validation passed after memory reduction.")
 
-    def _log_memory_usage(self):
-        """Log peak VRAM and current CPU RSS after an inference call."""
+    def _log_memory_usage(self, request_peak_vram_gb=None):
+        """Log memory usage after an inference call."""
         rss_bytes = 0
+        peak_rss_bytes = 0
         try:
             with open(f"/proc/{os.getpid()}/status") as f:
                 for line in f:
                     if line.startswith("VmRSS:"):
-                        rss_bytes = int(line.split()[1]) * 1024  # kB to bytes
-                        break
+                        rss_bytes = int(line.split()[1]) * 1024
+                    elif line.startswith("VmHWM:"):
+                        peak_rss_bytes = int(line.split()[1]) * 1024
         except OSError:
             pass
         rss_gb = rss_bytes / (1024 ** 3)
+        peak_rss_gb = peak_rss_bytes / (1024 ** 3)
 
         if torch.cuda.is_available():
             gpu_id = self.gpu_id
-            peak_vram = torch.cuda.max_memory_allocated(gpu_id) / (1024 ** 3)
             current_vram = torch.cuda.memory_allocated(gpu_id) / (1024 ** 3)
             reserved_vram = torch.cuda.memory_reserved(gpu_id) / (1024 ** 3)
+            if request_peak_vram_gb is not None:
+                self._alltime_peak_vram = max(self._alltime_peak_vram, request_peak_vram_gb)
+            req_str = f"request_peak={request_peak_vram_gb:.2f} GB, " if request_peak_vram_gb is not None else ""
             log.info(
-                f"Memory: VRAM peak={peak_vram:.2f} GB, current={current_vram:.2f} GB, "
-                f"reserved={reserved_vram:.2f} GB | CPU RSS={rss_gb:.2f} GB"
+                f"Memory: VRAM {req_str}alltime_peak={self._alltime_peak_vram:.2f} GB, "
+                f"current={current_vram:.2f} GB, reserved={reserved_vram:.2f} GB | "
+                f"CPU RSS={rss_gb:.2f} GB, peak_RSS={peak_rss_gb:.2f} GB"
             )
         else:
-            log.info(f"Memory: CPU RSS={rss_gb:.2f} GB")
+            log.info(f"Memory: CPU RSS={rss_gb:.2f} GB, peak_RSS={peak_rss_gb:.2f} GB")
 
     def _setup_routes(self):
         @self.app.route("/predict", methods=["POST"])
@@ -178,13 +193,17 @@ class OpenVLAActionAgent:
                 prompt = f"In: Current State: {proprio_str}, What action should the uav take to {instruction}?\nOut:"
                 log.info(f"Prompt: {prompt}")
 
-                if torch.cuda.is_available():
-                    torch.cuda.reset_peak_memory_stats(self.gpu_id)
                 start_time = time.time()
                 with torch.inference_mode():
                     pred_action = self.act(image, prompt)
                 log.info(f"Inference time: {time.time() - start_time:.3f}s")
-                self._log_memory_usage()
+
+                request_peak = None
+                if torch.cuda.is_available():
+                    request_peak = torch.cuda.max_memory_allocated(self.gpu_id) / (1024 ** 3)
+                self._log_memory_usage(request_peak_vram_gb=request_peak)
+                if torch.cuda.is_available():
+                    torch.cuda.reset_peak_memory_stats(self.gpu_id)
 
                 pred_action = pred_action[None, :]
                 pred_action_ori = pred_action.copy()
