@@ -4,8 +4,13 @@ Covers the _is_stalled() heuristic (plateau detection across checkpoint
 completion history) and its integration into _run_checkpoint() which
 returns action="ask_help" when a stall is detected.
 """
+import sys
 from unittest.mock import patch, MagicMock
 from pathlib import Path
+
+_SRC = Path(__file__).resolve().parent.parent / "src"
+if _SRC.is_dir() and str(_SRC) not in sys.path:
+    sys.path.insert(0, str(_SRC))
 
 from rvln.ai.diary_monitor import LiveDiaryMonitor
 

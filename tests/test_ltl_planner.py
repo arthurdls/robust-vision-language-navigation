@@ -4,6 +4,13 @@ Robustness tests for LTLSymbolicPlanner using Spot (no LLM).
 Run with conda env rvln-sim:  conda run -n rvln-sim python test_ltl_planner_robustness.py
 """
 
+import sys
+from pathlib import Path
+
+_SRC = Path(__file__).resolve().parent.parent / "src"
+if _SRC.is_dir() and str(_SRC) not in sys.path:
+    sys.path.insert(0, str(_SRC))
+
 import pytest
 
 spot = pytest.importorskip("spot", reason="spot (conda-forge) not available outside rvln-sim")

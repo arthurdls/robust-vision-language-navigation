@@ -162,8 +162,19 @@ def main():
         extract_and_move(zip_path, dest, is_textures=is_tex)
 
     print(f"\nSimulator files installed to {dest}")
-    print("Set UnrealEnv environment variable if needed:")
-    print(f"  export UnrealEnv={dest}")
+
+    env_local = REPO_ROOT / ".env.local"
+    env_line = f'export UnrealEnv="{dest}"'
+    already_set = False
+    if env_local.exists():
+        content = env_local.read_text()
+        already_set = "UnrealEnv" in content
+    if not already_set:
+        with open(env_local, "a") as f:
+            f.write(f"\n{env_line}\n")
+        print(f"Added UnrealEnv to {env_local}")
+    else:
+        print(f"UnrealEnv already set in {env_local}")
 
 
 if __name__ == "__main__":

@@ -1,5 +1,12 @@
 """Tests for rvln.ai.utils.parsing -- extract_json and LTL-NL parsing."""
 
+import sys
+from pathlib import Path
+
+_SRC = Path(__file__).resolve().parent.parent / "src"
+if _SRC.is_dir() and str(_SRC) not in sys.path:
+    sys.path.insert(0, str(_SRC))
+
 import pytest
 from rvln.ai.utils.parsing import extract_json, parse_ltl_nl, find_main_operator_index
 

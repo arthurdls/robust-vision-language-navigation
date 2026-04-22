@@ -16,7 +16,13 @@ Usage (from repo root):
 """
 
 import argparse
+import sys
 import time
+from pathlib import Path
+
+_SRC = Path(__file__).resolve().parent.parent / "src"
+if _SRC.is_dir() and str(_SRC) not in sys.path:
+    sys.path.insert(0, str(_SRC))
 
 from rvln.paths import DOWNTOWN_ENV_ID, DEFAULT_TIME_DILATION, DEFAULT_SEED
 from rvln.sim.env_setup import load_env_vars, setup_env_and_imports, import_batch_module
