@@ -121,7 +121,7 @@ class OpenVLAActionAgent:
                 "OOM during dummy inference. Reloading model with reduced GPU memory budget."
             )
             gpu_id = self.gpu_id
-            total = torch.cuda.get_device_properties(gpu_id).total_mem
+            total = torch.cuda.get_device_properties(gpu_id).total_memory
             reduced = int(total * 0.8)
             log.info(
                 f"Reducing GPU {gpu_id} max_memory from "
