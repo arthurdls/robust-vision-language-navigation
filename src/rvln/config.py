@@ -15,9 +15,17 @@ DEFAULT_VLM_FALLBACK_MODEL = "gpt-4o"
 # ---------------------------------------------------------------------------
 # Diary monitoring
 # ---------------------------------------------------------------------------
+DEFAULT_DIARY_MODE = "frame"  # "frame" (sync, step-based) or "time" (async, time-based)
+
+# Frame-mode budget / checkpoint interval
 DEFAULT_MAX_STEPS_PER_SUBGOAL = 300
 DEFAULT_DIARY_CHECK_INTERVAL = 10
+
+# Time-mode budget / checkpoint interval
+DEFAULT_MAX_SECONDS_PER_SUBGOAL = 120.0
 DEFAULT_DIARY_CHECK_INTERVAL_S = 1.0
+
+# Shared
 DEFAULT_MAX_CORRECTIONS = 15
 DEFAULT_STALL_WINDOW = 3
 DEFAULT_STALL_THRESHOLD = 0.05

@@ -60,9 +60,11 @@ from rvln.config import (
     DEFAULT_CONTROL_RETRY_SLEEP,
     DEFAULT_DIARY_CHECK_INTERVAL,
     DEFAULT_DIARY_CHECK_INTERVAL_S,
+    DEFAULT_DIARY_MODE,
     DEFAULT_LLM_FALLBACK_MODEL,
     DEFAULT_LLM_MODEL,
     DEFAULT_MAX_CORRECTIONS,
+    DEFAULT_MAX_SECONDS_PER_SUBGOAL,
     DEFAULT_MAX_STEPS_PER_SUBGOAL,
     DEFAULT_ODOM_STALE_TIMEOUT_S,
     DEFAULT_ODOM_UDP_HOST,
@@ -1251,8 +1253,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--llm_fallback_model", type=str, default=DEFAULT_LLM_FALLBACK_MODEL)
     parser.add_argument("--monitor_fallback_model", type=str, default=DEFAULT_VLM_FALLBACK_MODEL)
     parser.add_argument("--max_steps_per_subgoal", type=int, default=DEFAULT_MAX_STEPS_PER_SUBGOAL)
-    parser.add_argument("--max_seconds_per_subgoal", type=float, default=None,
-        help="Time budget per subgoal in seconds (async mode). Prompts operator when exceeded.")
+    parser.add_argument("--max_seconds_per_subgoal", type=float, default=DEFAULT_MAX_SECONDS_PER_SUBGOAL,
+        help=f"Time budget per subgoal in seconds (time mode). Default: {DEFAULT_MAX_SECONDS_PER_SUBGOAL}.")
+    parser.add_argument("--diary-mode", choices=("frame", "time"), default=DEFAULT_DIARY_MODE,
+        help="Checkpoint mode: 'frame' (sync, every N steps) or 'time' (async, every N seconds). "
+             f"Default: {DEFAULT_DIARY_MODE}.")
     parser.add_argument("--diary_check_interval", type=int, default=DEFAULT_DIARY_CHECK_INTERVAL)
     parser.add_argument(
         "--diary_check_interval_s",
@@ -1260,7 +1265,7 @@ def parse_args() -> argparse.Namespace:
         default=DEFAULT_DIARY_CHECK_INTERVAL_S,
         help=(
             "Time-based checkpoint interval in seconds for concurrent VLM "
-            f"monitoring. Default: {DEFAULT_DIARY_CHECK_INTERVAL_S}."
+            f"monitoring (time mode). Default: {DEFAULT_DIARY_CHECK_INTERVAL_S}."
         ),
     )
     parser.add_argument("--max_corrections", type=int, default=DEFAULT_MAX_CORRECTIONS)
@@ -1406,7 +1411,9 @@ def main() -> None:
             "pi_predicates": dict(planner.pi_map),
         }
 
-        check_interval_s = args.diary_check_interval_s
+        use_time_mode = args.diary_mode == "time"
+        check_interval_s = args.diary_check_interval_s if use_time_mode else None
+        max_seconds = args.max_seconds_per_subgoal if use_time_mode else None
 
         current_subgoal = planner.get_next_predicate()
         subgoal_index = 0
@@ -1431,7 +1438,7 @@ def main() -> None:
                 action_pose_mode=args.action_pose_mode,
                 trajectory_log=trajectory_log,
                 check_interval_s=check_interval_s,
-                max_seconds=args.max_seconds_per_subgoal,
+                max_seconds=max_seconds,
                 stall_window=args.stall_window,
                 stall_threshold=args.stall_threshold,
                 stall_completion_floor=args.stall_completion_floor,

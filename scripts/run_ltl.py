@@ -43,8 +43,8 @@ if _SRC.is_dir() and str(_SRC) not in sys.path:
     sys.path.insert(0, str(_SRC))
 
 from rvln.config import (
-    ACTION_ACTION_SMALL_DELTA_POS,
-    ACTION_ACTION_SMALL_DELTA_YAW,
+    ACTION_SMALL_DELTA_POS,
+    ACTION_SMALL_DELTA_YAW,
     DEFAULT_INITIAL_POSITION,
     DEFAULT_MAX_STEPS,
     DEFAULT_SERVER_PORT,

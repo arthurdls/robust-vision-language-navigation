@@ -62,10 +62,13 @@ if _SRC.is_dir() and str(_SRC) not in sys.path:
     sys.path.insert(0, str(_SRC))
 
 from rvln.config import (
-    ACTION_ACTION_SMALL_DELTA_POS,
-    ACTION_ACTION_SMALL_DELTA_YAW,
+    ACTION_SMALL_DELTA_POS,
+    ACTION_SMALL_DELTA_YAW,
+    DEFAULT_DIARY_CHECK_INTERVAL_S,
+    DEFAULT_DIARY_MODE,
     DEFAULT_GA_MAX_CORRECTIONS,
-    DEFAULT_DEFAULT_RUNS_PER_CONDITION,
+    DEFAULT_MAX_SECONDS_PER_SUBGOAL,
+    DEFAULT_RUNS_PER_CONDITION,
     DEFAULT_SERVER_PORT,
     DEFAULT_SEED,
     DEFAULT_TIME_DILATION,
@@ -131,8 +134,12 @@ def _run_single_ga(
     max_corrections: int = DEFAULT_GA_MAX_CORRECTIONS,
     save_mp4: bool = False,
     mp4_fps: float = 10.0,
+    check_interval_s: Optional[float] = None,
+    max_seconds: Optional[float] = None,
 ) -> Dict[str, Any]:
     """Run one goal adherence trial. Returns run_info dict."""
+    use_async = check_interval_s is not None
+
     subgoal = task["subgoal"]
     initial_pos = normalize_initial_pos(task["initial_pos"])
     max_steps = task["max_steps"]
@@ -171,6 +178,7 @@ def _run_single_ga(
             model=model,
             artifacts_dir=diary_artifacts,
             max_corrections=max_corrections,
+            check_interval_s=check_interval_s,
         )
     else:
         current_instruction = subgoal
@@ -189,6 +197,8 @@ def _run_single_ga(
     override_history: List[Dict[str, Any]] = []
     in_correction = False
     last_correction_step = -check_interval
+    last_correction_time = time.time() if use_async else None
+    subgoal_start_time = time.time()
     stop_reason = "max_steps"
     total_steps = 0
     origin_x, origin_y, origin_z = initial_pos[0], initial_pos[1], initial_pos[2]
@@ -198,6 +208,33 @@ def _run_single_ga(
     result = None
     step = 0
     while step < max_steps:
+        if max_seconds is not None and (time.time() - subgoal_start_time) >= max_seconds:
+            logger.info("Max seconds (%.1f) reached at step %d.", max_seconds, step)
+            stop_reason = "max_seconds"
+            total_steps = step
+            break
+
+        if use_async and monitor is not None:
+            async_result = monitor.poll_result()
+            if async_result is not None:
+                if async_result.action == "stop":
+                    logger.info("Async monitor stop at step %d: %s", step, async_result.reasoning)
+                    stop_reason = "llm_stopped"
+                    total_steps = step
+                    break
+                if async_result.action == "ask_help":
+                    logger.warning("Async monitor ask_help at step %d: %s", step, async_result.reasoning)
+                    stop_reason = "ask_help"
+                    total_steps = step
+                    break
+                if async_result.action == "force_converge":
+                    logger.info("Async monitor force_converge at step %d: %s", step, async_result.reasoning)
+                    override_history.append({
+                        "step": step,
+                        "type": "force_converge",
+                        "reasoning": async_result.reasoning,
+                    })
+
         batch.set_cam(env)
         image = set_drone_cam_and_get_image(env, cam_id)
         if image is None:
@@ -222,20 +259,21 @@ def _run_single_ga(
                     action="continue", new_instruction="", reasoning="",
                     diary_entry="", completion_pct=monitor.last_completion_pct,
                 )
-            if result.action == "stop":
-                logger.info("LLM stop at step %d: %s", step, result.reasoning)
-                stop_reason = "llm_stopped"
-                total_steps = step
-                break
-            if result.action == "force_converge":
-                logger.info(
-                    "LLM force_converge at step %d: %s", step, result.reasoning,
-                )
-                override_history.append({
-                    "step": step,
-                    "type": "force_converge",
-                    "reasoning": result.reasoning,
-                })
+            if not use_async:
+                if result.action == "stop":
+                    logger.info("LLM stop at step %d: %s", step, result.reasoning)
+                    stop_reason = "llm_stopped"
+                    total_steps = step
+                    break
+                if result.action == "force_converge":
+                    logger.info(
+                        "LLM force_converge at step %d: %s", step, result.reasoning,
+                    )
+                    override_history.append({
+                        "step": step,
+                        "type": "force_converge",
+                        "reasoning": result.reasoning,
+                    })
 
         # --- Send instruction to OpenVLA ---
         # Pose relative to the current instruction's origin (reset on override).
@@ -307,26 +345,44 @@ def _run_single_ga(
         total_steps = step + 1
 
         # --- Convergence detection ---
-        converged = (
-            monitor is not None
-            and result is not None
-            and result.action == "force_converge"
-        )
-        steps_since_correction = step - last_correction_step
-        if (
-            last_pose is not None
-            and steps_since_correction >= check_interval
-        ):
-            diffs = [abs(a - b) for a, b in zip(current_pose, last_pose)]
+        converged = False
+        if not use_async:
+            converged = (
+                monitor is not None
+                and result is not None
+                and result.action == "force_converge"
+            )
+            steps_since_correction = step - last_correction_step
             if (
-                all(d < ACTION_SMALL_DELTA_POS for d in diffs[:3])
-                and diffs[3] < ACTION_SMALL_DELTA_YAW
+                last_pose is not None
+                and steps_since_correction >= check_interval
             ):
-                small_count += 1
-            else:
-                small_count = 0
-            if small_count >= batch.ACTION_SMALL_STEPS:
-                converged = True
+                diffs = [abs(a - b) for a, b in zip(current_pose, last_pose)]
+                if (
+                    all(d < ACTION_SMALL_DELTA_POS for d in diffs[:3])
+                    and diffs[3] < ACTION_SMALL_DELTA_YAW
+                ):
+                    small_count += 1
+                else:
+                    small_count = 0
+                if small_count >= batch.ACTION_SMALL_STEPS:
+                    converged = True
+        elif monitor is not None:
+            elapsed_since_correction = time.time() - last_correction_time
+            if (
+                last_pose is not None
+                and elapsed_since_correction >= check_interval_s
+            ):
+                diffs = [abs(a - b) for a, b in zip(current_pose, last_pose)]
+                if (
+                    all(d < ACTION_SMALL_DELTA_POS for d in diffs[:3])
+                    and diffs[3] < ACTION_SMALL_DELTA_YAW
+                ):
+                    small_count += 1
+                else:
+                    small_count = 0
+                if small_count >= batch.ACTION_SMALL_STEPS:
+                    converged = True
         last_pose = list(current_pose)
 
         if converged:
@@ -384,6 +440,8 @@ def _run_single_ga(
                     current_instruction = conv_result.new_instruction
                     in_correction = True
                     last_correction_step = step
+                    if use_async:
+                        last_correction_time = time.time()
                     openvla_pose_origin = list(current_pose)
                     small_count = 0
                     last_pose = None
@@ -476,6 +534,8 @@ def _run_task_experiments(
     llm_only: bool = False,
     baseline_only: bool = False,
     override_runs: bool = False,
+    check_interval_s: Optional[float] = None,
+    max_seconds: Optional[float] = None,
 ) -> None:
     """Run experiments for one task (baseline, LLM, or both)."""
     task_name = task["task_name"]
@@ -496,6 +556,8 @@ def _run_task_experiments(
                 max_corrections=max_corrections,
                 save_mp4=save_mp4,
                 mp4_fps=mp4_fps,
+                check_interval_s=check_interval_s,
+                max_seconds=max_seconds,
             )
             logger.info(
                 "  %s: %d steps, stop_reason=%s",
@@ -518,6 +580,8 @@ def _run_task_experiments(
             max_corrections=max_corrections,
             save_mp4=save_mp4,
             mp4_fps=mp4_fps,
+            check_interval_s=check_interval_s,
+            max_seconds=max_seconds,
         )
         logger.info(
             "  %s: %d steps, stop_reason=%s",
@@ -563,6 +627,23 @@ def main():
         type=int,
         default=DEFAULT_GA_MAX_CORRECTIONS,
         help=f"Max supervisor corrections per LLM run (default: {DEFAULT_GA_MAX_CORRECTIONS}).",
+    )
+    parser.add_argument(
+        "--diary-mode", choices=("frame", "time"), default=DEFAULT_DIARY_MODE,
+        help="Checkpoint mode: 'frame' (sync, every N steps) or 'time' (async, every N seconds). "
+             f"Default: {DEFAULT_DIARY_MODE}.",
+    )
+    parser.add_argument(
+        "--diary-check-interval-s",
+        type=float,
+        default=DEFAULT_DIARY_CHECK_INTERVAL_S,
+        help=f"Seconds between diary checkpoints, time mode (default: {DEFAULT_DIARY_CHECK_INTERVAL_S})",
+    )
+    parser.add_argument(
+        "--max-seconds-per-subgoal",
+        type=float,
+        default=DEFAULT_MAX_SECONDS_PER_SUBGOAL,
+        help=f"Max seconds per subgoal, time mode (default: {DEFAULT_MAX_SECONDS_PER_SUBGOAL})",
     )
     parser.add_argument(
         "--save-mp4",
@@ -689,6 +770,7 @@ def main():
             idx + 1, len(tasks), task["task_name"],
         )
         try:
+            use_time_mode = args.diary_mode == "time"
             _run_task_experiments(
                 env, task, batch, server_url, results_base,
                 args.model, drone_cam_id, args.runs,
@@ -698,6 +780,8 @@ def main():
                 llm_only=args.llm_only,
                 baseline_only=args.baseline_only,
                 override_runs=args.override_runs,
+                check_interval_s=args.diary_check_interval_s if use_time_mode else None,
+                max_seconds=args.max_seconds_per_subgoal if use_time_mode else None,
             )
         except KeyboardInterrupt:
             logger.info("Interrupted during task %s.", task["task_name"])

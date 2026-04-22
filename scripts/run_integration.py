@@ -50,12 +50,15 @@ if _SRC.is_dir() and str(_SRC) not in sys.path:
     sys.path.insert(0, str(_SRC))
 
 from rvln.config import (
-    ACTION_ACTION_SMALL_DELTA_POS,
-    ACTION_ACTION_SMALL_DELTA_YAW,
+    ACTION_SMALL_DELTA_POS,
+    ACTION_SMALL_DELTA_YAW,
     DEFAULT_DIARY_CHECK_INTERVAL,
+    DEFAULT_DIARY_CHECK_INTERVAL_S,
+    DEFAULT_DIARY_MODE,
     DEFAULT_INITIAL_POSITION,
     DEFAULT_LLM_MODEL,
     DEFAULT_MAX_CORRECTIONS,
+    DEFAULT_MAX_SECONDS_PER_SUBGOAL,
     DEFAULT_MAX_STEPS_PER_SUBGOAL,
     DEFAULT_SEED,
     DEFAULT_SERVER_PORT,
@@ -199,6 +202,8 @@ def _run_subgoal(
     subgoal_dir: Path,
     frame_offset: int,
     trajectory_log: List[Dict[str, Any]],
+    check_interval_s: Optional[float] = None,
+    max_seconds: Optional[float] = None,
 ) -> Dict[str, Any]:
     """Run the diary-monitored control loop for a single subgoal.
 
@@ -207,6 +212,8 @@ def _run_subgoal(
     """
     from rvln.ai.diary_monitor import DiaryCheckResult, LiveDiaryMonitor
     from rvln.ai.subgoal_converter import SubgoalConverter
+
+    use_async = check_interval_s is not None
 
     subgoal_dir.mkdir(parents=True, exist_ok=True)
     diary_artifacts = subgoal_dir / "diary_artifacts"
@@ -222,6 +229,7 @@ def _run_subgoal(
         model=monitor_model,
         artifacts_dir=diary_artifacts,
         max_corrections=max_corrections,
+        check_interval_s=check_interval_s,
     )
 
     current_pose: List[float] = [0.0, 0.0, 0.0, 0.0]
@@ -231,6 +239,8 @@ def _run_subgoal(
     override_history: List[Dict[str, Any]] = []
     in_correction = False
     last_correction_step = -check_interval
+    last_correction_time = time.time() if use_async else None
+    subgoal_start_time = time.time()
     stop_reason = "max_steps"
     total_steps = 0
 
@@ -241,6 +251,33 @@ def _run_subgoal(
     step = 0
 
     while step < max_steps:
+        if max_seconds is not None and (time.time() - subgoal_start_time) >= max_seconds:
+            logger.info("Max seconds (%.1f) reached at step %d.", max_seconds, step)
+            stop_reason = "max_seconds"
+            total_steps = step
+            break
+
+        if use_async:
+            async_result = monitor.poll_result()
+            if async_result is not None:
+                if async_result.action == "stop":
+                    logger.info("Async monitor stop at step %d: %s", step, async_result.reasoning)
+                    stop_reason = "monitor_complete"
+                    total_steps = step
+                    break
+                if async_result.action == "ask_help":
+                    logger.warning("Async monitor ask_help at step %d: %s", step, async_result.reasoning)
+                    stop_reason = "ask_help"
+                    total_steps = step
+                    break
+                if async_result.action == "force_converge":
+                    logger.info("Async monitor force_converge at step %d: %s", step, async_result.reasoning)
+                    override_history.append({
+                        "step": step,
+                        "type": "force_converge",
+                        "reasoning": async_result.reasoning,
+                    })
+
         batch.set_cam(env)
         image = set_drone_cam_and_get_image(env, cam_id)
         if image is None:
@@ -265,26 +302,27 @@ def _run_subgoal(
                 diary_entry="", completion_pct=monitor.last_completion_pct,
             )
 
-        if result.action == "stop":
-            logger.info("Monitor stop at step %d: %s", step, result.reasoning)
-            stop_reason = "monitor_complete"
-            total_steps = step
-            break
-        if result.action == "ask_help":
-            logger.warning(
-                "Monitor ask_help at step %d (completion: %.0f%%): %s",
-                step, result.completion_pct * 100, result.reasoning,
-            )
-            stop_reason = "ask_help"
-            total_steps = step
-            break
-        if result.action == "force_converge":
-            logger.info("Monitor force_converge at step %d: %s", step, result.reasoning)
-            override_history.append({
-                "step": step,
-                "type": "force_converge",
-                "reasoning": result.reasoning,
-            })
+        if not use_async:
+            if result.action == "stop":
+                logger.info("Monitor stop at step %d: %s", step, result.reasoning)
+                stop_reason = "monitor_complete"
+                total_steps = step
+                break
+            if result.action == "ask_help":
+                logger.warning(
+                    "Monitor ask_help at step %d (completion: %.0f%%): %s",
+                    step, result.completion_pct * 100, result.reasoning,
+                )
+                stop_reason = "ask_help"
+                total_steps = step
+                break
+            if result.action == "force_converge":
+                logger.info("Monitor force_converge at step %d: %s", step, result.reasoning)
+                override_history.append({
+                    "step": step,
+                    "type": "force_converge",
+                    "reasoning": result.reasoning,
+                })
 
         openvla_pose = [c - o for c, o in zip(current_pose, openvla_pose_origin)]
         response = batch.send_prediction_request(
@@ -344,16 +382,29 @@ def _run_subgoal(
         total_steps = step + 1
 
         # --- Convergence detection ---
-        converged = result is not None and result.action == "force_converge"
-        steps_since_correction = step - last_correction_step
-        if last_pose is not None and steps_since_correction >= check_interval:
-            diffs = [abs(a - b) for a, b in zip(current_pose, last_pose)]
-            if all(d < ACTION_SMALL_DELTA_POS for d in diffs[:3]) and diffs[3] < ACTION_SMALL_DELTA_YAW:
-                small_count += 1
-            else:
-                small_count = 0
-            if small_count >= batch.ACTION_SMALL_STEPS:
+        converged = False
+        if not use_async:
+            if result is not None and result.action == "force_converge":
                 converged = True
+            steps_since_correction = step - last_correction_step
+            if last_pose is not None and steps_since_correction >= check_interval:
+                diffs = [abs(a - b) for a, b in zip(current_pose, last_pose)]
+                if all(d < ACTION_SMALL_DELTA_POS for d in diffs[:3]) and diffs[3] < ACTION_SMALL_DELTA_YAW:
+                    small_count += 1
+                else:
+                    small_count = 0
+                if small_count >= batch.ACTION_SMALL_STEPS:
+                    converged = True
+        else:
+            elapsed_since_correction = time.time() - last_correction_time
+            if last_pose is not None and elapsed_since_correction >= check_interval_s:
+                diffs = [abs(a - b) for a, b in zip(current_pose, last_pose)]
+                if all(d < ACTION_SMALL_DELTA_POS for d in diffs[:3]) and diffs[3] < ACTION_SMALL_DELTA_YAW:
+                    small_count += 1
+                else:
+                    small_count = 0
+                if small_count >= batch.ACTION_SMALL_STEPS:
+                    converged = True
         last_pose = list(current_pose)
 
         if converged:
@@ -415,6 +466,8 @@ def _run_subgoal(
                 current_instruction = conv_result.new_instruction
                 in_correction = True
                 last_correction_step = step
+                if use_async:
+                    last_correction_time = time.time()
                 openvla_pose_origin = list(current_pose)
                 small_count = 0
                 last_pose = None
@@ -483,6 +536,8 @@ def run_integrated_control_loop(
     drone_cam_id: int,
     save_mp4: bool = False,
     mp4_fps: float = 10.0,
+    check_interval_s: Optional[float] = None,
+    max_seconds: Optional[float] = None,
 ) -> Dict[str, Any]:
     """Plan with LTL, then execute each subgoal with diary monitoring.
 
@@ -567,6 +622,8 @@ def run_integrated_control_loop(
                 subgoal_dir=subgoal_dir,
                 frame_offset=total_frame_count,
                 trajectory_log=trajectory_log,
+                check_interval_s=check_interval_s,
+                max_seconds=max_seconds,
             )
         except CUDAOutOfMemoryError as e:
             logger.error(
@@ -702,18 +759,35 @@ def main():
         help=f"VLM for diary monitor and subgoal converter (default: {DEFAULT_VLM_MODEL})",
     )
 
-    # Diary parameters (override task JSON values)
+    # Diary mode and parameters (override task JSON values)
+    parser.add_argument(
+        "--diary-mode", choices=("frame", "time"), default=DEFAULT_DIARY_MODE,
+        help="Checkpoint mode: 'frame' (sync, every N steps) or 'time' (async, every N seconds). "
+             f"Default: {DEFAULT_DIARY_MODE}.",
+    )
     parser.add_argument(
         "--diary-check-interval",
         type=int,
         default=None,
-        help=f"Steps between diary checkpoints (default from task JSON or {DEFAULT_DIARY_CHECK_INTERVAL})",
+        help=f"Steps between diary checkpoints, frame mode (default from task JSON or {DEFAULT_DIARY_CHECK_INTERVAL})",
+    )
+    parser.add_argument(
+        "--diary-check-interval-s",
+        type=float,
+        default=DEFAULT_DIARY_CHECK_INTERVAL_S,
+        help=f"Seconds between diary checkpoints, time mode (default: {DEFAULT_DIARY_CHECK_INTERVAL_S})",
     )
     parser.add_argument(
         "--max-steps-per-subgoal",
         type=int,
         default=None,
         help=f"Max steps per subgoal (default from task JSON or {DEFAULT_MAX_STEPS_PER_SUBGOAL})",
+    )
+    parser.add_argument(
+        "--max-seconds-per-subgoal",
+        type=float,
+        default=DEFAULT_MAX_SECONDS_PER_SUBGOAL,
+        help=f"Max seconds per subgoal, time mode (default: {DEFAULT_MAX_SECONDS_PER_SUBGOAL})",
     )
     parser.add_argument(
         "--max-corrections",
@@ -797,6 +871,7 @@ def main():
         )
         try:
             run_dir = results_base / run_name
+            use_time_mode = args.diary_mode == "time"
             run_info = run_integrated_control_loop(
                 env=env,
                 batch=batch,
@@ -808,6 +883,8 @@ def main():
                 drone_cam_id=drone_cam_id,
                 save_mp4=args.save_mp4,
                 mp4_fps=args.mp4_fps,
+                check_interval_s=args.diary_check_interval_s if use_time_mode else None,
+                max_seconds=args.max_seconds_per_subgoal if use_time_mode else None,
             )
             logger.info(
                 "Run saved to %s (%d subgoals, %d total steps)",
