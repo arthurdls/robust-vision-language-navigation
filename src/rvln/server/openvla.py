@@ -97,6 +97,9 @@ class OpenVLAActionAgent:
 
         self.model.eval()
 
+        if self.device_mode == "auto":
+            self._log_device_split()
+
         self.unnorm_key = cfg.get("unnorm_key", "sim")
         self.do_sample = cfg.get("do_sample", False)
         if torch.cuda.is_available():
@@ -115,6 +118,27 @@ class OpenVLAActionAgent:
         self.app = Flask(__name__)
         self._setup_routes()
         self.port = cfg.get("http_port", 5000)
+
+    def _log_device_split(self):
+        """Log the GPU/CPU parameter split after an auto device_map load."""
+        gpu_bytes = 0
+        cpu_bytes = 0
+        for p in self.model.parameters():
+            nbytes = p.nelement() * p.element_size()
+            if p.device.type == "cuda":
+                gpu_bytes += nbytes
+            else:
+                cpu_bytes += nbytes
+        total_bytes = gpu_bytes + cpu_bytes
+        if total_bytes > 0:
+            gpu_pct = gpu_bytes / total_bytes * 100
+            cpu_pct = cpu_bytes / total_bytes * 100
+        else:
+            gpu_pct = cpu_pct = 0.0
+        log.info(
+            f"Device split: {gpu_pct:.1f}% GPU ({gpu_bytes / 1e9:.2f} GB), "
+            f"{cpu_pct:.1f}% CPU ({cpu_bytes / 1e9:.2f} GB)"
+        )
 
     def _validate_device_split(self):
         """Run a dummy forward pass to verify the GPU/CPU split survives runtime memory usage.
@@ -162,6 +186,7 @@ class OpenVLAActionAgent:
             )
             self.model.eval()
             self.device = next(self.model.parameters()).device
+            self._log_device_split()
 
             with torch.inference_mode():
                 self.act(dummy_image, dummy_prompt)
