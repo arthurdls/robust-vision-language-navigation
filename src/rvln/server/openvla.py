@@ -230,7 +230,10 @@ class OpenVLAActionAgent:
                     "message": "Action generated successfully",
                 })
 
-            except torch.cuda.OutOfMemoryError:
+            except (torch.cuda.OutOfMemoryError, RuntimeError) as e:
+                is_oom = isinstance(e, torch.cuda.OutOfMemoryError) or "CUDNN_STATUS_INTERNAL_ERROR" in str(e)
+                if not is_oom:
+                    raise
                 torch.cuda.empty_cache()
                 vram_total = torch.cuda.get_device_properties(self.gpu_id).total_memory / (1024 ** 3)
                 log.error(
@@ -274,9 +277,14 @@ class OpenVLAActionAgent:
         inputs = self.processor(prompt, image)
         inputs = inputs.to(self.device, dtype=self.compute_dtype)
 
-        pred_action = self.model.predict_action(
-            **inputs,
-            unnorm_key=self.unnorm_key,
-            do_sample=self.do_sample,
-        )
-        return pred_action
+        try:
+            pred_action = self.model.predict_action(
+                **inputs,
+                unnorm_key=self.unnorm_key,
+                do_sample=self.do_sample,
+            )
+            return pred_action
+        finally:
+            del inputs
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
