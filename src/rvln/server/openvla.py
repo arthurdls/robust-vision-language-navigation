@@ -232,7 +232,7 @@ class OpenVLAActionAgent:
 
             except torch.cuda.OutOfMemoryError:
                 torch.cuda.empty_cache()
-                vram_total = torch.cuda.get_device_properties(self.gpu_id).total_mem / (1024 ** 3)
+                vram_total = torch.cuda.get_device_properties(self.gpu_id).total_memory / (1024 ** 3)
                 log.error(
                     "CUDA out of memory during inference (%.1f GB total VRAM). "
                     "Try restarting the server with --device auto (offloads layers "
