@@ -39,6 +39,8 @@ from rvln.paths import REPO_ROOT
 from rvln.eval.playback import (
     is_primary_timeline_frame,
     iter_run_frame_paths,
+    load_frame_labels,
+    draw_label_overlay,
     write_frames_to_mp4,
     save_run_directory_mp4,
 )
@@ -110,6 +112,11 @@ def main():
         action="store_true",
         help="Save the run as an MP4 video (written to <results_dir>/playback.mp4).",
     )
+    parser.add_argument(
+        "--disable-overlay",
+        action="store_true",
+        help="Disable the command/subtask text overlay on each frame.",
+    )
     args = parser.parse_args()
 
     results_dir = args.results_dir
@@ -150,10 +157,14 @@ def main():
         )
         sys.exit(1)
 
+    frame_labels = None
+    if not args.disable_overlay:
+        frame_labels = load_frame_labels(results_path)
+
     if args.save_video:
         out_path = results_path / "playback.mp4"
         try:
-            write_frames_to_mp4(files, out_path, fps=args.fps)
+            write_frames_to_mp4(files, out_path, fps=args.fps, frame_labels=frame_labels)
         except (OSError, ValueError) as e:
             print(f"Error: {e}", file=sys.stderr)
             sys.exit(1)
@@ -179,6 +190,9 @@ def main():
             print(f"Warning: could not read {path}", file=sys.stderr)
             idx = (idx + 1) % len(files)
             continue
+
+        if frame_labels and idx in frame_labels:
+            draw_label_overlay(img, frame_labels[idx])
 
         cv2.imshow(win_name, img)
         cv2.setWindowTitle(win_name, f"[{idx + 1}/{len(files)}] {os.path.basename(path)}")
