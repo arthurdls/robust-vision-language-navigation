@@ -21,6 +21,8 @@ weights/OpenVLA-UAV/*
 !weights/OpenVLA-UAV/.gitkeep
 *.safetensors
 *.zip
+*.mv
+*.msc
 
 # Results
 results/
