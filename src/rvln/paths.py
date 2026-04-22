@@ -47,13 +47,15 @@ LTL_TASKS_DIR = TASKS_DIR / "ltl"
 GOAL_ADHERENCE_TASKS_DIR = TASKS_DIR / "goal_adherence"
 UAV_FLOW_TASKS_DIR = TASKS_DIR / "uav_flow"
 
-# Sim / server defaults
-DEFAULT_SERVER_PORT = 5007
-DEFAULT_TIME_DILATION = 10
-DEFAULT_SEED = 0
-DEFAULT_INITIAL_POSITION = "-600,-1270,128,61"
-DRONE_CAM_ID = 5
-PROPRIO_LEN = 4
+# Sim / server defaults moved to config.py
+from rvln.config import (  # noqa: E402
+    DEFAULT_INITIAL_POSITION,
+    DEFAULT_SEED,
+    DEFAULT_SERVER_PORT,
+    DEFAULT_TIME_DILATION,
+    DRONE_CAM_ID,
+    PROPRIO_LEN,
+)
 
 
 def _load_env_file(env_path: Path, *, override: bool) -> None:

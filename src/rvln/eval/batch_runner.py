@@ -15,17 +15,17 @@ import numpy as np
 import requests
 from PIL import Image
 
+from rvln.config import (
+    ACTION_SMALL_DELTA_POS,
+    ACTION_SMALL_DELTA_YAW,
+    ACTION_SMALL_STEPS,
+    IMG_INPUT_SIZE,
+    SLEEP_AFTER_RESET_S,
+    SLEEP_SHORT_S,
+)
 from rvln.sim.pose import calculate_new_pose  # noqa: F401
 
 logger = logging.getLogger(__name__)
-
-# ====== Constants ======
-IMG_INPUT_SIZE: Tuple[int, int] = (224, 224)
-SLEEP_SHORT_S: float = 1.0
-SLEEP_AFTER_RESET_S: float = 2.0
-ACTION_SMALL_DELTA_POS: float = 3.0
-ACTION_SMALL_DELTA_YAW: float = 1.0
-ACTION_SMALL_STEPS: int = 10
 
 
 class CUDAOutOfMemoryError(RuntimeError):

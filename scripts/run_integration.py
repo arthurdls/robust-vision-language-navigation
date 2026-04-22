@@ -49,23 +49,25 @@ _SRC = Path(__file__).resolve().parent.parent / "src"
 if _SRC.is_dir() and str(_SRC) not in sys.path:
     sys.path.insert(0, str(_SRC))
 
-from rvln.paths import (
-    BATCH_SCRIPT,
-    DEFAULT_INITIAL_POSITION,
-    DEFAULT_SERVER_PORT,
-    DEFAULT_SEED,
-    DEFAULT_TIME_DILATION,
-    DOWNTOWN_ENV_ID,
-    DRONE_CAM_ID,
-    REPO_ROOT,
-    UAV_FLOW_EVAL,
-)
 from rvln.config import (
+    ACTION_ACTION_SMALL_DELTA_POS,
+    ACTION_ACTION_SMALL_DELTA_YAW,
     DEFAULT_DIARY_CHECK_INTERVAL,
+    DEFAULT_INITIAL_POSITION,
     DEFAULT_LLM_MODEL,
     DEFAULT_MAX_CORRECTIONS,
     DEFAULT_MAX_STEPS_PER_SUBGOAL,
+    DEFAULT_SEED,
+    DEFAULT_SERVER_PORT,
+    DEFAULT_TIME_DILATION,
     DEFAULT_VLM_MODEL,
+    DRONE_CAM_ID,
+)
+from rvln.paths import (
+    BATCH_SCRIPT,
+    DOWNTOWN_ENV_ID,
+    REPO_ROOT,
+    UAV_FLOW_EVAL,
 )
 from rvln.sim.env_setup import (
     apply_action_poses,
@@ -83,9 +85,6 @@ from rvln.sim.env_setup import (
 
 SYSTEM_TASKS_DIR = REPO_ROOT / "tasks" / "system"
 INTEGRATION_RESULTS_DIR = REPO_ROOT / "results" / "integration_results"
-
-SMALL_DELTA_POS = 3.0
-SMALL_DELTA_YAW = 1.0
 
 logger = logging.getLogger(__name__)
 
@@ -349,7 +348,7 @@ def _run_subgoal(
         steps_since_correction = step - last_correction_step
         if last_pose is not None and steps_since_correction >= check_interval:
             diffs = [abs(a - b) for a, b in zip(current_pose, last_pose)]
-            if all(d < SMALL_DELTA_POS for d in diffs[:3]) and diffs[3] < SMALL_DELTA_YAW:
+            if all(d < ACTION_SMALL_DELTA_POS for d in diffs[:3]) and diffs[3] < ACTION_SMALL_DELTA_YAW:
                 small_count += 1
             else:
                 small_count = 0

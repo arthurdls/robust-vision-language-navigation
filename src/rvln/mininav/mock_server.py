@@ -31,17 +31,18 @@ from dataclasses import dataclass, asdict
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from typing import List, Optional
 
+from rvln.config import (
+    DEFAULT_FRAME_GLOB,
+    DEFAULT_FRAME_PORT,
+    DEFAULT_FRAME_SAMPLE_CAP,
+    DEFAULT_FRAME_SIZE,
+)
 
 # boieng_mininav.py sends 5 float32 values per packet:
 # frame_count + vx + vy + vz + yaw
 FLOATS_PER_PACKET = 5
 PACKET_SIZE_BYTES = FLOATS_PER_PACKET * 4
 PACKET_STRUCT = struct.Struct("<5f")
-
-DEFAULT_FRAME_PORT = 8081
-DEFAULT_FRAME_SIZE = 640
-DEFAULT_FRAME_GLOB = "**/frames/*.png"
-DEFAULT_FRAME_SAMPLE_CAP = 200
 
 
 def _get_local_ip() -> str:

@@ -47,6 +47,35 @@ import requests
 from PIL import Image
 
 
+from rvln.config import (
+    ACTION_SMALL_DELTA_POS,
+    ACTION_SMALL_DELTA_YAW,
+    ACTION_SMALL_STEPS,
+    DEFAULT_CAMERA_FPS,
+    DEFAULT_CAMERA_INIT_TIMEOUT,
+    DEFAULT_CAMERA_RETRIES,
+    DEFAULT_COMMAND_DT_S,
+    DEFAULT_CONTROL_PORT,
+    DEFAULT_CONTROL_RETRIES,
+    DEFAULT_CONTROL_RETRY_SLEEP,
+    DEFAULT_DIARY_CHECK_INTERVAL,
+    DEFAULT_DIARY_CHECK_INTERVAL_S,
+    DEFAULT_LLM_FALLBACK_MODEL,
+    DEFAULT_LLM_MODEL,
+    DEFAULT_MAX_CORRECTIONS,
+    DEFAULT_MAX_STEPS_PER_SUBGOAL,
+    DEFAULT_ODOM_STALE_TIMEOUT_S,
+    DEFAULT_ODOM_UDP_HOST,
+    DEFAULT_ODOM_UDP_PORT,
+    DEFAULT_OPENVLA_PREDICT_URL,
+    DEFAULT_PREFERRED_SERVER_HOST,
+    DEFAULT_STALL_COMPLETION_FLOOR,
+    DEFAULT_STALL_THRESHOLD,
+    DEFAULT_STALL_WINDOW,
+    DEFAULT_VLM_FALLBACK_MODEL,
+    DEFAULT_VLM_MODEL,
+    IMG_INPUT_SIZE,
+)
 from rvln.paths import REPO_ROOT, load_env_vars
 from rvln.sim.env_setup import state_for_openvla
 from rvln.sim.transforms import normalize_angle, parse_position, relative_pose
@@ -56,10 +85,6 @@ from rvln.ai.utils.llm_providers import LLMFactory
 logger = logging.getLogger(__name__)
 
 DEFAULT_RESULTS_DIR = REPO_ROOT / "results" / "hardware"
-IMG_INPUT_SIZE: Tuple[int, int] = (224, 224)
-ACTION_SMALL_DELTA_POS = 3.0
-ACTION_SMALL_DELTA_YAW = 1.0
-ACTION_SMALL_STEPS = 10
 
 stop_capture = False
 
@@ -1212,40 +1237,40 @@ def parse_args() -> argparse.Namespace:
             "Use this to test against the simulated MiniNav frame feed."
         ),
     )
-    parser.add_argument("--fps", type=int, default=30)
-    parser.add_argument("--camera_retries", type=int, default=15)
-    parser.add_argument("--camera_init_timeout", type=float, default=8.0)
+    parser.add_argument("--fps", type=int, default=DEFAULT_CAMERA_FPS)
+    parser.add_argument("--camera_retries", type=int, default=DEFAULT_CAMERA_RETRIES)
+    parser.add_argument("--camera_init_timeout", type=float, default=DEFAULT_CAMERA_INIT_TIMEOUT)
     parser.add_argument("--record", action="store_true", help="Save camera frames.")
-    parser.add_argument("--preferred_server_host", type=str, default="192.168.0.101")
-    parser.add_argument("--control_port", type=int, default=8080)
-    parser.add_argument("--control_retries", type=int, default=10)
-    parser.add_argument("--control_retry_sleep", type=float, default=2.0)
-    parser.add_argument("--openvla_predict_url", type=str, default="http://127.0.0.1:5007/predict")
-    parser.add_argument("--llm_model", type=str, default="gpt-4o")
-    parser.add_argument("--monitor_model", type=str, default="gpt-5.4")
-    parser.add_argument("--llm_fallback_model", type=str, default="gpt-4o-mini")
-    parser.add_argument("--monitor_fallback_model", type=str, default="gpt-4o")
-    parser.add_argument("--max_steps_per_subgoal", type=int, default=300)
+    parser.add_argument("--preferred_server_host", type=str, default=DEFAULT_PREFERRED_SERVER_HOST)
+    parser.add_argument("--control_port", type=int, default=DEFAULT_CONTROL_PORT)
+    parser.add_argument("--control_retries", type=int, default=DEFAULT_CONTROL_RETRIES)
+    parser.add_argument("--control_retry_sleep", type=float, default=DEFAULT_CONTROL_RETRY_SLEEP)
+    parser.add_argument("--openvla_predict_url", type=str, default=DEFAULT_OPENVLA_PREDICT_URL)
+    parser.add_argument("--llm_model", type=str, default=DEFAULT_LLM_MODEL)
+    parser.add_argument("--monitor_model", type=str, default=DEFAULT_VLM_MODEL)
+    parser.add_argument("--llm_fallback_model", type=str, default=DEFAULT_LLM_FALLBACK_MODEL)
+    parser.add_argument("--monitor_fallback_model", type=str, default=DEFAULT_VLM_FALLBACK_MODEL)
+    parser.add_argument("--max_steps_per_subgoal", type=int, default=DEFAULT_MAX_STEPS_PER_SUBGOAL)
     parser.add_argument("--max_seconds_per_subgoal", type=float, default=None,
         help="Time budget per subgoal in seconds (async mode). Prompts operator when exceeded.")
-    parser.add_argument("--diary_check_interval", type=int, default=10)
+    parser.add_argument("--diary_check_interval", type=int, default=DEFAULT_DIARY_CHECK_INTERVAL)
     parser.add_argument(
         "--diary_check_interval_s",
         type=float,
-        default=1.0,
+        default=DEFAULT_DIARY_CHECK_INTERVAL_S,
         help=(
             "Time-based checkpoint interval in seconds for concurrent VLM "
-            "monitoring. Default: 1.0."
+            f"monitoring. Default: {DEFAULT_DIARY_CHECK_INTERVAL_S}."
         ),
     )
-    parser.add_argument("--max_corrections", type=int, default=15)
-    parser.add_argument("--stall_window", type=int, default=3,
+    parser.add_argument("--max_corrections", type=int, default=DEFAULT_MAX_CORRECTIONS)
+    parser.add_argument("--stall_window", type=int, default=DEFAULT_STALL_WINDOW,
         help="Number of consecutive checkpoints with flat completion to trigger help request.")
-    parser.add_argument("--stall_threshold", type=float, default=0.05,
+    parser.add_argument("--stall_threshold", type=float, default=DEFAULT_STALL_THRESHOLD,
         help="Max completion delta across stall_window checkpoints to count as stalled.")
-    parser.add_argument("--stall_completion_floor", type=float, default=0.8,
+    parser.add_argument("--stall_completion_floor", type=float, default=DEFAULT_STALL_COMPLETION_FLOOR,
         help="Don't trigger stall detection above this completion level.")
-    parser.add_argument("--command_dt_s", type=float, default=0.1)
+    parser.add_argument("--command_dt_s", type=float, default=DEFAULT_COMMAND_DT_S)
     parser.add_argument(
         "--action_pose_mode",
         choices=["direct", "delta_from_pose"],
@@ -1258,9 +1283,9 @@ def parse_args() -> argparse.Namespace:
         help="For dead-reckoning: treat sent commands as velocities (m/s, rad/s).",
     )
     parser.add_argument("--odom_http_url", type=str, default=None)
-    parser.add_argument("--odom_udp_host", type=str, default="0.0.0.0")
-    parser.add_argument("--odom_udp_port", type=int, default=0)
-    parser.add_argument("--odom_stale_timeout_s", type=float, default=1.0)
+    parser.add_argument("--odom_udp_host", type=str, default=DEFAULT_ODOM_UDP_HOST)
+    parser.add_argument("--odom_udp_port", type=int, default=DEFAULT_ODOM_UDP_PORT)
+    parser.add_argument("--odom_stale_timeout_s", type=float, default=DEFAULT_ODOM_STALE_TIMEOUT_S)
     parser.add_argument(
         "--dead-reckoning",
         action="store_true",

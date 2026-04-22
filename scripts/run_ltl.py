@@ -42,14 +42,19 @@ _SRC = Path(__file__).resolve().parent.parent / "src"
 if _SRC.is_dir() and str(_SRC) not in sys.path:
     sys.path.insert(0, str(_SRC))
 
-from rvln.paths import (
-    BATCH_SCRIPT,
+from rvln.config import (
+    ACTION_ACTION_SMALL_DELTA_POS,
+    ACTION_ACTION_SMALL_DELTA_YAW,
     DEFAULT_INITIAL_POSITION,
+    DEFAULT_MAX_STEPS,
     DEFAULT_SERVER_PORT,
     DEFAULT_SEED,
     DEFAULT_TIME_DILATION,
-    DOWNTOWN_ENV_ID,
     DRONE_CAM_ID,
+)
+from rvln.paths import (
+    BATCH_SCRIPT,
+    DOWNTOWN_ENV_ID,
     REPO_ROOT,
     UAV_FLOW_EVAL,
 )
@@ -71,10 +76,6 @@ LTL_TASKS_DIR = REPO_ROOT / "tasks" / "ltl"
 LTL_RESULTS_DIR = REPO_ROOT / "results" / "ltl_results"
 
 _TASK_NOT_FOUND = object()
-
-DEFAULT_MAX_STEPS = 100
-SMALL_DELTA_POS = 3.0
-SMALL_DELTA_YAW = 1.0
 
 logger = logging.getLogger(__name__)
 
@@ -197,8 +198,8 @@ def run_ltl_control_loop(
         if last_pose is not None:
             diffs = [abs(a - b) for a, b in zip(pose_now, last_pose)]
             if (
-                all(d < SMALL_DELTA_POS for d in diffs[:3])
-                and diffs[3] < SMALL_DELTA_YAW
+                all(d < ACTION_SMALL_DELTA_POS for d in diffs[:3])
+                and diffs[3] < ACTION_SMALL_DELTA_YAW
             ):
                 small_count += 1
             else:

@@ -23,6 +23,13 @@ _SRC = Path(__file__).resolve().parent.parent / "src"
 if _SRC.is_dir() and str(_SRC) not in sys.path:
     sys.path.insert(0, str(_SRC))
 
+from rvln.config import (
+    DEFAULT_DEVICE,
+    DEFAULT_DO_SAMPLE,
+    DEFAULT_GPU_ID,
+    DEFAULT_SERVER_PORT,
+    DEFAULT_UNNORM_KEY,
+)
 from rvln.paths import REPO_ROOT
 from rvln.server.openvla import OpenVLAActionAgent
 
@@ -77,17 +84,17 @@ def main():
         help="Path to model checkpoint dir (default: weights/)",
     )
     parser.add_argument(
-        "--port", type=int, default=5007,
-        help="HTTP port for /predict endpoint (default: 5007)",
+        "--port", type=int, default=DEFAULT_SERVER_PORT,
+        help=f"HTTP port for /predict endpoint (default: {DEFAULT_SERVER_PORT})",
     )
     parser.add_argument(
-        "--gpu-id", type=int, default=0,
-        help="CUDA GPU id (only used when --device=cuda, default: 0)",
+        "--gpu-id", type=int, default=DEFAULT_GPU_ID,
+        help=f"CUDA GPU id (only used when --device=cuda, default: {DEFAULT_GPU_ID})",
     )
     parser.add_argument(
         "--device",
         choices=("cuda", "cpu", "auto"),
-        default="cuda",
+        default=DEFAULT_DEVICE,
         help=(
             "Inference device. 'cuda': single GPU with bf16 + flash-attn (default). "
             "'cpu': pure CPU fp32 (no GPU needed, slow). "
@@ -107,8 +114,8 @@ def main():
         "device": args.device,
         "model_path": str(model_path),
         "http_port": args.port,
-        "unnorm_key": "sim",
-        "do_sample": False,
+        "unnorm_key": DEFAULT_UNNORM_KEY,
+        "do_sample": DEFAULT_DO_SAMPLE,
     }
 
     agent = OpenVLAActionAgent(cfg)

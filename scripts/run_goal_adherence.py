@@ -61,13 +61,19 @@ _SRC = Path(__file__).resolve().parent.parent / "src"
 if _SRC.is_dir() and str(_SRC) not in sys.path:
     sys.path.insert(0, str(_SRC))
 
-from rvln.paths import (
-    BATCH_SCRIPT,
+from rvln.config import (
+    ACTION_ACTION_SMALL_DELTA_POS,
+    ACTION_ACTION_SMALL_DELTA_YAW,
+    DEFAULT_GA_MAX_CORRECTIONS,
+    DEFAULT_DEFAULT_RUNS_PER_CONDITION,
     DEFAULT_SERVER_PORT,
     DEFAULT_SEED,
     DEFAULT_TIME_DILATION,
-    DOWNTOWN_ENV_ID,
     DRONE_CAM_ID,
+)
+from rvln.paths import (
+    BATCH_SCRIPT,
+    DOWNTOWN_ENV_ID,
     REPO_ROOT,
     UAV_FLOW_EVAL,
 )
@@ -90,11 +96,6 @@ from rvln.ai.subgoal_converter import SubgoalConverter
 
 GA_TASKS_DIR = REPO_ROOT / "tasks" / "goal_adherence"
 GA_RESULTS_DIR = REPO_ROOT / "results" / "goal_adherence_results"
-
-RUNS_PER_CONDITION = 3
-SMALL_DELTA_POS = 3.0
-SMALL_DELTA_YAW = 1.0
-DEFAULT_MAX_CORRECTIONS = 10
 
 logger = logging.getLogger(__name__)
 
@@ -127,7 +128,7 @@ def _run_single_ga(
     use_llm: bool,
     model: str,
     drone_cam_id: int,
-    max_corrections: int = DEFAULT_MAX_CORRECTIONS,
+    max_corrections: int = DEFAULT_GA_MAX_CORRECTIONS,
     save_mp4: bool = False,
     mp4_fps: float = 10.0,
 ) -> Dict[str, Any]:
@@ -318,8 +319,8 @@ def _run_single_ga(
         ):
             diffs = [abs(a - b) for a, b in zip(current_pose, last_pose)]
             if (
-                all(d < SMALL_DELTA_POS for d in diffs[:3])
-                and diffs[3] < SMALL_DELTA_YAW
+                all(d < ACTION_SMALL_DELTA_POS for d in diffs[:3])
+                and diffs[3] < ACTION_SMALL_DELTA_YAW
             ):
                 small_count += 1
             else:
@@ -554,14 +555,14 @@ def main():
     parser.add_argument(
         "--runs",
         type=int,
-        default=RUNS_PER_CONDITION,
-        help=f"Number of runs per condition (default: {RUNS_PER_CONDITION}).",
+        default=DEFAULT_RUNS_PER_CONDITION,
+        help=f"Number of runs per condition (default: {DEFAULT_RUNS_PER_CONDITION}).",
     )
     parser.add_argument(
         "--max-corrections",
         type=int,
-        default=DEFAULT_MAX_CORRECTIONS,
-        help=f"Max supervisor corrections per LLM run (default: {DEFAULT_MAX_CORRECTIONS}).",
+        default=DEFAULT_GA_MAX_CORRECTIONS,
+        help=f"Max supervisor corrections per LLM run (default: {DEFAULT_GA_MAX_CORRECTIONS}).",
     )
     parser.add_argument(
         "--save-mp4",
