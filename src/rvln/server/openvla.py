@@ -64,14 +64,27 @@ class OpenVLAActionAgent:
             self.compute_dtype = torch.bfloat16
             self.device = None  # set after load from first parameter
 
-        self.model = AutoModelForVision2Seq.from_pretrained(
-            self.model_path,
-            **load_kwargs,
-        )
-        if self.device_mode != "auto":
-            self.model = self.model.to(self.device)
-        else:
-            self.device = next(self.model.parameters()).device
+        try:
+            self.model = AutoModelForVision2Seq.from_pretrained(
+                self.model_path,
+                **load_kwargs,
+            )
+            if self.device_mode != "auto":
+                self.model = self.model.to(self.device)
+            else:
+                self.device = next(self.model.parameters()).device
+        except torch.cuda.OutOfMemoryError:
+            if self.device_mode == "cuda":
+                torch.cuda.empty_cache()
+                vram_total = torch.cuda.get_device_properties(self.gpu_id).total_memory / (1024 ** 3)
+                raise RuntimeError(
+                    f"CUDA out of memory while loading model ({vram_total:.1f} GB total VRAM). "
+                    "The model does not fit on a single GPU in this configuration.\n"
+                    "Try one of:\n"
+                    "  --device auto   (splits layers across GPU + CPU RAM, bf16)\n"
+                    "  --device cpu    (pure CPU inference, fp32, slower)\n"
+                ) from None
+            raise
         log.info(f"VLA model type: {type(self.model)}")
 
         self.model.eval()
