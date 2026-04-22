@@ -230,11 +230,30 @@ class OpenVLAActionAgent:
                     "message": "Action generated successfully",
                 })
 
+            except torch.cuda.OutOfMemoryError:
+                torch.cuda.empty_cache()
+                vram_total = torch.cuda.get_device_properties(self.gpu_id).total_mem / (1024 ** 3)
+                log.error(
+                    "CUDA out of memory during inference (%.1f GB total VRAM). "
+                    "Try restarting the server with --device auto (offloads layers "
+                    "to CPU RAM) or --device cpu.",
+                    vram_total,
+                )
+                return jsonify({
+                    "status": "error",
+                    "error_type": "cuda_oom",
+                    "message": (
+                        f"CUDA out of memory ({vram_total:.1f} GB total VRAM). "
+                        "Restart the server with --device auto or --device cpu."
+                    ),
+                }), 507
+
             except Exception as e:
                 import traceback
                 traceback.print_exc()
                 return jsonify({
                     "status": "error",
+                    "error_type": "unknown",
                     "message": str(e) + traceback.format_exc(),
                 }), 500
 

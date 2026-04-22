@@ -491,6 +491,7 @@ def run_integrated_control_loop(
     """
     from rvln.ai.llm_interface import LLMUserInterface
     from rvln.ai.ltl_planner import LTLSymbolicPlanner
+    from rvln.eval.batch_runner import CUDAOutOfMemoryError
 
     instruction = task["instruction"]
     initial_pos = normalize_initial_pos(task["initial_pos"])
@@ -548,25 +549,31 @@ def run_integrated_control_loop(
             "--- Subgoal %d: '%s' ---", subgoal_index, current_subgoal,
         )
 
-        subgoal_result = _run_subgoal(
-            env=env,
-            batch=batch,
-            server_url=server_url,
-            subgoal_nl=current_subgoal,
-            monitor_model=monitor_model,
-            check_interval=check_interval,
-            max_steps=max_steps_per_subgoal,
-            max_corrections=max_corrections,
-            origin_x=origin_x,
-            origin_y=origin_y,
-            origin_z=origin_z,
-            origin_yaw=origin_yaw,
-            drone_cam_id=drone_cam_id,
-            frames_dir=frames_dir,
-            subgoal_dir=subgoal_dir,
-            frame_offset=total_frame_count,
-            trajectory_log=trajectory_log,
-        )
+        try:
+            subgoal_result = _run_subgoal(
+                env=env,
+                batch=batch,
+                server_url=server_url,
+                subgoal_nl=current_subgoal,
+                monitor_model=monitor_model,
+                check_interval=check_interval,
+                max_steps=max_steps_per_subgoal,
+                max_corrections=max_corrections,
+                origin_x=origin_x,
+                origin_y=origin_y,
+                origin_z=origin_z,
+                origin_yaw=origin_yaw,
+                drone_cam_id=drone_cam_id,
+                frames_dir=frames_dir,
+                subgoal_dir=subgoal_dir,
+                frame_offset=total_frame_count,
+                trajectory_log=trajectory_log,
+            )
+        except CUDAOutOfMemoryError as e:
+            logger.error(
+                "Aborting run: OpenVLA server ran out of GPU memory. %s", e,
+            )
+            raise
 
         total_frame_count += subgoal_result["total_steps"]
         subgoal_summaries.append(subgoal_result)

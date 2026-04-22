@@ -28,13 +28,22 @@ ACTION_SMALL_DELTA_YAW: float = 1.0
 ACTION_SMALL_STEPS: int = 10
 
 
+class CUDAOutOfMemoryError(RuntimeError):
+    """Raised when the OpenVLA server reports a CUDA OOM."""
+    pass
+
+
 def send_prediction_request(
     image: Image.Image,
     proprio: np.ndarray,
     instr: str,
     server_url: str,
 ) -> Optional[Dict[str, Any]]:
-    """Send a request to the inference service and return JSON response."""
+    """Send a request to the inference service and return JSON response.
+
+    Raises CUDAOutOfMemoryError if the server reports a CUDA OOM so the
+    caller can abort the run instead of silently advancing subgoals.
+    """
     proprio_list = proprio.tolist()
     img_io = BytesIO()
     if image.size != IMG_INPUT_SIZE:
@@ -55,8 +64,13 @@ def send_prediction_request(
             headers=headers,
             timeout=30,
         )
+        if response.status_code == 507:
+            body = response.json()
+            raise CUDAOutOfMemoryError(body.get("message", "CUDA out of memory on server"))
         response.raise_for_status()
         return response.json()
+    except CUDAOutOfMemoryError:
+        raise
     except Exception as e:
         logger.error(f"Request failed: {e}")
         return None
