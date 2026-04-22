@@ -7,6 +7,7 @@ Vendored from UAV-Flow/OpenVLA-UAV (commit 0114801).
 
 import base64
 import logging
+import os
 import time
 from io import BytesIO
 
@@ -136,6 +137,31 @@ class OpenVLAActionAgent:
                 self.act(dummy_image, dummy_prompt)
             log.info("Device split validation passed after memory reduction.")
 
+    def _log_memory_usage(self):
+        """Log peak VRAM and current CPU RSS after an inference call."""
+        rss_bytes = 0
+        try:
+            with open(f"/proc/{os.getpid()}/status") as f:
+                for line in f:
+                    if line.startswith("VmRSS:"):
+                        rss_bytes = int(line.split()[1]) * 1024  # kB to bytes
+                        break
+        except OSError:
+            pass
+        rss_gb = rss_bytes / (1024 ** 3)
+
+        if torch.cuda.is_available():
+            gpu_id = self.gpu_id
+            peak_vram = torch.cuda.max_memory_allocated(gpu_id) / (1024 ** 3)
+            current_vram = torch.cuda.memory_allocated(gpu_id) / (1024 ** 3)
+            reserved_vram = torch.cuda.memory_reserved(gpu_id) / (1024 ** 3)
+            log.info(
+                f"Memory: VRAM peak={peak_vram:.2f} GB, current={current_vram:.2f} GB, "
+                f"reserved={reserved_vram:.2f} GB | CPU RSS={rss_gb:.2f} GB"
+            )
+        else:
+            log.info(f"Memory: CPU RSS={rss_gb:.2f} GB")
+
     def _setup_routes(self):
         @self.app.route("/predict", methods=["POST"])
         def predict():
@@ -152,10 +178,13 @@ class OpenVLAActionAgent:
                 prompt = f"In: Current State: {proprio_str}, What action should the uav take to {instruction}?\nOut:"
                 log.info(f"Prompt: {prompt}")
 
+                if torch.cuda.is_available():
+                    torch.cuda.reset_peak_memory_stats(self.gpu_id)
                 start_time = time.time()
                 with torch.inference_mode():
                     pred_action = self.act(image, prompt)
                 log.info(f"Inference time: {time.time() - start_time:.3f}s")
+                self._log_memory_usage()
 
                 pred_action = pred_action[None, :]
                 pred_action_ori = pred_action.copy()
