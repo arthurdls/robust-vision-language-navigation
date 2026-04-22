@@ -264,74 +264,74 @@ Example input (again): "Eventually deliver the pen to location D, but only after
 ---
 
 Example output:
-{{
-  "pi_predicates": {{
+{
+  "pi_predicates": {
       "pi_1": "Deliver pen to Location D",
       "pi_2": "Deliver drink to Location E",
       "pi_3": "Deliver apple to Location E"
-  }},
+  },
   "ltl_nl_formula": "F pi_1 & (!pi_1 U (pi_2 | pi_3))"
-}}"""
+}"""
 
 LTL_NL_EXAMPLES_PROMPT = """\
 Some more examples:
 
 User: 'Deliver Coke 1 to Location A.'
 Assistant:
-{{
-    "pi_predicates": {{
+{
+    "pi_predicates": {
         "pi_1": "Deliver Coke 1 to Location A"
-    }},
+    },
     "ltl_nl_formula": "F pi_1"
-}}
+}
 
 User: 'Eventually go to Location A, then Location B, and finally Location C.'
 Assistant:
-{{
-    "pi_predicates": {{
+{
+    "pi_predicates": {
         "pi_1": "Go to Location A",
         "pi_2": "Go to Location B",
         "pi_3": "Go to Location C"
-    }},
+    },
     "ltl_nl_formula": "F pi_3 & (!pi_3 U pi_2) & (!pi_2 U pi_1)"
-}}
+}
 
 User: 'I need five things done: first, go to the fridge, then deliver Coke 1, and only then deliver Coke 2. Also, at some point, deliver the pen and deliver the apple.'
 Assistant:
-{{
-    "pi_predicates": {{
+{
+    "pi_predicates": {
         "pi_1": "Go to the fridge",
         "pi_2": "Deliver Coke 1",
         "pi_3": "Deliver Coke 2",
         "pi_4": "Deliver the pen",
         "pi_5": "Deliver the apple"
-    }},
+    },
     "ltl_nl_formula": "F pi_3 & (!pi_3 U pi_2) & (!pi_2 U pi_1) & F pi_4 & F pi_5"
-}}
+}
 
 User: 'Please accomplish four tasks: deliver the pen, then deliver the apple. Separately, you must also deliver Coke 1, and then deliver Coke 2. The apple task must not be done before the pen task, and the Coke 2 task must not be done before the Coke 1 task.'
 Assistant:
-{{
-    "pi_predicates": {{
+{
+    "pi_predicates": {
         "pi_1": "Deliver the pen",
         "pi_2": "Deliver the apple",
         "pi_3": "Deliver Coke 1",
         "pi_4": "Deliver Coke 2"
-    }},
+    },
     "ltl_nl_formula": "F pi_2 & (!pi_2 U pi_1) & F pi_4 & (!pi_4 U pi_3)"
-}}
+}
 
 User: 'Eventually deliver the apple, pen, and Coke 1 to Location A. Also, deliver Coke 2 to Location B. Do not deliver Coke 2 to B until the apple has been delivered to A. Do not deliver the pen to A until Coke 1 has been delivered to A.'
 Assistant:
-{{
-    "pi_predicates": {{
+{
+    "pi_predicates": {
         "pi_1": "Deliver the apple to Location A",
         "pi_2": "Deliver the pen to Location A",
         "pi_3": "Deliver Coke 1 to Location A",
         "pi_4": "Deliver Coke 2 to Location B"
-    }},
+    },
     "ltl_nl_formula": "F pi_4 & (!pi_4 U pi_1) & F pi_2 & (!pi_2 U pi_3)"
-}}"""
+}"""
 
 LTL_NL_RESTATED_TASK_PROMPT = """\
 ### Your Task (Restated)

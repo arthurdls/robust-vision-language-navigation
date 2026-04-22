@@ -78,7 +78,7 @@ class LLMUserInterface():
                 "role": "user",
                 "content": request,
             })
-        response_text = self._base_llm.make_request(self._history, temperature=0.0)
+        response_text = self._base_llm.make_request(self._history, temperature=0.0, json_mode=True)
 
         try:
             ltl_nl = extract_json(response_text)

@@ -33,7 +33,8 @@ class BaseLLM(ABC):
         # timeout or other provider-specific config can be added in subclasses
 
     @abstractmethod
-    def make_request(self, messages: List[Dict[str, Any]], temperature: float = 0.0) -> str:
+    def make_request(self, messages: List[Dict[str, Any]], temperature: float = 0.0,
+                     json_mode: bool = False) -> str:
         """
         Make a request to the provider using a list of messages (role/content).
         Returns the provider's text output (string).
@@ -237,7 +238,8 @@ class OpenAIProvider(BaseLLM):
             content = [{"type": "text", "text": text}]
         return [{"role": "user", "content": content}]
 
-    def make_request(self, messages: List[Dict[str, Any]], temperature: float = 0.0) -> str:
+    def make_request(self, messages: List[Dict[str, Any]], temperature: float = 0.0,
+                     json_mode: bool = False) -> str:
         """
         Simplified: always normalize SDK response to dict first, then extract content.
         Returns the assistant's content string when available, or the JSON-serialized dict otherwise.
@@ -249,11 +251,14 @@ class OpenAIProvider(BaseLLM):
             if self.rate_limit_seconds:
                 time.sleep(self.rate_limit_seconds)
             try:
-                resp = self._client.chat.completions.create(
+                kwargs = dict(
                     model=self.model,
                     messages=messages,
-                    temperature=temperature
+                    temperature=temperature,
                 )
+                if json_mode:
+                    kwargs["response_format"] = {"type": "json_object"}
+                resp = self._client.chat.completions.create(**kwargs)
                 data = _normalize_sdk_response(resp)
 
                 # canonical OpenAI chat response path
@@ -336,13 +341,17 @@ class GeminiProvider(BaseLLM):
 
         return [{"role": "user", "parts": parts}]
 
-    def make_request(self, messages: List[Dict[str, Any]], temperature: float = 0.0) -> str:
+    def make_request(self, messages: List[Dict[str, Any]], temperature: float = 0.0,
+                     json_mode: bool = False) -> str:
         """
         Call genai client, normalize response to dict and extract the likely text field(s).
         """
         attempt = 0
         last_exc = None
         contents = _openai_to_gemini(messages)
+        config = {"temperature": temperature}
+        if json_mode:
+            config["response_mime_type"] = "application/json"
 
         while attempt < self.max_retries:
             attempt += 1
@@ -352,7 +361,7 @@ class GeminiProvider(BaseLLM):
                 resp = self._client.models.generate_content(
                     model=self.model,
                     contents=contents,
-                    config={"temperature": temperature}
+                    config=config,
                 )
                 data = _normalize_sdk_response(resp)
 
