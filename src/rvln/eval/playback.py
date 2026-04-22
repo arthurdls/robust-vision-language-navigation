@@ -47,7 +47,7 @@ def load_frame_labels(run_dir: Path) -> Dict[int, str]:
         return labels
 
     # --- Goal adherence: single instruction with optional overrides ---
-    instruction = info.get("instruction_sent") or info.get("instruction")
+    instruction = info.get("instruction_sent")
     if isinstance(instruction, str) and instruction:
         total = info.get("total_steps")
         overrides = info.get("instruction_overrides", [])
@@ -60,15 +60,6 @@ def load_frame_labels(run_dir: Path) -> Dict[int, str]:
                     override_idx += 1
                 labels[i] = current
             return labels
-
-    # --- Older LTL: subgoals list only (no per-step mapping) ---
-    subgoals = info.get("subgoals")
-    if isinstance(subgoals, list) and subgoals:
-        combined = " > ".join(subgoals)
-        total = len(iter_run_frame_paths(run_dir))
-        for i in range(total):
-            labels[i] = combined
-        return labels
 
     return labels
 
