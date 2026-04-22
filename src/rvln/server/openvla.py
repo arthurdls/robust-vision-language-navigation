@@ -75,12 +75,66 @@ class OpenVLAActionAgent:
 
         self.model.eval()
 
+        self.unnorm_key = cfg.get("unnorm_key", "sim")
+        self.do_sample = cfg.get("do_sample", False)
+
+        if self.device_mode == "auto":
+            self._validate_device_split()
+
         self.app = Flask(__name__)
         self._setup_routes()
         self.port = cfg.get("http_port", 5000)
 
-        self.unnorm_key = cfg.get("unnorm_key", "sim")
-        self.do_sample = cfg.get("do_sample", False)
+    def _validate_device_split(self):
+        """Run a dummy forward pass to verify the GPU/CPU split survives runtime memory usage.
+
+        ``device_map="auto"`` only accounts for static weight sizes. Activations,
+        KV cache, and intermediate tensors created during ``generate()`` also
+        consume GPU memory. This method runs a realistic inference call right
+        after loading so an OOM surfaces at startup rather than mid-flight.
+
+        If the dummy pass OOMs, the model is reloaded with ``max_memory`` reduced
+        by 20% to leave more headroom. If it still fails after one retry, the
+        error propagates so the caller knows the model cannot fit.
+        """
+        log.info("Validating device split with dummy inference pass...")
+        dummy_image = Image.new("RGB", (224, 224), color=(128, 128, 128))
+        dummy_prompt = "In: Current State: 0.0,0.0,0.0,0.0, What action should the uav take to hover?\nOut:"
+
+        try:
+            with torch.inference_mode():
+                self.act(dummy_image, dummy_prompt)
+            log.info("Device split validation passed.")
+        except torch.cuda.OutOfMemoryError:
+            torch.cuda.empty_cache()
+            log.warning(
+                "OOM during dummy inference. Reloading model with reduced GPU memory budget."
+            )
+            gpu_id = self.gpu_id
+            total = torch.cuda.get_device_properties(gpu_id).total_mem
+            reduced = int(total * 0.8)
+            log.info(
+                f"Reducing GPU {gpu_id} max_memory from "
+                f"{total / 1e9:.1f} GB to {reduced / 1e9:.1f} GB"
+            )
+
+            del self.model
+            torch.cuda.empty_cache()
+
+            self.model = AutoModelForVision2Seq.from_pretrained(
+                self.model_path,
+                low_cpu_mem_usage=True,
+                trust_remote_code=True,
+                torch_dtype=torch.bfloat16,
+                device_map="auto",
+                max_memory={gpu_id: reduced, "cpu": "64GiB"},
+            )
+            self.model.eval()
+            self.device = next(self.model.parameters()).device
+
+            with torch.inference_mode():
+                self.act(dummy_image, dummy_prompt)
+            log.info("Device split validation passed after memory reduction.")
 
     def _setup_routes(self):
         @self.app.route("/predict", methods=["POST"])
