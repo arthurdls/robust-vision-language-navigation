@@ -6,7 +6,7 @@ so they can be changed in one place.
 """
 
 # LLM model defaults
-DEFAULT_LLM_MODEL = "gpt-4o-mini"
+DEFAULT_LLM_MODEL = "gpt-4o"
 DEFAULT_VLM_MODEL = "gpt-5.4"
 
 # Diary monitoring defaults
