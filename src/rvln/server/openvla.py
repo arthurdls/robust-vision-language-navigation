@@ -63,6 +63,14 @@ class OpenVLAActionAgent:
             load_kwargs["device_map"] = "auto"
             self.compute_dtype = torch.bfloat16
             self.device = None  # set after load from first parameter
+            # Base budget on actually free VRAM (not total) so other processes' allocations are respected.
+            free, total = torch.cuda.mem_get_info(self.gpu_id)
+            gpu_budget = int(free * 0.85)
+            load_kwargs["max_memory"] = {self.gpu_id: gpu_budget, "cpu": "64GiB"}
+            log.info(
+                f"GPU {self.gpu_id}: {free / 1e9:.1f} GB free of {total / 1e9:.1f} GB total, "
+                f"budgeting {gpu_budget / 1e9:.1f} GB for model weights"
+            )
 
         try:
             self.model = AutoModelForVision2Seq.from_pretrained(
@@ -116,9 +124,9 @@ class OpenVLAActionAgent:
         consume GPU memory. This method runs a realistic inference call right
         after loading so an OOM surfaces at startup rather than mid-flight.
 
-        If the dummy pass OOMs, the model is reloaded with ``max_memory`` reduced
-        by 20% to leave more headroom. If it still fails after one retry, the
-        error propagates so the caller knows the model cannot fit.
+        If the dummy pass OOMs, the model is reloaded with ``max_memory`` set to
+        70% of actually free VRAM. If it still fails after one retry, the error
+        propagates so the caller knows the model cannot fit.
         """
         log.info("Validating device split with dummy inference pass...")
         dummy_image = Image.new("RGB", (224, 224), color=(128, 128, 128))
@@ -133,16 +141,16 @@ class OpenVLAActionAgent:
             log.warning(
                 "OOM during dummy inference. Reloading model with reduced GPU memory budget."
             )
-            gpu_id = self.gpu_id
-            total = torch.cuda.get_device_properties(gpu_id).total_memory
-            reduced = int(total * 0.8)
-            log.info(
-                f"Reducing GPU {gpu_id} max_memory from "
-                f"{total / 1e9:.1f} GB to {reduced / 1e9:.1f} GB"
-            )
-
             del self.model
             torch.cuda.empty_cache()
+
+            gpu_id = self.gpu_id
+            free, _ = torch.cuda.mem_get_info(gpu_id)
+            reduced = int(free * 0.70)
+            log.info(
+                f"GPU {gpu_id}: {free / 1e9:.1f} GB free after cleanup, "
+                f"retrying with {reduced / 1e9:.1f} GB budget (70%%)"
+            )
 
             self.model = AutoModelForVision2Seq.from_pretrained(
                 self.model_path,
