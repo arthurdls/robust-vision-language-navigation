@@ -143,12 +143,17 @@ def main():
             continue
 
         zip_path = dest / filename
-        if not zip_path.exists():
-            print(f"\nDownloading {name}: {filename}")
-            download_from_modelscope(filename, str(dest))
+        print(f"\nDownloading {name}: {filename}")
+        download_from_modelscope(filename, str(dest))
 
         if not zip_path.exists():
             print(f"Error: expected {zip_path} after download", file=sys.stderr)
+            continue
+
+        if not zipfile.is_zipfile(zip_path):
+            print(f"Error: {zip_path} is not a valid zip (possibly incomplete download)", file=sys.stderr)
+            zip_path.unlink()
+            print("Deleted corrupt file. Please rerun to retry the download.")
             continue
 
         extract_and_move(zip_path, dest, is_textures=is_tex)
