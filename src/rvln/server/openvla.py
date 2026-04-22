@@ -140,6 +140,29 @@ class OpenVLAActionAgent:
             f"{cpu_pct:.1f}% CPU ({cpu_bytes / 1e9:.2f} GB)"
         )
 
+    def _fallback_to_cpu(self):
+        """Reload the model in pure CPU mode after GPU auto-split fails."""
+        log.warning(
+            "Insufficient GPU memory for auto device split. Falling back to CPU-only inference."
+        )
+        if hasattr(self, "model"):
+            del self.model
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+
+        self.model = AutoModelForVision2Seq.from_pretrained(
+            self.model_path,
+            low_cpu_mem_usage=True,
+            trust_remote_code=True,
+            torch_dtype=torch.float32,
+        )
+        self.device = torch.device("cpu")
+        self.compute_dtype = torch.float32
+        self.device_mode = "cpu"
+        self.model = self.model.to(self.device)
+        self.model.eval()
+        log.info("Model loaded on CPU (fp32). Inference will be slower than GPU.")
+
     def _validate_device_split(self):
         """Run a dummy forward pass to verify the GPU/CPU split survives runtime memory usage.
 
@@ -149,8 +172,7 @@ class OpenVLAActionAgent:
         after loading so an OOM surfaces at startup rather than mid-flight.
 
         If the dummy pass OOMs, the model is reloaded with ``max_memory`` set to
-        70% of actually free VRAM. If it still fails after one retry, the error
-        propagates so the caller knows the model cannot fit.
+        70% of actually free VRAM. If that also fails, falls back to pure CPU.
         """
         log.info("Validating device split with dummy inference pass...")
         dummy_image = Image.new("RGB", (224, 224), color=(128, 128, 128))
@@ -160,22 +182,25 @@ class OpenVLAActionAgent:
             with torch.inference_mode():
                 self.act(dummy_image, dummy_prompt)
             log.info("Device split validation passed.")
+            return
         except torch.cuda.OutOfMemoryError:
             torch.cuda.empty_cache()
             log.warning(
                 "OOM during dummy inference. Reloading model with reduced GPU memory budget."
             )
-            del self.model
-            torch.cuda.empty_cache()
 
-            gpu_id = self.gpu_id
-            free, _ = torch.cuda.mem_get_info(gpu_id)
-            reduced = int(free * 0.70)
-            log.info(
-                f"GPU {gpu_id}: {free / 1e9:.1f} GB free after cleanup, "
-                f"retrying with {reduced / 1e9:.1f} GB budget (70%%)"
-            )
+        del self.model
+        torch.cuda.empty_cache()
 
+        gpu_id = self.gpu_id
+        free, _ = torch.cuda.mem_get_info(gpu_id)
+        reduced = int(free * 0.70)
+        log.info(
+            f"GPU {gpu_id}: {free / 1e9:.1f} GB free after cleanup, "
+            f"retrying with {reduced / 1e9:.1f} GB budget (70%%)"
+        )
+
+        try:
             self.model = AutoModelForVision2Seq.from_pretrained(
                 self.model_path,
                 low_cpu_mem_usage=True,
@@ -191,6 +216,9 @@ class OpenVLAActionAgent:
             with torch.inference_mode():
                 self.act(dummy_image, dummy_prompt)
             log.info("Device split validation passed after memory reduction.")
+        except torch.cuda.OutOfMemoryError:
+            torch.cuda.empty_cache()
+            self._fallback_to_cpu()
 
     def _log_memory_usage(self, request_peak_vram_gb=None):
         """Log memory usage after an inference call."""
