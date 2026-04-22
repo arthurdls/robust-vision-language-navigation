@@ -94,12 +94,15 @@ def extract_and_move(zip_path, dest_dir, is_textures=False):
     source = zip_path.parent / folder_name
     target = dest_dir / folder_name
 
-    if target.exists():
-        print(f"Target {target} already exists, removing old version...")
-        shutil.rmtree(target)
+    if source.resolve() == target.resolve():
+        print(f"Extracted directly to {target}, no move needed.")
+    else:
+        if target.exists():
+            print(f"Target {target} already exists, removing old version...")
+            shutil.rmtree(target)
 
-    print(f"Moving {source} -> {target}")
-    shutil.move(str(source), str(target))
+        print(f"Moving {source} -> {target}")
+        shutil.move(str(source), str(target))
 
     zip_path.unlink()
     print(f"Cleaned up {zip_path}")
