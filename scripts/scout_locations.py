@@ -77,8 +77,10 @@ def main():
     import_batch_module()
 
     import gymnasium as gym
+    import gym_unrealcv
     from gym_unrealcv.envs.wrappers import time_dilation, configUE, augmentation
 
+    gym_unrealcv.register_env(args.env_id)
     env = gym.make(args.env_id)
     if int(args.time_dilation) > 0:
         env = time_dilation.TimeDilationWrapper(env, int(args.time_dilation))
