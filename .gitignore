@@ -15,6 +15,7 @@
 # Large runtime directories (populated by tools/)
 runtime/unreal/UnrealZoo-UE4/
 runtime/unreal/textures/
+runtime/
 # Legacy download location (pre-runtime/unreal layout)
 /envs/
 weights/OpenVLA-UAV/*
