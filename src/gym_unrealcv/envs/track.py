@@ -43,7 +43,7 @@ class Track(UnrealCv_base):
         self.target_id = self.protagonist_id+1
 
     def step(self, action):
-        obs, rewards, done, info = super(Track, self).step(action)
+        obs, rewards, done, truncated, info = super(Track, self).step(action)
         relative_pose = info['Relative_Pose']
         # compute the useful metrics for rewards and done condition
         metrics, score4tracker = self.track_metrics(relative_pose, self.tracker_id, self.target_id)
@@ -56,11 +56,10 @@ class Track(UnrealCv_base):
         info['Reward'] = rewards
         info['metrics'] = metrics
 
-        return obs, rewards, done, info
+        return obs, rewards, done, truncated, info
 
-    def reset(self):
-        # initialize the environment
-        observations = super(Track, self).reset()
+    def reset(self, **kwargs):
+        observations, _info = super(Track, self).reset(**kwargs)
         target_pos = self.unrealcv.get_obj_location(self.player_list[self.target_id])
         print(target_pos)
         self.unrealcv.nav_to_goal(self.player_list[self.target_id], target_pos)
@@ -116,7 +115,7 @@ class Track(UnrealCv_base):
         # update the observation
         observations, self.obj_poses, self.img_show = self.update_observation(self.player_list, self.cam_list, self.cam_flag, self.observation_type)
         self.count_lost = 0
-        return observations
+        return observations, {}
 
     def track_metrics(self, relative_pose, tracker_id, target_id):
         # compute the relative relation (collision, in-the-view, misleading) among agents for rewards and evaluation metrics

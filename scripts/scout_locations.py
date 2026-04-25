@@ -76,7 +76,7 @@ def main():
     _patch_remove_agent_skip_destroy()
     import_batch_module()
 
-    import gym
+    import gymnasium as gym
     from gym_unrealcv.envs.wrappers import time_dilation, configUE, augmentation
 
     env = gym.make(args.env_id)

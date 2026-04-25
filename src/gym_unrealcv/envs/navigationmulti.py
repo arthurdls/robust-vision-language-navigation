@@ -53,7 +53,7 @@ class NavigationMulti(UnrealCv_base):
         self.count_steps = 0
 
     def step(self, action):
-        obs, rewards, done, info = super(NavigationMulti, self).step(action)
+        obs, rewards, done, truncated, info = super(NavigationMulti, self).step(action)
 
         #detect if any agent collision with environment
         # if sum([self.unrealcv.get_hit(self.player_list[i]) for i in range(len(self.player_list))]) == 0:
@@ -121,11 +121,10 @@ class NavigationMulti(UnrealCv_base):
         info['Trajectory'] = self.trajectory
 
 
-        return obs, info['Reward'], info['Done'], info
+        return obs, info['Reward'], info['Done'], False, info
 
-    def reset(self, ):
-        # double check the resetpoint, it is necessary for random reset type
-        observations = super(NavigationMulti, self).reset()
+    def reset(self, **kwargs):
+        observations, _info = super(NavigationMulti, self).reset(**kwargs)
 
         current_pose = self.unrealcv.get_pose(self.cam_id[self.protagonist_id])
         self.targets_pos = self.unrealcv.build_pose_dic(self.target_list)
@@ -141,7 +140,7 @@ class NavigationMulti(UnrealCv_base):
         self.reward_function.dis2target_initial, self.targetID_last = \
             self.select_target_by_distance(current_pose, self.targets_pos)
 
-        return observations
+        return observations, {}
 
     def seed(self, seed=None):
         return seed

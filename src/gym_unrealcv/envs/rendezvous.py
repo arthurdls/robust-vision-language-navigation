@@ -26,7 +26,7 @@ class Rendezvous(UnrealCv_base):
         self.agents_category = ['player']
 
     def step(self, action):
-        obs, rewards, done, info = super(Rendezvous, self).step(action)
+        obs, rewards, done, truncated, info = super(Rendezvous, self).step(action)
         # compute the useful metrics for rewards and done condition
         metrics = self.rendezvous_metrics(info['Relative_Pose'])
         rewards = self.reward(metrics)
@@ -37,13 +37,13 @@ class Rendezvous(UnrealCv_base):
         if self.count_meet > self.max_meet_steps:
             info['Done'] = True
             done = True
-        return obs, rewards, done, info
+        return obs, rewards, done, truncated, info
 
-    def reset(self):
-        states = super(Rendezvous, self).reset()
+    def reset(self, **kwargs):
+        states, _info = super(Rendezvous, self).reset(**kwargs)
         super(Rendezvous, self).random_app()
         self.count_meet = 0
-        return states
+        return states, {}
 
     def reward(self, metrics):
         rewards = 1 - metrics['dis_ave']/self.distance_threshold

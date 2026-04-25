@@ -1,5 +1,5 @@
-import gym
-from gym import Wrapper
+import gymnasium as gym
+from gymnasium import Wrapper
 import time
 
 class TimeDilationWrapper(Wrapper):
@@ -10,21 +10,20 @@ class TimeDilationWrapper(Wrapper):
         self.update_steps = update_steps  # the number of steps after which to update the time dilation
         self.update_dilation = update_dilation  # whether to update the time dilation or not
     def step(self, action):
-        obs, reward, done, info = self.env.step(action)  # take a step in the wrapped environment
+        obs, reward, terminated, truncated, info = self.env.step(action)
         self.count_steps += 1
-        if self.count_steps % self.update_steps == 0:  # update the time dilation every 10 steps
+        if self.count_steps % self.update_steps == 0:
             fps = self.count_steps / (time.time() - self.start_time)
-            dilation_factor_new = fps / self.reference_fps  # reference fps: 10
-            # print(f'FPS: {fps}', f'Dilation factor: {dilation_factor_new}')
+            dilation_factor_new = fps / self.reference_fps
             if  dilation_factor_new / self.dilation_factor > 1.1 or dilation_factor_new / self.dilation_factor < 0.9:
                 env = self.env.unwrapped
                 if self.update_dilation:
                     self.dilation_factor = dilation_factor_new
                     env.unrealcv.set_global_time_dilation(self.dilation_factor)
-        return obs, reward, done, info  # return the same results as the wrapped environment
+        return obs, reward, terminated, truncated, info
 
     def reset(self, **kwargs):
-        states = self.env.reset(**kwargs)
+        obs, info = self.env.reset(**kwargs)
         self.start_time = time.time()
         self.count_steps = 0
-        return states # return the same results as the wrapped environment
+        return obs, info

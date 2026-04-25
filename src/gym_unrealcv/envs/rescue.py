@@ -30,7 +30,7 @@ class Rescue(UnrealCv_base):
         ## TODO: add trigger action
 
     def step(self, action):
-        obs, rewards, done, info = super(Rescue, self).step(action)
+        obs, rewards, done, truncated, info = super(Rescue, self).step(action)
         # compute the useful metrics for rewards and done condition
         metrics = self.rescue_metrics(info['Pose'], self.target_pose)
         rewards = self.reward(metrics)
@@ -41,11 +41,10 @@ class Rescue(UnrealCv_base):
         if self.count_reach > self.max_reach_steps:
             info['Done'] = True
             done = True
-        return obs, rewards, done, info
+        return obs, rewards, done, truncated, info
 
-    def reset(self):
-        # initialize the environment
-        states = super(Rescue, self).reset()
+    def reset(self, **kwargs):
+        states, _info = super(Rescue, self).reset(**kwargs)
         super(Rescue, self).random_app()
         if self.injured_agent is None:
             # add the injured person
@@ -61,7 +60,7 @@ class Rescue(UnrealCv_base):
         self.unrealcv.set_liedown(self.injured_agent, random.choice(candidate_direction))
         self.target_pose = self.unrealcv.get_obj_pose(self.injured_agent)
         self.count_reach = 0
-        return states
+        return states, {}
 
     def reward(self, metrics):
         # individual reward

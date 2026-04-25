@@ -132,7 +132,7 @@ def import_batch_module() -> Any:
 
 def setup_sim_env(env_id: str, time_dilation_val: int, seed: int, batch: Any) -> Any:
     """Create gym environment with wrappers, reset, and spawn NPCs. Returns wrapped env."""
-    import gym
+    import gymnasium as gym
     from gym_unrealcv.envs.wrappers import time_dilation, configUE, augmentation
 
     env = gym.make(env_id)

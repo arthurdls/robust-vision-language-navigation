@@ -3,9 +3,9 @@ import time
 import warnings
 
 import cv2
-import gym
+import gymnasium as gym
 import numpy as np
-from gym import spaces
+from gymnasium import spaces
 from gym_unrealcv.envs.utils import misc
 from unrealcv.launcher import RunUnreal
 from gym_unrealcv.envs.agent.character import Character_API
@@ -165,14 +165,14 @@ class UnrealCv_base(gym.Env):
         info['Pose_Obs'] = pose_obs
         info['Reward'] = np.zeros(len(self.player_list))
 
-        return observations, info['Reward'], info['Done'], info
+        return observations, info['Reward'], info['Done'], False, info
 
-    def reset(self):
+    def reset(self, **kwargs):
         """
         Reset the environment to its initial state.
 
         Returns:
-            np.array: Initial observations.
+            tuple: (observations, info dict).
         """
         if not self.launched:  # first time to launch
             self.launched = self.launch_ue_env()
@@ -210,7 +210,7 @@ class UnrealCv_base(gym.Env):
         # get state
         observations, self.obj_poses, self.img_show = self.update_observation(self.player_list, self.cam_list, self.cam_flag, self.observation_type)
 
-        return observations
+        return observations, {}
 
     def close(self):
         """

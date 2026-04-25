@@ -1,5 +1,5 @@
 __version__ = "2.0.3"
-from gym.envs.registration import register
+from gymnasium.envs.registration import register
 import logging
 import os
 from gym_unrealcv.envs.utils.misc import load_env_setting

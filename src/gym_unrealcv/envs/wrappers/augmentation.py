@@ -1,4 +1,4 @@
-from gym import Wrapper
+from gymnasium import Wrapper
 import numpy as np
 import os
 import gym_unrealcv
@@ -20,8 +20,8 @@ class RandomPopulationWrapper(Wrapper):
             env.unwrapped.env_configs["lights"] = ["light1", "light2", "light3", "light4", "light5", "light6"]
             env.unwrapped.textures_list = gym_unrealcv.envs.utils.misc.get_textures(texture_name="textures", docker=env.unwrapped.docker)
     def step(self, action):
-        obs, reward, done, info = self.env.step(action)
-        return obs, reward, done, info
+        obs, reward, terminated, truncated, info = self.env.step(action)
+        return obs, reward, terminated, truncated, info
 
     def reset(self, **kwargs):
         env = self.env.unwrapped
@@ -59,5 +59,5 @@ class RandomPopulationWrapper(Wrapper):
             elif env.unwrapped.reset_type == 6:
                 env.unwrapped.environment_augmentation(player_mesh=True, player_texture=True, light=True,background_texture=False, layout=True, layout_texture=False)
 
-        states = self.env.reset(**kwargs)
-        return states
+        obs, info = self.env.reset(**kwargs)
+        return obs, info

@@ -1,5 +1,5 @@
-import gym
-from gym import Wrapper
+import gymnasium as gym
+from gymnasium import Wrapper
 import time
 import cv2
 
@@ -11,7 +11,7 @@ class DisplayWrapper(Wrapper):
         self.get_bbox = get_bbox
 
     def step(self, action):
-        obs, reward, done, info = self.env.step(action) # take a step in the wrapped environment
+        obs, reward, terminated, truncated, info = self.env.step(action)
         # set top_down camera
         env = self.env.unwrapped
 
@@ -25,10 +25,10 @@ class DisplayWrapper(Wrapper):
         if self.dynamic_top_down:
             env.set_topview(info['Pose'][env.protagonist_id], env.cam_id[0]) # set top_down camera
 
-        return obs, reward, done, info # return the same results as the wrapped environment
+        return obs, reward, terminated, truncated, info
 
     def reset(self, **kwargs):
-        states = self.env.reset(**kwargs)
+        obs, info = self.env.reset(**kwargs)
         env = self.env.unwrapped
         if self.fix_camera:
             center_pos = [(env.reset_area[0]+env.reset_area[1])/2, (env.reset_area[2]+env.reset_area[3])/2, 2000]
@@ -41,7 +41,7 @@ class DisplayWrapper(Wrapper):
             self.bbox_init.append(bbox)
         cv2.imshow('init', env.img_show)
         cv2.waitKey(1)
-        return states # return the same results as the wrapped environment
+        return obs, info
 
     def show_bbox(self, img2disp, bbox):
         # im_disp = states[0][:, :, :3].copy()
