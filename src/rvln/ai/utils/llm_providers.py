@@ -30,7 +30,7 @@ class BaseLLM(ABC):
         self.rate_limit_seconds = rate_limit_seconds
         self.max_retries = max_retries
         self.api_key_env = api_key_env
-        # timeout or other provider-specific config can be added in subclasses
+        self.last_usage: Dict[str, Any] = {}
 
     @abstractmethod
     def make_request(self, messages: List[Dict[str, Any]], temperature: float = 0.0,
@@ -261,6 +261,13 @@ class OpenAIProvider(BaseLLM):
                 resp = self._client.chat.completions.create(**kwargs)
                 data = _normalize_sdk_response(resp)
 
+                usage = data.get("usage") or {}
+                self.last_usage = {
+                    "model": data.get("model", self.model),
+                    "input_tokens": usage.get("prompt_tokens", 0),
+                    "output_tokens": usage.get("completion_tokens", 0),
+                }
+
                 # canonical OpenAI chat response path
                 choices = data.get("choices") or []
                 if choices:
@@ -364,6 +371,13 @@ class GeminiProvider(BaseLLM):
                     config=config,
                 )
                 data = _normalize_sdk_response(resp)
+
+                usage_meta = data.get("usage_metadata") or {}
+                self.last_usage = {
+                    "model": data.get("model_version", self.model),
+                    "input_tokens": usage_meta.get("prompt_token_count", 0),
+                    "output_tokens": usage_meta.get("candidates_token_count", 0),
+                }
 
                 try:
                     return data["candidates"][0]["content"]["parts"][0]["text"]

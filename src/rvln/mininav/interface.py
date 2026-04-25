@@ -1187,6 +1187,7 @@ def run_subgoal(
         stop_reason = f"error: {exc}"
         logger.error("run_subgoal failed at step %d: %s", total_steps, exc)
 
+    all_llm_records = converter.llm_call_records + monitor.vlm_rtts
     write_json(
         subgoal_dir / "diary_summary.json",
         {
@@ -1200,6 +1201,7 @@ def run_subgoal(
             "parse_failures": monitor.parse_failures,
             "vlm_calls": monitor.vlm_calls,
             "vlm_rtts": monitor.vlm_rtts,
+            "llm_call_records": all_llm_records,
             "stop_reason": stop_reason,
             "total_steps": total_steps,
         },
@@ -1216,6 +1218,8 @@ def run_subgoal(
         "last_completion_pct": monitor.last_completion_pct,
         "peak_completion": monitor.peak_completion,
         "vlm_calls": monitor.vlm_calls,
+        "vlm_rtts": monitor.vlm_rtts,
+        "llm_call_records": all_llm_records,
         "next_origin": list(next_world_origin),
         "replan_instruction": replan_instruction,
     }
@@ -1487,6 +1491,24 @@ def main() -> None:
                 "subgoal_summaries": subgoal_summaries,
                 "total_steps": sum(s["total_steps"] for s in subgoal_summaries),
                 "total_vlm_calls": sum(s.get("vlm_calls", 0) for s in subgoal_summaries),
+                "all_llm_call_records": (
+                    llm_interface.llm_call_records
+                    + [r for s in subgoal_summaries for r in s.get("llm_call_records", [])]
+                ),
+                "total_input_tokens": (
+                    sum(r.get("input_tokens", 0) for r in llm_interface.llm_call_records)
+                    + sum(
+                        sum(r.get("input_tokens", 0) for r in s.get("llm_call_records", []))
+                        for s in subgoal_summaries
+                    )
+                ),
+                "total_output_tokens": (
+                    sum(r.get("output_tokens", 0) for r in llm_interface.llm_call_records)
+                    + sum(
+                        sum(r.get("output_tokens", 0) for r in s.get("llm_call_records", []))
+                        for s in subgoal_summaries
+                    )
+                ),
                 "total_corrections": sum(s.get("corrections_used", 0) for s in subgoal_summaries),
                 "odometry_failed_over": pose_manager.failed_over,
                 "start_time": start_ts,

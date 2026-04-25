@@ -470,10 +470,14 @@ class LiveDiaryMonitor:
         response = query_vlm(grid, prompt, llm=self._llm, **kwargs)
         rtt = time.time() - t0
         self._vlm_calls += 1
+        usage = self._llm.last_usage
         self._vlm_rtts.append({
             "label": label,
             "step": self._step,
             "rtt_s": round(rtt, 3),
+            "model": usage.get("model", self._model),
+            "input_tokens": usage.get("input_tokens", 0),
+            "output_tokens": usage.get("output_tokens", 0),
         })
         return response
 

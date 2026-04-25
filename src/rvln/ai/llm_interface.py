@@ -11,6 +11,8 @@ Tasks to complete:
 """
 import json
 import logging
+import time
+from typing import Any, Dict, List
 import spot
 from ..config import DEFAULT_LLM_MODEL
 from .prompts import (
@@ -48,6 +50,7 @@ class LLMUserInterface():
     """
 
     def __init__(self, model: str = DEFAULT_LLM_MODEL):
+        self._model = model
         self._base_llm = LLMFactory.create(model=model, rate_limit_seconds=0.0)
 
         self._initial_context = [
@@ -59,6 +62,7 @@ class LLMUserInterface():
         self._history = list(self._initial_context)
         self.ltl_nl_formula = {}
         self._ltl_is_confirmed = False
+        self.llm_call_records: List[Dict[str, Any]] = []
 
     def make_natural_language_request(self, request: str) -> str:
         """Makes a natural language request to the robot.
@@ -78,7 +82,17 @@ class LLMUserInterface():
                 "role": "user",
                 "content": request,
             })
+        t0 = time.time()
         response_text = self._base_llm.make_request(self._history, temperature=0.0, json_mode=True)
+        rtt = time.time() - t0
+        usage = self._base_llm.last_usage
+        self.llm_call_records.append({
+            "label": "ltl_nl_planning",
+            "rtt_s": round(rtt, 3),
+            "model": usage.get("model", self._model),
+            "input_tokens": usage.get("input_tokens", 0),
+            "output_tokens": usage.get("output_tokens", 0),
+        })
 
         try:
             ltl_nl = extract_json(response_text)
