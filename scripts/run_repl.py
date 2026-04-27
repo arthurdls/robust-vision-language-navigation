@@ -47,6 +47,7 @@ _SRC = Path(__file__).resolve().parent.parent / "src"
 if _SRC.is_dir() and str(_SRC) not in sys.path:
     sys.path.insert(0, str(_SRC))
 
+from rvln.config import DEFAULT_SIM_HOST, DEFAULT_SIM_PORT
 from rvln.paths import (
     BATCH_SCRIPT,
     DEFAULT_INITIAL_POSITION,
@@ -276,6 +277,10 @@ def main() -> None:
         default=DEFAULT_SERVER_PORT,
         help="OpenVLA server port",
     )
+    parser.add_argument("--sim_host", type=str, default=DEFAULT_SIM_HOST,
+                        help=f"Simulator host (default: {DEFAULT_SIM_HOST})")
+    parser.add_argument("--sim_port", type=int, default=DEFAULT_SIM_PORT,
+                        help=f"Simulator UnrealCV port (default: {DEFAULT_SIM_PORT})")
     parser.add_argument(
         "-e",
         "--env_id",
@@ -334,7 +339,8 @@ def main() -> None:
 
     server_url = "http://127.0.0.1:{}".format(args.server_port) + "/predict"
 
-    env = setup_sim_env(args.env_id, int(args.time_dilation), int(args.seed), batch)
+    env = setup_sim_env(args.env_id, int(args.time_dilation), int(args.seed), batch,
+                        sim_host=args.sim_host, sim_port=args.sim_port)
 
     logger.info("Simulator ready.")
     _load_repl_history()
