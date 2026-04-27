@@ -103,6 +103,69 @@ def wait_for_port(host: str, port: int, timeout: float = 60.0, interval: float =
     return False
 
 
+def kill_existing_simulator(port: int, binary: Path, timeout: float = 10.0) -> None:
+    """If an UnrealCV simulator is already listening on port, kill it and wait for the port to free."""
+    try:
+        out = subprocess.check_output(
+            ["ss", "-tlnp", f"sport = :{port}"],
+            text=True, stderr=subprocess.DEVNULL,
+        )
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return
+
+    pids: list[int] = []
+    for line in out.splitlines():
+        if f":{port}" not in line:
+            continue
+        # Extract pid from ss output: users:(("name",pid=NNN,fd=N))
+        for part in line.split(","):
+            if part.startswith("pid="):
+                try:
+                    pids.append(int(part.split("=")[1]))
+                except ValueError:
+                    pass
+
+    if not pids:
+        return
+
+    binary_name = binary.name
+    for pid in pids:
+        try:
+            cmdline = Path(f"/proc/{pid}/cmdline").read_bytes().split(b"\x00")
+            exe = cmdline[0].decode(errors="replace")
+        except OSError:
+            continue
+        if binary_name not in exe:
+            print(
+                f"Port {port} is held by PID {pid} ({exe}), which is not the simulator binary. Aborting.",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        print(f"Killing existing simulator (PID {pid}) on port {port}...")
+        os.kill(pid, signal.SIGTERM)
+
+    start = time.time()
+    while time.time() - start < timeout:
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        try:
+            s.bind(("0.0.0.0", port))
+            s.close()
+            print("Previous simulator stopped.")
+            return
+        except OSError:
+            s.close()
+            time.sleep(0.5)
+
+    print(f"Previous simulator did not release port {port} in {timeout}s, sending SIGKILL...",
+          file=sys.stderr)
+    for pid in pids:
+        try:
+            os.kill(pid, signal.SIGKILL)
+        except OSError:
+            pass
+    time.sleep(2)
+
+
 def main():
     load_env_vars()
 
@@ -124,6 +187,8 @@ def main():
     width, height = (int(x) for x in args.resolution.split("x"))
 
     binary, ini_path = resolve_binary(args.scene, args.unreal_root)
+
+    kill_existing_simulator(args.port, binary)
 
     binary.chmod(binary.stat().st_mode | 0o755)
 
