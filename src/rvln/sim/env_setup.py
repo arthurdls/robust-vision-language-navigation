@@ -143,8 +143,7 @@ def setup_sim_env(env_id: str, time_dilation_val: int, seed: int, batch: Any) ->
     env.unwrapped.agents_category = ["drone"]
     env = configUE.ConfigUEWrapper(env, resolution=(256, 256))
     env = augmentation.RandomPopulationWrapper(env, 2, 2, random_target=False)
-    env.seed(seed)
-    env.reset()
+    env.reset(seed=seed)
     env.unwrapped.unrealcv.set_viewport(env.unwrapped.player_list[0])
     env.unwrapped.unrealcv.set_phy(env.unwrapped.player_list[0], 0)
     logger.info(env.unwrapped.unrealcv.get_camera_config())

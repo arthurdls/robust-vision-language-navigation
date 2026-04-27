@@ -172,13 +172,15 @@ class UnrealCv_base(gym.Env):
 
         return observations, info['Reward'], info['Done'], False, info
 
-    def reset(self, **kwargs):
+    def reset(self, seed=None, **kwargs):
         """
         Reset the environment to its initial state.
 
         Returns:
             tuple: (observations, info dict).
         """
+        if seed is not None:
+            np.random.seed(seed)
         if not self.launched:  # first time to launch
             self.launched = self.launch_ue_env()
             self.init_agents()
@@ -239,15 +241,6 @@ class UnrealCv_base(gym.Env):
         if close==True:
             self.ue_binary.close()
         return self.img_show
-
-    def seed(self, seed=None):
-        """
-        Set the random seed for the environment.
-
-        Args:
-            seed (int): Seed value.
-        """
-        np.random.seed(seed)
 
     def update_observation(self, player_list, cam_list, cam_flag, observation_type):
         """

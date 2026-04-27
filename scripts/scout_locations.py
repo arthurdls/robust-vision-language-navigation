@@ -87,8 +87,6 @@ def main():
     env.unwrapped.agents_category = ["drone"]
     env = configUE.ConfigUEWrapper(env, resolution=(256, 256))
     env = augmentation.RandomPopulationWrapper(env, 2, 2, random_target=False)
-    env.seed(int(args.seed))
-
     # Skip set_population (remove agents) and the rest of reset; go straight to the while loop.
     _original_set_population = env.unwrapped.set_population
 
@@ -97,7 +95,7 @@ def main():
 
     env.unwrapped.set_population = _set_population_then_stop
     try:
-        env.reset()
+        env.reset(seed=int(args.seed))
     except _StopAfterRemoveAgents:
         pass
     env.unwrapped.set_population = _original_set_population

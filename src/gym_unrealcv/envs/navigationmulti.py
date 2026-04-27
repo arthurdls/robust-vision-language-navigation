@@ -142,9 +142,6 @@ class NavigationMulti(UnrealCv_base):
 
         return observations, {}
 
-    def seed(self, seed=None):
-        return seed
-
     def render(self, mode='rgb_array', close=False):
         if close:
             self.unreal.close()
