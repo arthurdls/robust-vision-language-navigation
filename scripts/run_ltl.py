@@ -47,6 +47,7 @@ from rvln.config import (
     ACTION_SMALL_DELTA_YAW,
     DEFAULT_INITIAL_POSITION,
     DEFAULT_MAX_STEPS,
+    DEFAULT_SERVER_HOST,
     DEFAULT_SERVER_PORT,
     DEFAULT_SEED,
     DEFAULT_SIM_HOST,
@@ -472,6 +473,8 @@ def main():
         default=DEFAULT_SERVER_PORT,
         help="OpenVLA server port",
     )
+    parser.add_argument("--server_host", type=str, default=DEFAULT_SERVER_HOST,
+                        help=f"OpenVLA server host (default: {DEFAULT_SERVER_HOST})")
     parser.add_argument("--sim_host", type=str, default=DEFAULT_SIM_HOST,
                         help=f"Simulator host (default: {DEFAULT_SIM_HOST})")
     parser.add_argument("--sim_port", type=int, default=DEFAULT_SIM_PORT,
@@ -524,7 +527,7 @@ def main():
     from rvln.ai.ltl_planner import LTLSymbolicPlanner
 
     os.chdir(str(UAV_FLOW_EVAL))
-    server_url = "http://127.0.0.1:{}".format(args.server_port) + "/predict"
+    server_url = f"http://{args.server_host}:{args.server_port}/predict"
     results_base = Path(args.results_dir)
     results_base.mkdir(parents=True, exist_ok=True)
 
