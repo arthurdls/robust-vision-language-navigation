@@ -97,14 +97,15 @@ class UnrealCv_base(gym.Env):
         # define action space
         self.action_type = action_type
         assert self.action_type in ['Discrete', 'Continuous', 'Mixed']
-        self.action_space = [self.define_action_space(self.action_type, self.agents[obj]) for obj in self.player_list]
+        self._action_spaces = [self.define_action_space(self.action_type, self.agents[obj]) for obj in self.player_list]
 
         # define observation space,
         # color, depth, rgbd,...
         self.observation_type = observation_type
         assert self.observation_type in ['Color', 'Depth', 'Rgbd', 'Gray', 'CG', 'Mask', 'Pose','MaskDepth','ColorMask']
-        self.observation_space = [self.define_observation_space(self.cam_list[i], self.observation_type, resolution)
-                                  for i in range(len(self.player_list))]
+        self._observation_spaces = [self.define_observation_space(self.cam_list[i], self.observation_type, resolution)
+                                    for i in range(len(self.player_list))]
+        self._sync_spaces()
 
         # config unreal env
         if 'linux' in sys.platform:
@@ -119,6 +120,10 @@ class UnrealCv_base(gym.Env):
             env_map = None
 
         self.ue_binary = RunUnreal(ENV_BIN=env_bin, ENV_MAP=env_map)
+
+    def _sync_spaces(self):
+        self.action_space = spaces.Tuple(tuple(self._action_spaces))
+        self.observation_space = spaces.Tuple(tuple(self._observation_spaces))
 
     def step(self, actions):
         """
@@ -413,8 +418,9 @@ class UnrealCv_base(gym.Env):
         self.unrealcv.set_random(name, 0)
         self.unrealcv.set_interval(self.interval, name)
         self.unrealcv.set_obj_location(name, loc)
-        self.action_space.append(self.define_action_space(self.action_type, agent_info=new_dict))
-        self.observation_space.append(self.define_observation_space(new_dict['cam_id'], self.observation_type, self.resolution))
+        self._action_spaces.append(self.define_action_space(self.action_type, agent_info=new_dict))
+        self._observation_spaces.append(self.define_observation_space(new_dict['cam_id'], self.observation_type, self.resolution))
+        self._sync_spaces()
         self.unrealcv.set_phy(name, 0)
         return new_dict
 
@@ -430,8 +436,9 @@ class UnrealCv_base(gym.Env):
         self.player_list.remove(name)
         last_cam_list=self.cam_list
         self.cam_list = self.remove_cam(name)
-        self.action_space.pop(agent_index)
-        self.observation_space.pop(agent_index)
+        self._action_spaces.pop(agent_index)
+        self._observation_spaces.pop(agent_index)
+        self._sync_spaces()
         self.unrealcv.destroy_obj(name)  # the agent is removed from the scene
         self.agents.pop(name)
         st_time=time.time()
@@ -688,7 +695,7 @@ class UnrealCv_base(gym.Env):
         actions2head = []
         actions2player = []
         for i, obj in enumerate(player_list):
-            action_space = self.action_space[i]
+            action_space = self._action_spaces[i]
             act = actions[i]
             if act is None:  # if the action is None, then we don't control this agent
                 actions2move.append(None)  # place holder

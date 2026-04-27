@@ -59,8 +59,9 @@ class NavAgents(Wrapper):
                 self.agents.append(Nav2GoalAgent(env.action_space[idx], env.reset_area, max_len=200))
         if self.mask_agent:
             obs = np.array([obs[id] for id, value in enumerate(self.nav_list) if value < 0])
-            self.action_space = [self.env.action_space[i] for i, nav in enumerate(self.nav_list) if nav < 0]
-            self.observation_space = [self.env.observation_space[i] for i, nav in enumerate(self.nav_list) if nav < 0]
+            from gymnasium import spaces
+            self.action_space = spaces.Tuple(tuple(self.env.action_space[i] for i, nav in enumerate(self.nav_list) if nav < 0))
+            self.observation_space = spaces.Tuple(tuple(self.env.observation_space[i] for i, nav in enumerate(self.nav_list) if nav < 0))
         return obs, info
 
     def config_nav_mode(self, env):
