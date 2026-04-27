@@ -61,6 +61,7 @@ from rvln.config import (
     DEFAULT_MAX_SECONDS_PER_SUBGOAL,
     DEFAULT_MAX_STEPS_PER_SUBGOAL,
     DEFAULT_SEED,
+    DEFAULT_SERVER_HOST,
     DEFAULT_SERVER_PORT,
     DEFAULT_SIM_HOST,
     DEFAULT_SIM_PORT,
@@ -748,6 +749,8 @@ def main():
     parser.add_argument("-t", "--time_dilation", type=int, default=DEFAULT_TIME_DILATION)
     parser.add_argument("-s", "--seed", type=int, default=DEFAULT_SEED)
     parser.add_argument("-p", "--server_port", type=int, default=DEFAULT_SERVER_PORT)
+    parser.add_argument("--server_host", type=str, default=DEFAULT_SERVER_HOST,
+                        help=f"OpenVLA server host (default: {DEFAULT_SERVER_HOST})")
     parser.add_argument("--sim_host", type=str, default=DEFAULT_SIM_HOST,
                         help=f"Simulator host (default: {DEFAULT_SIM_HOST})")
     parser.add_argument("--sim_port", type=int, default=DEFAULT_SIM_PORT,
@@ -849,7 +852,7 @@ def main():
     batch = import_batch_module()
     os.chdir(str(UAV_FLOW_EVAL))
 
-    server_url = f"http://127.0.0.1:{args.server_port}/predict"
+    server_url = f"http://{args.server_host}:{args.server_port}/predict"
     results_base = Path(args.results_dir)
     results_base.mkdir(parents=True, exist_ok=True)
 
