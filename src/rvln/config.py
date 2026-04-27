@@ -44,6 +44,7 @@ ACTION_SMALL_STEPS: int = 10
 # Simulation defaults
 # ---------------------------------------------------------------------------
 DEFAULT_SERVER_PORT = 5007
+DEFAULT_SERVER_HOST = os.environ.get("SERVER_HOST", "127.0.0.1")
 DEFAULT_SIM_HOST = os.environ.get("SIM_HOST", "127.0.0.1")
 DEFAULT_SIM_PORT = int(os.environ.get("SIM_PORT", "9000"))
 DEFAULT_TIME_DILATION = 10
