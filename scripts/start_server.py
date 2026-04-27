@@ -15,6 +15,7 @@ Usage (from repo root):
 
 import argparse
 import logging
+import socket
 import sys
 from pathlib import Path
 
@@ -38,6 +39,17 @@ logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
 log = logging.getLogger(__name__)
+
+
+def _get_local_ip() -> str:
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        sock.connect(("8.8.8.8", 80))
+        return sock.getsockname()[0]
+    except OSError:
+        return "127.0.0.1"
+    finally:
+        sock.close()
 
 
 def _resolve_model_path(raw: str) -> Path:
@@ -125,6 +137,10 @@ def main():
     @agent.app.route("/reset", methods=["POST"])
     def reset():
         return "", 200
+
+    local_ip = _get_local_ip()
+    log.info("OpenVLA server starting on port %d", args.port)
+    log.info("From another machine, use: --server_host %s --server_port %d", local_ip, args.port)
 
     agent.run()
 
