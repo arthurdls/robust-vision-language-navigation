@@ -4,6 +4,8 @@ Centralized default configuration for the rvln project.
 All tunable defaults live here so they can be changed in one place.
 """
 
+import os
+
 # ---------------------------------------------------------------------------
 # LLM / VLM model defaults
 # ---------------------------------------------------------------------------
@@ -42,6 +44,8 @@ ACTION_SMALL_STEPS: int = 10
 # Simulation defaults
 # ---------------------------------------------------------------------------
 DEFAULT_SERVER_PORT = 5007
+DEFAULT_SIM_HOST = os.environ.get("SIM_HOST", "127.0.0.1")
+DEFAULT_SIM_PORT = int(os.environ.get("SIM_PORT", "9000"))
 DEFAULT_TIME_DILATION = 10
 DEFAULT_SEED = 0
 DEFAULT_INITIAL_POSITION = "-600,-1270,128,61"
