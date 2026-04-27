@@ -71,6 +71,8 @@ from rvln.config import (
     DEFAULT_RUNS_PER_CONDITION,
     DEFAULT_SERVER_PORT,
     DEFAULT_SEED,
+    DEFAULT_SIM_HOST,
+    DEFAULT_SIM_PORT,
     DEFAULT_TIME_DILATION,
     DRONE_CAM_ID,
 )
@@ -683,6 +685,10 @@ def main():
         default=DEFAULT_SERVER_PORT,
         help="OpenVLA server port",
     )
+    parser.add_argument("--sim_host", type=str, default=DEFAULT_SIM_HOST,
+                        help=f"Simulator host (default: {DEFAULT_SIM_HOST})")
+    parser.add_argument("--sim_port", type=int, default=DEFAULT_SIM_PORT,
+                        help=f"Simulator UnrealCV port (default: {DEFAULT_SIM_PORT})")
     parser.add_argument(
         "-o",
         "--results_dir",
@@ -756,7 +762,8 @@ def main():
     results_base = Path(args.results_dir)
     results_base.mkdir(parents=True, exist_ok=True)
 
-    env = setup_sim_env(args.env_id, int(args.time_dilation), int(args.seed), batch)
+    env = setup_sim_env(args.env_id, int(args.time_dilation), int(args.seed), batch,
+                        sim_host=args.sim_host, sim_port=args.sim_port)
 
     drone_cam_id = DRONE_CAM_ID
     if not args.use_default_cam:
