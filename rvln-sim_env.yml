@@ -47,3 +47,4 @@ dependencies:
       - tenacity
       - imageio
       - imageio-ffmpeg
+      - modelscope
