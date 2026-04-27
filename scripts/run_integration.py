@@ -859,55 +859,56 @@ def main():
     env = setup_sim_env(args.env_id, int(args.time_dilation), int(args.seed), batch,
                         sim_host=args.sim_host, sim_port=args.sim_port)
 
-    drone_cam_id = DRONE_CAM_ID
-    if not args.use_default_cam:
-        logger.info("Camera selection: pick the camera for OpenVLA.")
-        initial_pos_for_cam = (
-            tasks[0]["initial_pos"] if tasks
-            else normalize_initial_pos(parse_position(DEFAULT_INITIAL_POSITION))
-        )
-        drone_cam_id = interactive_camera_select(env, initial_pos_for_cam, batch)
-
-    for idx, task in enumerate(tasks):
-        logger.info(
-            "\n===== Task %d/%d: '%s' =====",
-            idx + 1, len(tasks), task["instruction"][:80],
-        )
-        start_time = datetime.now().strftime("%Y_%m_%d_%H_%M_%S")
-        run_name = (
-            f"run_{start_time}"
-            if len(tasks) == 1
-            else f"run_{start_time}_{idx:02d}"
-        )
-        try:
-            run_dir = results_base / run_name
-            use_time_mode = args.diary_mode == "time"
-            run_info = run_integrated_control_loop(
-                env=env,
-                batch=batch,
-                task=task,
-                server_url=server_url,
-                run_dir=run_dir,
-                llm_model=args.llm_model,
-                monitor_model=args.monitor_model,
-                drone_cam_id=drone_cam_id,
-                save_mp4=args.save_mp4,
-                mp4_fps=args.mp4_fps,
-                check_interval_s=args.diary_check_interval_s if use_time_mode else None,
-                max_seconds=args.max_seconds_per_subgoal if use_time_mode else None,
+    try:
+        drone_cam_id = DRONE_CAM_ID
+        if not args.use_default_cam:
+            logger.info("Camera selection: pick the camera for OpenVLA.")
+            initial_pos_for_cam = (
+                tasks[0]["initial_pos"] if tasks
+                else normalize_initial_pos(parse_position(DEFAULT_INITIAL_POSITION))
             )
+            drone_cam_id = interactive_camera_select(env, initial_pos_for_cam, batch)
+
+        for idx, task in enumerate(tasks):
             logger.info(
-                "Run saved to %s (%d subgoals, %d total steps)",
-                run_dir, run_info["subgoal_count"], run_info["total_steps"],
+                "\n===== Task %d/%d: '%s' =====",
+                idx + 1, len(tasks), task["instruction"][:80],
             )
-        except KeyboardInterrupt:
-            logger.info("Task interrupted.")
-            break
-        except Exception as e:
-            logger.error("Task failed: %s", e, exc_info=True)
-        logger.info("===== Task %d finished =====\n", idx + 1)
-
-    env.close()
+            start_time = datetime.now().strftime("%Y_%m_%d_%H_%M_%S")
+            run_name = (
+                f"run_{start_time}"
+                if len(tasks) == 1
+                else f"run_{start_time}_{idx:02d}"
+            )
+            try:
+                run_dir = results_base / run_name
+                use_time_mode = args.diary_mode == "time"
+                run_info = run_integrated_control_loop(
+                    env=env,
+                    batch=batch,
+                    task=task,
+                    server_url=server_url,
+                    run_dir=run_dir,
+                    llm_model=args.llm_model,
+                    monitor_model=args.monitor_model,
+                    drone_cam_id=drone_cam_id,
+                    save_mp4=args.save_mp4,
+                    mp4_fps=args.mp4_fps,
+                    check_interval_s=args.diary_check_interval_s if use_time_mode else None,
+                    max_seconds=args.max_seconds_per_subgoal if use_time_mode else None,
+                )
+                logger.info(
+                    "Run saved to %s (%d subgoals, %d total steps)",
+                    run_dir, run_info["subgoal_count"], run_info["total_steps"],
+                )
+            except KeyboardInterrupt:
+                logger.info("Task interrupted.")
+                break
+            except Exception as e:
+                logger.error("Task failed: %s", e, exc_info=True)
+            logger.info("===== Task %d finished =====\n", idx + 1)
+    finally:
+        env.close()
 
 
 if __name__ == "__main__":

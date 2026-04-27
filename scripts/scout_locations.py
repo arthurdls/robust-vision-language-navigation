@@ -107,18 +107,20 @@ def main():
     # Initial camera is the env's third/top-view camera (cam_id[0]).
     initial_cam_id = env.unwrapped.cam_id[0]
 
-    while True:
-        loc = env.unwrapped.unrealcv.get_cam_location(initial_cam_id)
-        rot = env.unwrapped.unrealcv.get_cam_rotation(initial_cam_id)
-        x, y, z = loc
-        pitch, yaw, roll = rot
-        print(
-            f"Camera: position=({x:.2f}, {y:.2f}, {z:.2f}), "
-            f"orientation pitch={pitch:.2f} yaw={yaw:.2f} roll={roll:.2f}"
-        )
-        time.sleep(2)
-    env.close()
-    print("Done.")
+    try:
+        while True:
+            loc = env.unwrapped.unrealcv.get_cam_location(initial_cam_id)
+            rot = env.unwrapped.unrealcv.get_cam_rotation(initial_cam_id)
+            x, y, z = loc
+            pitch, yaw, roll = rot
+            print(
+                f"Camera: position=({x:.2f}, {y:.2f}, {z:.2f}), "
+                f"orientation pitch={pitch:.2f} yaw={yaw:.2f} roll={roll:.2f}"
+            )
+            time.sleep(2)
+    finally:
+        env.close()
+        print("Done.")
 
 
 if __name__ == "__main__":

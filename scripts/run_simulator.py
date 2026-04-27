@@ -84,14 +84,22 @@ def write_unrealcv_ini(ini_path: Path, port: int, resolution: tuple[int, int]) -
 
 
 def wait_for_port(host: str, port: int, timeout: float = 60.0, interval: float = 2.0) -> bool:
-    """Block until the TCP port accepts connections or timeout."""
+    """Block until the TCP port is in use (server is listening) or timeout.
+
+    Uses bind() to detect occupancy instead of connect(), so we never open
+    a TCP connection to the UnrealCV server (which would poison its
+    single-client slot).
+    """
     start = time.time()
     while time.time() - start < timeout:
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         try:
-            with socket.create_connection((host, port), timeout=1.0):
-                return True
-        except OSError:
+            s.bind(("0.0.0.0", port))
+            s.close()
             time.sleep(interval)
+        except OSError:
+            s.close()
+            return True
     return False
 
 
@@ -136,7 +144,11 @@ def main():
     def shutdown(signum, frame):
         print("\nShutting down simulator...")
         proc.terminate()
-        proc.wait(timeout=10)
+        try:
+            proc.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait(timeout=5)
         sys.exit(0)
 
     signal.signal(signal.SIGINT, shutdown)

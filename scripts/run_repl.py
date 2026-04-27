@@ -349,6 +349,7 @@ def main() -> None:
     try:
         line = input("\nEnter initial drone position (x,y,z,yaw) [default: {}]: ".format(DEFAULT_INITIAL_POSITION))
     except (EOFError, KeyboardInterrupt):
+        env.close()
         sys.exit(0)
     line = line.strip()
     if not line:
@@ -477,6 +478,7 @@ def main() -> None:
             print()
     finally:
         _save_repl_history()
+        env.close()
 
 
 if __name__ == "__main__":

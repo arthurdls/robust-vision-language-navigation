@@ -768,37 +768,38 @@ def main():
     env = setup_sim_env(args.env_id, int(args.time_dilation), int(args.seed), batch,
                         sim_host=args.sim_host, sim_port=args.sim_port)
 
-    drone_cam_id = DRONE_CAM_ID
-    if not args.use_default_cam:
-        logger.info("Camera selection: pick the camera for OpenVLA.")
-        initial_pos_for_cam = tasks[0]["initial_pos"] if tasks else [0, 0, 0, 0]
-        drone_cam_id = interactive_camera_select(env, initial_pos_for_cam, batch)
+    try:
+        drone_cam_id = DRONE_CAM_ID
+        if not args.use_default_cam:
+            logger.info("Camera selection: pick the camera for OpenVLA.")
+            initial_pos_for_cam = tasks[0]["initial_pos"] if tasks else [0, 0, 0, 0]
+            drone_cam_id = interactive_camera_select(env, initial_pos_for_cam, batch)
 
-    for idx, task in enumerate(tasks):
-        logger.info(
-            "\n===== Task %d/%d: %s =====",
-            idx + 1, len(tasks), task["task_name"],
-        )
-        try:
-            use_time_mode = args.diary_mode == "time"
-            _run_task_experiments(
-                env, task, batch, server_url, results_base,
-                args.model, drone_cam_id, args.runs,
-                args.max_corrections,
-                save_mp4=args.save_mp4,
-                mp4_fps=args.mp4_fps,
-                llm_only=args.llm_only,
-                baseline_only=args.baseline_only,
-                override_runs=args.override_runs,
-                check_interval_s=args.diary_check_interval_s if use_time_mode else None,
-                max_seconds=args.max_seconds_per_subgoal if use_time_mode else None,
+        for idx, task in enumerate(tasks):
+            logger.info(
+                "\n===== Task %d/%d: %s =====",
+                idx + 1, len(tasks), task["task_name"],
             )
-        except KeyboardInterrupt:
-            logger.info("Interrupted during task %s.", task["task_name"])
-            break
-        logger.info("===== Task %s finished =====\n", task["task_name"])
-
-    env.close()
+            try:
+                use_time_mode = args.diary_mode == "time"
+                _run_task_experiments(
+                    env, task, batch, server_url, results_base,
+                    args.model, drone_cam_id, args.runs,
+                    args.max_corrections,
+                    save_mp4=args.save_mp4,
+                    mp4_fps=args.mp4_fps,
+                    llm_only=args.llm_only,
+                    baseline_only=args.baseline_only,
+                    override_runs=args.override_runs,
+                    check_interval_s=args.diary_check_interval_s if use_time_mode else None,
+                    max_seconds=args.max_seconds_per_subgoal if use_time_mode else None,
+                )
+            except KeyboardInterrupt:
+                logger.info("Interrupted during task %s.", task["task_name"])
+                break
+            logger.info("===== Task %s finished =====\n", task["task_name"])
+    finally:
+        env.close()
 
 
 if __name__ == "__main__":

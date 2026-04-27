@@ -534,67 +534,31 @@ def main():
     env = setup_sim_env(args.env_id, int(args.time_dilation), int(args.seed), batch,
                         sim_host=args.sim_host, sim_port=args.sim_port)
 
-    llm_interface = LLMUserInterface(model=args.llm_model)
-    planner = LTLSymbolicPlanner(llm_interface)
+    try:
+        llm_interface = LLMUserInterface(model=args.llm_model)
+        planner = LTLSymbolicPlanner(llm_interface)
 
-    drone_cam_id = DRONE_CAM_ID
-    if not args.use_default_cam:
-        logger.info("Camera selection: stopping before main loop. Use the window to pick the camera.")
-        initial_pos_for_cam = (
-            tasks[0]["initial_pos"] if tasks
-            else normalize_initial_pos(parse_position(DEFAULT_INITIAL_POSITION))
-        )
-        drone_cam_id = interactive_camera_select(env, initial_pos_for_cam, batch)
-
-    for idx, task in enumerate(tasks):
-        logger.info(
-            "\n===== Task %d/%d =====",
-            idx + 1,
-            len(tasks),
-        )
-        start_time = datetime.now().strftime("%Y_%m_%d_%H_%M_%S")
-        run_name = "run_{}".format(start_time) if len(tasks) == 1 else "run_{}_{:02d}".format(start_time, idx)
-        try:
-            run_dir = _run_single_task(
-                env,
-                task,
-                batch,
-                planner,
-                server_url,
-                results_base,
-                args,
-                run_name,
-                drone_cam_id,
-                set_cam_at_start=(idx == 0),
+        drone_cam_id = DRONE_CAM_ID
+        if not args.use_default_cam:
+            logger.info("Camera selection: stopping before main loop. Use the window to pick the camera.")
+            initial_pos_for_cam = (
+                tasks[0]["initial_pos"] if tasks
+                else normalize_initial_pos(parse_position(DEFAULT_INITIAL_POSITION))
             )
-            logger.info("Run saved to %s", run_dir)
-        except KeyboardInterrupt:
-            logger.info("Task interrupted.")
-            if args.interactive:
-                break
-            raise
-        logger.info("===== Task %d finished =====\n", idx + 1)
+            drone_cam_id = interactive_camera_select(env, initial_pos_for_cam, batch)
 
-    if args.interactive:
-        while True:
-            try:
-                user_input = input(
-                    "Enter task name (e.g. third_task or third_task.json), or 'quit' to exit: "
-                ).strip()
-            except (EOFError, KeyboardInterrupt):
-                logger.info("Exiting interactive loop.")
-                break
-            result = _resolve_task_name_to_task(user_input)
-            if result is None:
-                break
-            if result is _TASK_NOT_FOUND:
-                continue
+        for idx, task in enumerate(tasks):
+            logger.info(
+                "\n===== Task %d/%d =====",
+                idx + 1,
+                len(tasks),
+            )
             start_time = datetime.now().strftime("%Y_%m_%d_%H_%M_%S")
-            run_name = "run_{}".format(start_time)
+            run_name = "run_{}".format(start_time) if len(tasks) == 1 else "run_{}_{:02d}".format(start_time, idx)
             try:
                 run_dir = _run_single_task(
                     env,
-                    result,
+                    task,
                     batch,
                     planner,
                     server_url,
@@ -602,14 +566,51 @@ def main():
                     args,
                     run_name,
                     drone_cam_id,
-                    set_cam_at_start=False,
+                    set_cam_at_start=(idx == 0),
                 )
                 logger.info("Run saved to %s", run_dir)
             except KeyboardInterrupt:
-                logger.info("Task interrupted. Enter another task or 'quit' to exit.")
-                continue
+                logger.info("Task interrupted.")
+                if args.interactive:
+                    break
+                raise
+            logger.info("===== Task %d finished =====\n", idx + 1)
 
-    env.close()
+        if args.interactive:
+            while True:
+                try:
+                    user_input = input(
+                        "Enter task name (e.g. third_task or third_task.json), or 'quit' to exit: "
+                    ).strip()
+                except (EOFError, KeyboardInterrupt):
+                    logger.info("Exiting interactive loop.")
+                    break
+                result = _resolve_task_name_to_task(user_input)
+                if result is None:
+                    break
+                if result is _TASK_NOT_FOUND:
+                    continue
+                start_time = datetime.now().strftime("%Y_%m_%d_%H_%M_%S")
+                run_name = "run_{}".format(start_time)
+                try:
+                    run_dir = _run_single_task(
+                        env,
+                        result,
+                        batch,
+                        planner,
+                        server_url,
+                        results_base,
+                        args,
+                        run_name,
+                        drone_cam_id,
+                        set_cam_at_start=False,
+                    )
+                    logger.info("Run saved to %s", run_dir)
+                except KeyboardInterrupt:
+                    logger.info("Task interrupted. Enter another task or 'quit' to exit.")
+                    continue
+    finally:
+        env.close()
 
 
 if __name__ == "__main__":
