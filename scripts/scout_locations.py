@@ -41,8 +41,9 @@ def _patch_remove_agent_skip_destroy() -> None:
         agent_index = self.player_list.index(name)
         self.player_list.remove(name)
         self.cam_list = self.remove_cam(name)
-        self.action_space.pop(agent_index)
-        self.observation_space.pop(agent_index)
+        self._action_spaces.pop(agent_index)
+        self._observation_spaces.pop(agent_index)
+        self._sync_spaces()
         self.agents.pop(name)
 
     _base_env.UnrealCv_base.remove_agent = _patched_remove_agent
