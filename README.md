@@ -241,6 +241,85 @@ Note: the `spot` LTL model checker is only available via conda-forge (not pip), 
 
 API keys are read from `.env` first (shared defaults) and then `.env.local` (per-machine overrides). Put secrets only in `.env.local`. See `rvln.paths.load_env_vars` for the exact load order.
 
+## Running Across Multiple PCs
+
+The system has three main processes that can each run on a different machine:
+
+1. **Unreal Simulator** (renders the environment, listens on UnrealCV port)
+2. **OpenVLA Server** (GPU inference, Flask on port 5007)
+3. **Pipeline Client** (LTL planner, diary monitor, sends commands)
+
+By default everything runs on `127.0.0.1`. To split across machines, set the networking environment variables in `.env.local` on the **pipeline client** machine (the one running `run_integration.py` or similar):
+
+```bash
+# .env.local on the pipeline client
+export SERVER_HOST="10.0.0.2"   # IP of the machine running start_server.py
+export SIM_HOST="10.0.0.3"      # IP of the machine running the Unreal simulator
+export SIM_PORT="9000"           # UnrealCV port (only change if non-default)
+```
+
+These are read by `rvln.config` at startup and fed into the gym environment and OpenVLA client automatically.
+
+### Example: two-machine setup
+
+A common split is GPU machine + workstation, where the GPU machine hosts both the OpenVLA server and the Unreal sim, and the workstation runs the pipeline.
+
+| Machine | Runs | IP (example) |
+|---------|------|--------------|
+| GPU box | `start_server.py`, Unreal binary | `10.0.0.2` |
+| Workstation | `run_integration.py` | `10.0.0.5` |
+
+On the **GPU box**:
+
+```bash
+# Terminal 1: OpenVLA server (binds to 0.0.0.0 so it's reachable remotely)
+conda activate rvln-server
+python scripts/start_server.py --host 0.0.0.0
+
+# Terminal 2: Unreal simulator
+# The simulator binary listens on SIM_PORT (default 9000).
+# No extra flags needed; UnrealCV already binds to 0.0.0.0.
+```
+
+On the **workstation**:
+
+```bash
+# .env.local
+export OPENAI_API_KEY="sk-..."
+export SERVER_HOST="10.0.0.2"
+export SIM_HOST="10.0.0.2"
+```
+
+```bash
+conda activate rvln-sim
+python scripts/run_integration.py --task first_task.json
+```
+
+### Example: three-machine setup
+
+Separate the simulator onto its own machine when GPU memory is tight or when you want to isolate rendering from inference.
+
+| Machine | Runs | IP (example) |
+|---------|------|--------------|
+| GPU box | `start_server.py` | `10.0.0.2` |
+| Render box | Unreal binary | `10.0.0.3` |
+| Workstation | `run_integration.py` | `10.0.0.5` |
+
+The workstation's `.env.local`:
+
+```bash
+export SERVER_HOST="10.0.0.2"
+export SIM_HOST="10.0.0.3"
+```
+
+### Networking checklist
+
+- The OpenVLA server must be started with `--host 0.0.0.0` to accept remote connections (it defaults to `127.0.0.1`).
+- Verify the server is reachable: `curl http://<SERVER_HOST>:5007/health` from the client machine.
+- Verify the simulator is reachable: the UnrealCV port (`SIM_PORT`, default 9000) must not be blocked by a firewall.
+- API keys (OpenAI, Gemini) are only needed on the pipeline client, not on the GPU or render machines.
+- The `UnrealEnv` path is only relevant on the machine that actually runs the Unreal binary. The pipeline client does not need the simulator files if `SIM_HOST` points elsewhere, but `env_setup.py` will still set the default, so either leave it unset or point it at a dummy path.
+
 ## Task JSON Format
 
 Tasks live under `tasks/{system,ltl,goal_adherence,uav_flow,uav_flow_instructions}/`.
