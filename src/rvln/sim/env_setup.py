@@ -32,8 +32,29 @@ from rvln.sim.transforms import (  # noqa: F401 -- re-exported for existing call
     relative_pose_to_world,
     parse_position,
 )
+from rvln.config import DEFAULT_SIM_HOST, DEFAULT_SIM_PORT
 
 logger = logging.getLogger(__name__)
+
+_sim_host: str = DEFAULT_SIM_HOST
+_sim_port: int = DEFAULT_SIM_PORT
+
+
+def _is_remote(host: str) -> bool:
+    return host not in ("127.0.0.1", "localhost")
+
+
+class _RemoteSimStub:
+    """Drop-in for unrealcv.launcher.RunUnreal when the simulator runs elsewhere."""
+
+    def __init__(self, ENV_BIN, ENV_MAP=None):
+        self.env_map = ENV_MAP
+
+    def start(self, **kwargs):
+        return (_sim_host, _sim_port)
+
+    def close(self):
+        pass
 
 
 # ─── OpenVLA state formatting ────────────────────────────────────────────────
@@ -131,11 +152,25 @@ def import_batch_module() -> Any:
     return batch
 
 
-def setup_sim_env(env_id: str, time_dilation_val: int, seed: int, batch: Any) -> Any:
+def setup_sim_env(
+    env_id: str,
+    time_dilation_val: int,
+    seed: int,
+    batch: Any,
+    sim_host: str = DEFAULT_SIM_HOST,
+    sim_port: int = DEFAULT_SIM_PORT,
+) -> Any:
     """Create gym environment with wrappers, reset, and spawn NPCs. Returns wrapped env."""
+    global _sim_host, _sim_port
     import gymnasium as gym
     import gym_unrealcv
     from gym_unrealcv.envs.wrappers import time_dilation, configUE, augmentation
+
+    if _is_remote(sim_host):
+        _sim_host = sim_host
+        _sim_port = sim_port
+        import gym_unrealcv.envs.base_env as _base_env
+        _base_env.RunUnreal = _RemoteSimStub
 
     gym_unrealcv.register_env(env_id)
     env = gym.make(env_id)
