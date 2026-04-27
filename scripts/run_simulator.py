@@ -166,6 +166,37 @@ def kill_existing_simulator(port: int, binary: Path, timeout: float = 10.0) -> N
     time.sleep(2)
 
 
+def count_connections(port: int, state: str) -> int:
+    """Count TCP connections on port in a given state (established, close-wait, etc.)."""
+    try:
+        out = subprocess.check_output(
+            ["ss", "-tn", "state", state, f"sport = :{port}"],
+            text=True, stderr=subprocess.DEVNULL,
+        )
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return 0
+    return sum(1 for line in out.splitlines() if f":{port}" in line)
+
+
+def launch_simulator(cmd: list[str]) -> subprocess.Popen:
+    """Launch the simulator binary and return the Popen handle."""
+    return subprocess.Popen(
+        cmd, stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        start_new_session=True,
+    )
+
+
+def stop_process(proc: subprocess.Popen, timeout: float = 10.0) -> None:
+    """Terminate a process, escalating to SIGKILL if needed."""
+    proc.terminate()
+    try:
+        proc.wait(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        proc.wait(timeout=5)
+
+
 def main():
     load_env_vars()
 
@@ -202,18 +233,13 @@ def main():
         cmd.extend([f"-graphicsadapter={args.gpu_id}"])
 
     print(f"Launching: {' '.join(cmd)}")
-    proc = subprocess.Popen(cmd, stdin=subprocess.DEVNULL,
-                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                            start_new_session=True)
+    proc = launch_simulator(cmd)
+
+    _current_proc = proc
 
     def shutdown(signum, frame):
         print("\nShutting down simulator...")
-        proc.terminate()
-        try:
-            proc.wait(timeout=10)
-        except subprocess.TimeoutExpired:
-            proc.kill()
-            proc.wait(timeout=5)
+        stop_process(_current_proc)
         sys.exit(0)
 
     signal.signal(signal.SIGINT, shutdown)
@@ -232,7 +258,62 @@ def main():
         proc.terminate()
         sys.exit(1)
 
-    proc.wait()
+    # Monitor loop: watch for client disconnections and auto-restart.
+    #
+    # UnrealCV allows only one client. After any disconnection (clean or not),
+    # the server often cannot accept new clients. The only reliable recovery
+    # is a full restart of the simulator binary.
+    #
+    # Strategy: track ESTABLISHED connections. When one disappears, wait a
+    # short grace period (the client might just be reconnecting). If no new
+    # client appears, restart. Also restart immediately on CLOSE_WAIT (the
+    # server received FIN but hasn't cleaned up its end).
+    had_client = False
+    client_gone_since: float | None = None
+    grace_seconds = 10.0
+
+    while True:
+        ret = proc.poll()
+        if ret is not None:
+            print(f"\nSimulator exited (code {ret}).")
+            break
+
+        n_established = count_connections(args.port, "established")
+        n_close_wait = count_connections(args.port, "close-wait")
+        needs_restart = False
+
+        if n_close_wait > 0 and n_established == 0:
+            print(f"\nStale CLOSE_WAIT detected on port {args.port}, restarting simulator...")
+            needs_restart = True
+        elif n_established > 0:
+            if not had_client:
+                print(f"Client connected on port {args.port}.")
+            had_client = True
+            client_gone_since = None
+        elif had_client and n_established == 0:
+            if client_gone_since is None:
+                client_gone_since = time.time()
+                print(f"Client disconnected from port {args.port}, waiting {grace_seconds:.0f}s for reconnect...")
+            elif time.time() - client_gone_since >= grace_seconds:
+                print(f"No reconnect after {grace_seconds:.0f}s, restarting simulator...")
+                needs_restart = True
+
+        if needs_restart:
+            stop_process(proc)
+            time.sleep(2)
+            proc = launch_simulator(cmd)
+            _current_proc = proc
+            had_client = False
+            client_gone_since = None
+            print(f"Waiting for UnrealCV on port {args.port}...")
+            if wait_for_port("127.0.0.1", args.port):
+                print(f"Simulator restarted and ready on port {args.port}.")
+            else:
+                print("Timeout: simulator did not restart.", file=sys.stderr)
+                proc.terminate()
+                sys.exit(1)
+
+        time.sleep(3)
 
 
 if __name__ == "__main__":
