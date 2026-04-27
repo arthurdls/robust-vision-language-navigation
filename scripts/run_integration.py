@@ -62,6 +62,8 @@ from rvln.config import (
     DEFAULT_MAX_STEPS_PER_SUBGOAL,
     DEFAULT_SEED,
     DEFAULT_SERVER_PORT,
+    DEFAULT_SIM_HOST,
+    DEFAULT_SIM_PORT,
     DEFAULT_TIME_DILATION,
     DEFAULT_VLM_MODEL,
     DRONE_CAM_ID,
@@ -746,6 +748,10 @@ def main():
     parser.add_argument("-t", "--time_dilation", type=int, default=DEFAULT_TIME_DILATION)
     parser.add_argument("-s", "--seed", type=int, default=DEFAULT_SEED)
     parser.add_argument("-p", "--server_port", type=int, default=DEFAULT_SERVER_PORT)
+    parser.add_argument("--sim_host", type=str, default=DEFAULT_SIM_HOST,
+                        help=f"Simulator host (default: {DEFAULT_SIM_HOST})")
+    parser.add_argument("--sim_port", type=int, default=DEFAULT_SIM_PORT,
+                        help=f"Simulator UnrealCV port (default: {DEFAULT_SIM_PORT})")
 
     # LLM / monitor models
     parser.add_argument(
@@ -847,7 +853,8 @@ def main():
     results_base = Path(args.results_dir)
     results_base.mkdir(parents=True, exist_ok=True)
 
-    env = setup_sim_env(args.env_id, int(args.time_dilation), int(args.seed), batch)
+    env = setup_sim_env(args.env_id, int(args.time_dilation), int(args.seed), batch,
+                        sim_host=args.sim_host, sim_port=args.sim_port)
 
     drone_cam_id = DRONE_CAM_ID
     if not args.use_default_cam:
