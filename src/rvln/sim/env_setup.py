@@ -145,6 +145,19 @@ def setup_env_and_imports() -> None:
 
     _track_module.Track.get_tracker_init_point = _patched_get_tracker_init_point
 
+    from unrealcv.api import UnrealCv_API
+
+    def _patched_init_map(self):
+        """Skip build_color_dict(get_objects()) which batch-queries ~3000 objects.
+
+        Over remote TCP this floods the connection and crashes the receive thread.
+        Camera config is still fetched; per-player color dicts are built later in init_agents.
+        """
+        self.cam = self.get_camera_config()
+        self.obj_dict = {}
+
+    UnrealCv_API.init_map = _patched_init_map
+
 
 def import_batch_module() -> Any:
     """Import and return the batch runner module."""

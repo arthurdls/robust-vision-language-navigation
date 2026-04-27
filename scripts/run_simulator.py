@@ -83,23 +83,36 @@ def write_unrealcv_ini(ini_path: Path, port: int, resolution: tuple[int, int]) -
     ini_path.write_text("\n".join(lines) + "\n")
 
 
-def wait_for_port(host: str, port: int, timeout: float = 60.0, interval: float = 2.0) -> bool:
-    """Block until the TCP port is in use (server is listening) or timeout.
+def _port_is_listening(port: int) -> bool:
+    """Check if any process is listening on the given TCP port via /proc/net/tcp."""
+    hex_port = f"{port:04X}"
+    try:
+        with open("/proc/net/tcp") as f:
+            for line in f:
+                parts = line.split()
+                if len(parts) < 4:
+                    continue
+                local = parts[1]
+                state = parts[3]
+                if local.endswith(f":{hex_port}") and state == "0A":
+                    return True
+    except OSError:
+        pass
+    return False
 
-    Uses bind() to detect occupancy instead of connect(), so we never open
-    a TCP connection to the UnrealCV server (which would poison its
-    single-client slot).
+
+def wait_for_port(host: str, port: int, timeout: float = 60.0, interval: float = 2.0) -> bool:
+    """Block until the TCP port is in LISTEN state or timeout.
+
+    Reads /proc/net/tcp to detect the listener passively, avoiding both
+    TCP connect (which poisons UnrealCV's single-client slot) and bind
+    (which races with the server for the port).
     """
     start = time.time()
     while time.time() - start < timeout:
-        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        try:
-            s.bind(("0.0.0.0", port))
-            s.close()
-            time.sleep(interval)
-        except OSError:
-            s.close()
+        if _port_is_listening(port):
             return True
+        time.sleep(interval)
     return False
 
 
@@ -146,15 +159,10 @@ def kill_existing_simulator(port: int, binary: Path, timeout: float = 10.0) -> N
 
     start = time.time()
     while time.time() - start < timeout:
-        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        try:
-            s.bind(("0.0.0.0", port))
-            s.close()
+        if not _port_is_listening(port):
             print("Previous simulator stopped.")
             return
-        except OSError:
-            s.close()
-            time.sleep(0.5)
+        time.sleep(0.5)
 
     print(f"Previous simulator did not release port {port} in {timeout}s, sending SIGKILL...",
           file=sys.stderr)
