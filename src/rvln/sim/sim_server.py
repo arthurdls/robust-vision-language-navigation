@@ -11,6 +11,7 @@ Endpoints:
     POST /get_frame  - capture current frame
     POST /get_pose   - query current drone position/rotation
     POST /get_camera_frame - get frame from a specific camera (for camera selection)
+    POST /select_camera    - interactive camera picker (runs GUI on server)
     POST /close      - shut down gym env
 """
 
@@ -225,6 +226,67 @@ def handle_get_camera_frame():
         resp["image"] = None
 
     return jsonify(resp)
+
+
+@app.route("/select_camera", methods=["POST"])
+def handle_select_camera():
+    if not _initialized:
+        return jsonify({"error": "not initialized"}), 400
+
+    import cv2
+
+    data = request.get_json(force=True)
+    position = data.get("position")
+    yaw = data.get("yaw")
+
+    if position is not None and yaw is not None:
+        _env.unwrapped.unrealcv.set_obj_location(_drone_name, position[:3])
+        _env.unwrapped.unrealcv.set_rotation(_drone_name, float(yaw) - 180)
+    _sync_cam()
+    time.sleep(1.0)
+
+    n_cams = _env.unwrapped.unrealcv.get_camera_num()
+    if n_cams <= 0:
+        return jsonify({"error": "no cameras available"}), 500
+
+    current = 0
+    window_name = "Camera select: n=next, p=prev, s or Enter=select, q or Esc=quit"
+    cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
+
+    selected = None
+    while True:
+        _sync_cam(current)
+        image = _capture_image(current)
+
+        if image is None:
+            image = np.zeros((256, 256, 3), dtype=np.uint8)
+        if image.ndim == 3 and image.shape[2] == 3:
+            display = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
+        else:
+            display = image.copy()
+
+        label = "Camera %d / %d" % (current, n_cams)
+        cv2.putText(display, label, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+        cv2.imshow(window_name, display)
+        k = cv2.waitKey(0) & 0xFF
+
+        if k == ord("s") or k == 13 or k == 10:
+            selected = current
+            break
+        if k == ord("q") or k == 27:
+            break
+        if k == ord("n"):
+            current = (current + 1) % n_cams
+        elif k == ord("p"):
+            current = (current - 1) % n_cams
+
+    cv2.destroyAllWindows()
+
+    if selected is None:
+        return jsonify({"error": "camera selection cancelled"}), 400
+
+    logger.info("Selected camera %d for OpenVLA.", selected)
+    return jsonify({"cam_id": selected, "cam_count": n_cams})
 
 
 @app.route("/close", methods=["POST"])

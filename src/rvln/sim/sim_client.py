@@ -101,6 +101,23 @@ class SimClient:
         image = self._decode_image(resp.get("image"))
         return image, resp.get("cam_count", 0)
 
+    def select_camera(self, position: list, yaw: float) -> int:
+        """Run interactive camera selection on the server (blocks until user picks).
+
+        Returns the selected camera ID.
+        """
+        url = f"{self.server_url}/select_camera"
+        resp = requests.post(url, json={
+            "position": list(position),
+            "yaw": float(yaw),
+        }, timeout=300.0)
+        resp.raise_for_status()
+        data = resp.json()
+        if "error" in data:
+            raise RuntimeError(data["error"])
+        self.cam_count = data.get("cam_count", self.cam_count)
+        return data["cam_id"]
+
     def close(self) -> None:
         try:
             self._post("/close")

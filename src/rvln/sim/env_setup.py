@@ -202,32 +202,35 @@ def set_drone_cam_and_get_image(env: Any, cam_id: Optional[int] = None) -> Optio
 def interactive_camera_select(env: Any, initial_pos: List[float], batch: Any) -> int:
     """Cycle through cameras with the drone at initial_pos; let user choose.
 
-    Works with both SimClient and direct gym env. Returns the selected camera ID.
+    When env is a SimClient, the camera picker GUI runs on the server
+    (the simulator machine, which has the display). For a direct gym env
+    (scout_locations), the picker runs locally.
+
+    Returns the selected camera ID.
     """
+    from rvln.sim.sim_client import SimClient
+
+    initial_pos = normalize_initial_pos(initial_pos)
+
+    if isinstance(env, SimClient):
+        logger.info("Requesting camera selection on simulator (check the simulator display)...")
+        return env.select_camera(initial_pos[0:3], initial_pos[4])
+
     try:
         import cv2
     except ImportError:
         logger.error("Camera select requires opencv-python (cv2).")
         sys.exit(1)
 
-    from rvln.sim.sim_client import SimClient
-
-    initial_pos = normalize_initial_pos(initial_pos)
-
-    if isinstance(env, SimClient):
-        env.teleport(initial_pos[0:3], initial_pos[4])
-        time.sleep(batch.SLEEP_AFTER_RESET_S)
-        img_test, n_cams = env.get_camera_frame(0, initial_pos[0:3], initial_pos[4])
-    else:
-        env.unwrapped.unrealcv.set_obj_location(
-            env.unwrapped.player_list[0], initial_pos[0:3]
-        )
-        env.unwrapped.unrealcv.set_rotation(
-            env.unwrapped.player_list[0], initial_pos[4] - 180
-        )
-        batch.set_cam(env)
-        time.sleep(batch.SLEEP_AFTER_RESET_S)
-        n_cams = env.unwrapped.unrealcv.get_camera_num()
+    env.unwrapped.unrealcv.set_obj_location(
+        env.unwrapped.player_list[0], initial_pos[0:3]
+    )
+    env.unwrapped.unrealcv.set_rotation(
+        env.unwrapped.player_list[0], initial_pos[4] - 180
+    )
+    batch.set_cam(env)
+    time.sleep(batch.SLEEP_AFTER_RESET_S)
+    n_cams = env.unwrapped.unrealcv.get_camera_num()
 
     if n_cams <= 0:
         logger.error("No cameras available.")
@@ -238,10 +241,7 @@ def interactive_camera_select(env: Any, initial_pos: List[float], batch: Any) ->
     cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
 
     while True:
-        if isinstance(env, SimClient):
-            img, _ = env.get_camera_frame(current, initial_pos[0:3], initial_pos[4])
-        else:
-            img = set_drone_cam_and_get_image(env, current)
+        img = set_drone_cam_and_get_image(env, current)
 
         if img is None:
             img = np.zeros((256, 256, 3), dtype=np.uint8)
