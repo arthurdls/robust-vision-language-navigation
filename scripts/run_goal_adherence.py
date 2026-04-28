@@ -72,6 +72,7 @@ from rvln.config import (
     DEFAULT_SERVER_HOST,
     DEFAULT_SERVER_PORT,
     DEFAULT_SEED,
+    DEFAULT_SIM_API_PORT,
     DEFAULT_SIM_HOST,
     DEFAULT_SIM_PORT,
     DEFAULT_TIME_DILATION,
@@ -90,7 +91,6 @@ from rvln.sim.env_setup import (
     load_env_vars,
     normalize_initial_pos,
     set_drone_cam_and_get_image,
-    setup_env_and_imports,
     setup_sim_env,
     state_for_openvla,
 )
@@ -152,13 +152,7 @@ def _run_single_ga(
     frames_dir = run_dir / "frames"
     frames_dir.mkdir(parents=True, exist_ok=True)
 
-    env.unwrapped.unrealcv.set_obj_location(
-        env.unwrapped.player_list[0], initial_pos[0:3]
-    )
-    env.unwrapped.unrealcv.set_rotation(
-        env.unwrapped.player_list[0], initial_pos[4] - 180
-    )
-    batch.set_cam(env)
+    env.teleport(initial_pos[0:3], initial_pos[4])
     time.sleep(batch.SLEEP_AFTER_RESET_S)
     batch.reset_model(server_url)
 
@@ -238,7 +232,6 @@ def _run_single_ga(
                         "reasoning": async_result.reasoning,
                     })
 
-        batch.set_cam(env)
         image = set_drone_cam_and_get_image(env, cam_id)
         if image is None:
             logger.warning("No image at step %d, ending run.", step)
@@ -334,7 +327,6 @@ def _run_single_ga(
                 origin_y,
                 origin_z,
                 origin_yaw,
-                batch.set_cam,
                 trajectory_log=trajectory_log,
                 sleep_s=0.1,
                 drone_cam_id=cam_id,
@@ -692,6 +684,8 @@ def main():
                         help=f"Simulator host (default: {DEFAULT_SIM_HOST})")
     parser.add_argument("--sim_port", type=int, default=DEFAULT_SIM_PORT,
                         help=f"Simulator UnrealCV port (default: {DEFAULT_SIM_PORT})")
+    parser.add_argument("--sim_api_port", type=int, default=DEFAULT_SIM_API_PORT,
+                        help=f"Sim API server port (default: {DEFAULT_SIM_API_PORT})")
     parser.add_argument(
         "-o",
         "--results_dir",
@@ -757,7 +751,6 @@ def main():
         logger.error("batch_run_act_all.py not found at %s", BATCH_SCRIPT)
         sys.exit(1)
 
-    setup_env_and_imports()
     batch = import_batch_module()
     os.chdir(str(UAV_FLOW_EVAL))
 
@@ -766,7 +759,7 @@ def main():
     results_base.mkdir(parents=True, exist_ok=True)
 
     env = setup_sim_env(args.env_id, int(args.time_dilation), int(args.seed), batch,
-                        sim_host=args.sim_host, sim_port=args.sim_port)
+                        sim_host=args.sim_host, sim_api_port=args.sim_api_port)
 
     try:
         drone_cam_id = DRONE_CAM_ID

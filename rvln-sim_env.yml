@@ -27,6 +27,7 @@ dependencies:
       - numpy
       - scipy
       - pillow
+      - flask
       - requests
       - pynput
       # LTL / LLM client stack (see src/rvln/ai)

@@ -20,6 +20,7 @@ import signal
 import socket
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -27,7 +28,7 @@ _SRC = Path(__file__).resolve().parent.parent / "src"
 if _SRC.is_dir() and str(_SRC) not in sys.path:
     sys.path.insert(0, str(_SRC))
 
-from rvln.config import DEFAULT_SIM_PORT
+from rvln.config import DEFAULT_SIM_API_PORT, DEFAULT_SIM_PORT
 from rvln.paths import DOWNTOWN_OVERLAY_JSON, UNREAL_ENV_ROOT, load_env_vars
 
 
@@ -221,6 +222,8 @@ def main():
                         help="Rendering resolution WxH (default: 256x256)")
     parser.add_argument("--unreal-root", type=Path, default=UNREAL_ENV_ROOT,
                         help=f"Unreal binaries root (default: {UNREAL_ENV_ROOT})")
+    parser.add_argument("--api-port", type=int, default=DEFAULT_SIM_API_PORT,
+                        help=f"Sim API server port (default: {DEFAULT_SIM_API_PORT})")
     args = parser.parse_args()
 
     width, height = (int(x) for x in args.resolution.split("x"))
@@ -257,9 +260,17 @@ def main():
     if wait_for_port("127.0.0.1", args.port):
         local_ip = get_local_ip()
         print(f"\nSimulator ready on port {args.port}.")
+
+        from rvln.sim.sim_server import run_server
+        api_thread = threading.Thread(
+            target=run_server, args=(args.api_port,), daemon=True,
+        )
+        api_thread.start()
+        print(f"Sim API server started on port {args.api_port}.")
+
         print(f"\nOn the control machine, run:")
         print(f"  python scripts/start_server.py")
-        print(f"  python scripts/run_integration.py --task <TASK.json> --sim_host {local_ip} --sim_port {args.port}")
+        print(f"  python scripts/run_integration.py --task <TASK.json> --sim_host {local_ip}")
         print(f"\nPress Ctrl+C to stop the simulator.")
     else:
         print(f"\nTimeout: UnrealCV did not start on port {args.port} within 60s.", file=sys.stderr)

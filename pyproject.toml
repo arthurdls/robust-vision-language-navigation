@@ -17,6 +17,7 @@ dependencies = [
     "numpy",
     "scipy",
     "pillow",
+    "flask",
     "requests",
     "pynput",
     # AI / LLM stack

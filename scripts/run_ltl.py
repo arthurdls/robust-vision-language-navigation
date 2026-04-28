@@ -50,6 +50,7 @@ from rvln.config import (
     DEFAULT_SERVER_HOST,
     DEFAULT_SERVER_PORT,
     DEFAULT_SEED,
+    DEFAULT_SIM_API_PORT,
     DEFAULT_SIM_HOST,
     DEFAULT_SIM_PORT,
     DEFAULT_TIME_DILATION,
@@ -70,7 +71,6 @@ from rvln.sim.env_setup import (
     parse_position,
     relative_pose_to_world,
     set_drone_cam_and_get_image,
-    setup_env_and_imports,
     setup_sim_env,
     state_for_openvla,
 )
@@ -110,14 +110,8 @@ def run_ltl_control_loop(
     initial_pos = normalize_initial_pos(initial_pos)
     initial_x, initial_y, initial_z = initial_pos[0:3]
     initial_yaw = initial_pos[4]
-    env.unwrapped.unrealcv.set_obj_location(
-        env.unwrapped.player_list[0], initial_pos[0:3]
-    )
-    env.unwrapped.unrealcv.set_rotation(
-        env.unwrapped.player_list[0], initial_pos[4] - 180
-    )
+    env.teleport(initial_pos[0:3], initial_pos[4])
     if set_cam_at_start:
-        batch.set_cam(env)
         time.sleep(batch.SLEEP_AFTER_RESET_S)
     cam_id = drone_cam_id if drone_cam_id is not None else DRONE_CAM_ID
     image = set_drone_cam_and_get_image(env, cam_id)
@@ -142,8 +136,6 @@ def run_ltl_control_loop(
     logger.info("Start LTL control loop. First subgoal: %s", current_subgoal)
 
     while current_subgoal is not None:
-        batch.set_cam(env)
-
         if image is None:
             logger.warning("No image, ending control loop.")
             break
@@ -183,7 +175,6 @@ def run_ltl_control_loop(
                 subgoal_origin_y,
                 subgoal_origin_z,
                 subgoal_origin_yaw,
-                batch.set_cam,
                 trajectory_log=trajectory_log,
                 sleep_s=0.1,
                 drone_cam_id=cam_id,
@@ -479,6 +470,8 @@ def main():
                         help=f"Simulator host (default: {DEFAULT_SIM_HOST})")
     parser.add_argument("--sim_port", type=int, default=DEFAULT_SIM_PORT,
                         help=f"Simulator UnrealCV port (default: {DEFAULT_SIM_PORT})")
+    parser.add_argument("--sim_api_port", type=int, default=DEFAULT_SIM_API_PORT,
+                        help=f"Sim API server port (default: {DEFAULT_SIM_API_PORT})")
     parser.add_argument(
         "-m",
         "--max_steps",
@@ -520,7 +513,6 @@ def main():
         logger.error("batch_run_act_all.py not found at %s", BATCH_SCRIPT)
         sys.exit(1)
 
-    setup_env_and_imports()
     batch = import_batch_module()
 
     from rvln.ai.llm_interface import LLMUserInterface
@@ -532,7 +524,7 @@ def main():
     results_base.mkdir(parents=True, exist_ok=True)
 
     env = setup_sim_env(args.env_id, int(args.time_dilation), int(args.seed), batch,
-                        sim_host=args.sim_host, sim_port=args.sim_port)
+                        sim_host=args.sim_host, sim_api_port=args.sim_api_port)
 
     try:
         llm_interface = LLMUserInterface(model=args.llm_model)

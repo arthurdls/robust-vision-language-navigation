@@ -1,14 +1,18 @@
 """
 Shared simulation utilities for OpenVLA control loops (LTL, REPL, goal adherence).
 
-Extracted from legacy LTL and REPL runners; shared by scripts under scripts/.
+Client scripts talk to the sim API server via SimClient. The server manages
+the gym/UnrealCV environment locally. This module provides the SimClient-based
+helpers that all control scripts use.
+
+setup_env_and_imports() is only needed on the server side (and by scout_locations).
 """
 
 import logging
 import os
 import sys
 import time
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 
@@ -32,29 +36,9 @@ from rvln.sim.transforms import (  # noqa: F401 -- re-exported for existing call
     relative_pose_to_world,
     parse_position,
 )
-from rvln.config import DEFAULT_SIM_HOST, DEFAULT_SIM_PORT
+from rvln.config import DEFAULT_SIM_API_PORT, DEFAULT_SIM_HOST, DEFAULT_SIM_PORT
 
 logger = logging.getLogger(__name__)
-
-_sim_host: str = DEFAULT_SIM_HOST
-_sim_port: int = DEFAULT_SIM_PORT
-
-
-def _is_remote(host: str) -> bool:
-    return host not in ("127.0.0.1", "localhost")
-
-
-class _RemoteSimStub:
-    """Drop-in for unrealcv.launcher.RunUnreal when the simulator runs elsewhere."""
-
-    def __init__(self, ENV_BIN, ENV_MAP=None):
-        self.env_map = ENV_MAP
-
-    def start(self, **kwargs):
-        return (_sim_host, _sim_port)
-
-    def close(self):
-        pass
 
 
 # ─── OpenVLA state formatting ────────────────────────────────────────────────
@@ -92,10 +76,14 @@ def state_for_openvla(current_pose: List[float]) -> np.ndarray:
     return arr
 
 
-# ─── Sim environment bootstrapping ───────────────────────────────────────────
+# ─── Server-side gym bootstrapping (used by sim_server and scout_locations) ──
 
 def setup_env_and_imports() -> None:
-    """Set UnrealEnv, import gym_unrealcv, and apply monkey-patches."""
+    """Set UnrealEnv, import gym_unrealcv, and apply monkey-patches.
+
+    Only needed on the simulator machine (sim_server.py) and by scout_locations.
+    Client scripts do NOT call this; they use SimClient instead.
+    """
     os.environ.setdefault("UnrealEnv", str(ENVS_DIR))
 
     import gym_unrealcv  # noqa: F401
@@ -104,7 +92,6 @@ def setup_env_and_imports() -> None:
     _original_get_settingpath = _misc.get_settingpath
 
     def _get_settingpath(filename):
-        # Prefer repo scene JSON (Linux env_bin paths) over vendored gym_unrealcv defaults.
         if filename == "Track/DowntownWest.json" and DOWNTOWN_OVERLAY_JSON.exists():
             return str(DOWNTOWN_OVERLAY_JSON)
         return _original_get_settingpath(filename)
@@ -114,7 +101,6 @@ def setup_env_and_imports() -> None:
     import gym_unrealcv.envs.base_env as _base_env
 
     def _patched_remove_agent(self, name):
-        """Update env state so set_population() loop terminates; skip Unreal destroy_obj."""
         agent_index = self.player_list.index(name)
         self.player_list.remove(name)
         self.cam_list = self.remove_cam(name)
@@ -148,11 +134,6 @@ def setup_env_and_imports() -> None:
     from unrealcv.api import UnrealCv_API
 
     def _patched_init_map(self):
-        """Skip build_color_dict(get_objects()) which batch-queries ~3000 objects.
-
-        Over remote TCP this floods the connection and crashes the receive thread.
-        Camera config is still fetched; per-player color dicts are built later in init_agents.
-        """
         self.cam = self.get_camera_config()
         self.obj_dict = {}
 
@@ -165,6 +146,8 @@ def import_batch_module() -> Any:
     return batch
 
 
+# ─── SimClient-based environment setup ──────────────────────────────────────
+
 def setup_sim_env(
     env_id: str,
     time_dilation_val: int,
@@ -172,54 +155,34 @@ def setup_sim_env(
     batch: Any,
     sim_host: str = DEFAULT_SIM_HOST,
     sim_port: int = DEFAULT_SIM_PORT,
+    sim_api_port: int = DEFAULT_SIM_API_PORT,
 ) -> Any:
-    """Create gym environment with wrappers, reset, and spawn NPCs. Returns wrapped env."""
-    global _sim_host, _sim_port
-    import gymnasium as gym
-    import gym_unrealcv
-    from gym_unrealcv.envs.wrappers import time_dilation, configUE, augmentation
+    """Connect to the sim API server and initialize the environment.
 
-    if _is_remote(sim_host):
-        _sim_host = sim_host
-        _sim_port = sim_port
-        import gym_unrealcv.envs.base_env as _base_env
-        _base_env.RunUnreal = _RemoteSimStub
+    Returns a SimClient. The server (run_simulator.py) must already be running.
+    """
+    from rvln.sim.sim_client import SimClient
 
-    gym_unrealcv.register_env(env_id)
-    env = gym.make(env_id)
-    if time_dilation_val > 0:
-        env = time_dilation.TimeDilationWrapper(env, time_dilation_val)
-    env.unwrapped.agents_category = ["drone"]
-    env = configUE.ConfigUEWrapper(env, resolution=(256, 256))
-    env = augmentation.RandomPopulationWrapper(env, 2, 2, random_target=False)
-    env.reset(seed=seed)
-    env.unwrapped.unrealcv.set_viewport(env.unwrapped.player_list[0])
-    env.unwrapped.unrealcv.set_phy(env.unwrapped.player_list[0], 0)
-    logger.info(env.unwrapped.unrealcv.get_camera_config())
-
-    time.sleep(batch.SLEEP_SHORT_S)
-    env.unwrapped.unrealcv.new_obj("bp_character_C", "BP_Character_21", [0, 0, 0])
-    env.unwrapped.unrealcv.set_appearance("BP_Character_21", 0)
-    env.unwrapped.unrealcv.set_obj_rotation("BP_Character_21", [0, 0, 0])
-    time.sleep(batch.SLEEP_SHORT_S)
-    env.unwrapped.unrealcv.new_obj("BP_BaseCar_C", "BP_Character_22", [1000, 0, 0])
-    env.unwrapped.unrealcv.set_appearance("BP_Character_22", 2)
-    env.unwrapped.unrealcv.set_obj_rotation("BP_Character_22", [0, 0, 0])
-    env.unwrapped.unrealcv.set_phy("BP_Character_22", 0)
-    time.sleep(batch.SLEEP_SHORT_S)
-
-    return env
+    client = SimClient(f"http://{sim_host}:{sim_api_port}")
+    client.init_env(env_id, time_dilation_val, seed)
+    time.sleep(batch.SLEEP_AFTER_RESET_S)
+    return client
 
 
 # ─── Camera helpers ───────────────────────────────────────────────────────────
 
 def set_drone_cam_and_get_image(env: Any, cam_id: Optional[int] = None) -> Optional[np.ndarray]:
-    """Position the drone POV camera at the drone and capture an image.
+    """Capture a frame from the drone's camera via the sim server.
 
-    Retries once on TypeError (UnrealCV sometimes returns text instead of bytes).
-    Returns None if capture fails after retries.
+    Returns the image as an ndarray, or None on failure.
     """
+    from rvln.sim.sim_client import SimClient
+
     cam = cam_id if cam_id is not None else DRONE_CAM_ID
+    if isinstance(env, SimClient):
+        image, _pos, _rot = env.get_frame(cam)
+        return image
+    # Fallback for direct gym env (scout_locations)
     x, y, z = env.unwrapped.unrealcv.get_obj_location(env.unwrapped.player_list[0])
     roll, yaw, pitch = env.unwrapped.unrealcv.get_obj_rotation(env.unwrapped.player_list[0])
     env.unwrapped.unrealcv.set_cam(cam, [x, y, z], [roll, pitch, yaw])
@@ -232,32 +195,40 @@ def set_drone_cam_and_get_image(env: Any, cam_id: Optional[int] = None) -> Optio
                 attempt + 1,
             )
             time.sleep(0.5)
-    logger.warning("get_image failed after retries (simulator may have sent non-binary response).")
+    logger.warning("get_image failed after retries.")
     return None
 
 
 def interactive_camera_select(env: Any, initial_pos: List[float], batch: Any) -> int:
     """Cycle through cameras with the drone at initial_pos; let user choose.
 
-    Returns the selected camera ID.
+    Works with both SimClient and direct gym env. Returns the selected camera ID.
     """
     try:
         import cv2
     except ImportError:
-        logger.error("Camera select requires opencv-python (cv2). Install with: pip install opencv-python")
+        logger.error("Camera select requires opencv-python (cv2).")
         sys.exit(1)
 
-    initial_pos = normalize_initial_pos(initial_pos)
-    env.unwrapped.unrealcv.set_obj_location(
-        env.unwrapped.player_list[0], initial_pos[0:3]
-    )
-    env.unwrapped.unrealcv.set_rotation(
-        env.unwrapped.player_list[0], initial_pos[4] - 180
-    )
-    batch.set_cam(env)
-    time.sleep(batch.SLEEP_AFTER_RESET_S)
+    from rvln.sim.sim_client import SimClient
 
-    n_cams = env.unwrapped.unrealcv.get_camera_num()
+    initial_pos = normalize_initial_pos(initial_pos)
+
+    if isinstance(env, SimClient):
+        env.teleport(initial_pos[0:3], initial_pos[4])
+        time.sleep(batch.SLEEP_AFTER_RESET_S)
+        img_test, n_cams = env.get_camera_frame(0, initial_pos[0:3], initial_pos[4])
+    else:
+        env.unwrapped.unrealcv.set_obj_location(
+            env.unwrapped.player_list[0], initial_pos[0:3]
+        )
+        env.unwrapped.unrealcv.set_rotation(
+            env.unwrapped.player_list[0], initial_pos[4] - 180
+        )
+        batch.set_cam(env)
+        time.sleep(batch.SLEEP_AFTER_RESET_S)
+        n_cams = env.unwrapped.unrealcv.get_camera_num()
+
     if n_cams <= 0:
         logger.error("No cameras available.")
         sys.exit(1)
@@ -267,7 +238,11 @@ def interactive_camera_select(env: Any, initial_pos: List[float], batch: Any) ->
     cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
 
     while True:
-        img = set_drone_cam_and_get_image(env, current)
+        if isinstance(env, SimClient):
+            img, _ = env.get_camera_frame(current, initial_pos[0:3], initial_pos[4])
+        else:
+            img = set_drone_cam_and_get_image(env, current)
+
         if img is None:
             img = np.zeros((256, 256, 3), dtype=np.uint8)
         if img.ndim == 3 and img.shape[2] == 3:
@@ -304,22 +279,27 @@ def apply_action_poses(
     initial_y: float,
     initial_z: float,
     initial_yaw: float,
-    set_cam: Callable[[Any], None],
+    set_cam_fn: Any = None,
     trajectory_log: Optional[List[Dict[str, Any]]] = None,
     sleep_s: float = 0.1,
     drone_cam_id: Optional[int] = None,
 ) -> Tuple[Optional[np.ndarray], List[float], int]:
-    """Apply action poses in env.
+    """Apply action poses. Works with SimClient or direct gym env.
 
-    Returns (image_after_last_pose, current_pose, steps_applied).
-    current_pose is [x, y, z, yaw_deg] relative to initial (UAV-Flow format for OpenVLA).
-    If trajectory_log is provided, appends one entry per valid pose.
+    Computes world coordinates from relative poses, sends them to the server
+    (or applies directly), and returns (image, current_pose, steps_applied).
+    current_pose is [x, y, z, yaw_deg] relative to initial.
     """
+    from rvln.sim.sim_client import SimClient
+
     current_pose: List[float] = [0.0, 0.0, 0.0, 0.0]
     image = None
     steps = 0
 
-    for i, action_pose in enumerate(action_poses):
+    world_positions: List[List[float]] = []
+    valid_poses: List[Tuple[float, float, float, float]] = []
+
+    for action_pose in action_poses:
         if not (isinstance(action_pose, (list, tuple)) and len(action_pose) >= 4):
             continue
         relative_x = float(action_pose[0])
@@ -329,9 +309,7 @@ def apply_action_poses(
         relative_yaw = float(np.degrees(relative_yaw_rad))
         relative_yaw = (relative_yaw + 180) % 360 - 180
 
-        global_x, global_y = transform_to_global(
-            relative_x, relative_y, initial_yaw
-        )
+        global_x, global_y = transform_to_global(relative_x, relative_y, initial_yaw)
         absolute_yaw = normalize_angle(relative_yaw + initial_yaw)
         absolute_pos = [
             global_x + initial_x,
@@ -340,27 +318,39 @@ def apply_action_poses(
             absolute_yaw,
         ]
 
-        env.unwrapped.unrealcv.set_obj_location(
-            env.unwrapped.player_list[0], absolute_pos[:3]
-        )
-        env.unwrapped.unrealcv.set_rotation(
-            env.unwrapped.player_list[0], absolute_pos[3] - 180
-        )
-        set_cam(env)
+        world_positions.append(absolute_pos)
+        valid_poses.append((relative_x, relative_y, relative_z, relative_yaw))
 
-        current_pose = [relative_x, relative_y, relative_z, relative_yaw]
-        steps += 1
-        if trajectory_log is not None:
+    if not world_positions:
+        return None, current_pose, 0
+
+    if trajectory_log is not None:
+        for rel_x, rel_y, rel_z, rel_yaw in valid_poses:
             trajectory_log.append({
                 "state": [
-                    [relative_x, relative_y, relative_z],
-                    [0, relative_yaw, 0],
+                    [rel_x, rel_y, rel_z],
+                    [0, rel_yaw, 0],
                 ]
             })
 
-        if i == len(action_poses) - 1:
-            image = set_drone_cam_and_get_image(env, drone_cam_id)
+    current_pose = list(valid_poses[-1])
+    steps = len(world_positions)
 
-        time.sleep(sleep_s)
+    if isinstance(env, SimClient):
+        cam = drone_cam_id if drone_cam_id is not None else DRONE_CAM_ID
+        image, _pos, _rot, _steps = env.step(world_positions, cam, sleep_s)
+    else:
+        for i, abs_pos in enumerate(world_positions):
+            env.unwrapped.unrealcv.set_obj_location(
+                env.unwrapped.player_list[0], abs_pos[:3]
+            )
+            env.unwrapped.unrealcv.set_rotation(
+                env.unwrapped.player_list[0], abs_pos[3] - 180
+            )
+            if set_cam_fn is not None:
+                set_cam_fn(env)
+            if i == len(world_positions) - 1:
+                image = set_drone_cam_and_get_image(env, drone_cam_id)
+            time.sleep(sleep_s)
 
     return image, current_pose, steps

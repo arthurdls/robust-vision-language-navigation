@@ -47,7 +47,7 @@ _SRC = Path(__file__).resolve().parent.parent / "src"
 if _SRC.is_dir() and str(_SRC) not in sys.path:
     sys.path.insert(0, str(_SRC))
 
-from rvln.config import DEFAULT_SERVER_HOST, DEFAULT_SIM_HOST, DEFAULT_SIM_PORT
+from rvln.config import DEFAULT_SERVER_HOST, DEFAULT_SIM_API_PORT, DEFAULT_SIM_HOST, DEFAULT_SIM_PORT
 from rvln.paths import (
     BATCH_SCRIPT,
     DEFAULT_INITIAL_POSITION,
@@ -67,7 +67,6 @@ from rvln.sim.env_setup import (
     parse_position,
     relative_pose_to_world,
     set_drone_cam_and_get_image,
-    setup_env_and_imports,
     setup_sim_env,
     state_for_openvla,
 )
@@ -102,10 +101,9 @@ def _save_repl_history() -> None:
 
 def _get_current_pose(env: Any) -> List[float]:
     """Read current drone position and yaw from the simulator. Returns [x, y, z, yaw_deg]."""
-    x, y, z = env.unwrapped.unrealcv.get_obj_location(env.unwrapped.player_list[0])
-    roll, yaw, pitch = env.unwrapped.unrealcv.get_obj_rotation(env.unwrapped.player_list[0])
-    yaw_deg = normalize_angle(float(yaw))
-    return [float(x), float(y), float(z), yaw_deg]
+    position, rotation = env.get_pose()
+    yaw_deg = normalize_angle(float(rotation[1]))
+    return [float(position[0]), float(position[1]), float(position[2]), yaw_deg]
 
 
 def _valid_action_poses(action_poses: Any) -> bool:
@@ -139,7 +137,6 @@ def _run_one_step(
     One VLA step: get image, send to server, apply poses.
     Returns (new_image, new_relative_pose) or (None, current_pose) on error.
     """
-    batch.set_cam(env)
     image = set_drone_cam_and_get_image(env, drone_cam_id)
     if image is None:
         logger.warning("No image from drone camera.")
@@ -180,7 +177,6 @@ def _run_one_step(
             origin_y,
             origin_z,
             origin_yaw,
-            batch.set_cam,
             sleep_s=0.1,
             drone_cam_id=drone_cam_id,
         )
@@ -254,15 +250,13 @@ def _run_action_until_done(
     return current_pose, aborted
 
 
-def _drain_connections_after_abort(env: Any, batch: Any, drone_cam_id: int) -> None:
-    """After Ctrl+C, drain UnrealCV socket so the next action gets clean reads."""
-    for _ in range(3):
-        try:
-            batch.set_cam(env)
-            set_drone_cam_and_get_image(env, drone_cam_id)
-        except Exception:
-            pass
-        time.sleep(0.2)
+def _drain_connections_after_abort(env: Any, drone_cam_id: int) -> None:
+    """After Ctrl+C, verify the sim API connection is still alive."""
+    try:
+        set_drone_cam_and_get_image(env, drone_cam_id)
+    except Exception:
+        pass
+    time.sleep(0.2)
 
 
 def main() -> None:
@@ -283,6 +277,8 @@ def main() -> None:
                         help=f"Simulator host (default: {DEFAULT_SIM_HOST})")
     parser.add_argument("--sim_port", type=int, default=DEFAULT_SIM_PORT,
                         help=f"Simulator UnrealCV port (default: {DEFAULT_SIM_PORT})")
+    parser.add_argument("--sim_api_port", type=int, default=DEFAULT_SIM_API_PORT,
+                        help=f"Sim API server port (default: {DEFAULT_SIM_API_PORT})")
     parser.add_argument(
         "-e",
         "--env_id",
@@ -325,7 +321,6 @@ def main() -> None:
         logger.error("batch_run_act_all.py not found at %s", BATCH_SCRIPT)
         sys.exit(1)
 
-    setup_env_and_imports()
     batch = import_batch_module()
 
     import requests
@@ -342,7 +337,7 @@ def main() -> None:
     server_url = f"http://{args.server_host}:{args.server_port}/predict"
 
     env = setup_sim_env(args.env_id, int(args.time_dilation), int(args.seed), batch,
-                        sim_host=args.sim_host, sim_port=args.sim_port)
+                        sim_host=args.sim_host, sim_api_port=args.sim_api_port)
 
     logger.info("Simulator ready.")
     _load_repl_history()
@@ -360,9 +355,7 @@ def main() -> None:
         logger.error("%s", e)
         sys.exit(1)
 
-    env.unwrapped.unrealcv.set_obj_location(env.unwrapped.player_list[0], pos[0:3])
-    env.unwrapped.unrealcv.set_rotation(env.unwrapped.player_list[0], pos[3] - 180)
-    batch.set_cam(env)
+    env.teleport(pos[0:3], pos[3])
     time.sleep(batch.SLEEP_AFTER_RESET_S)
 
     if args.use_default_cam:
@@ -427,9 +420,7 @@ def main() -> None:
                     print("Nothing to undo.")
                     continue
                 ox, oy, oz, oyaw = origin_history.pop()
-                env.unwrapped.unrealcv.set_obj_location(env.unwrapped.player_list[0], [ox, oy, oz])
-                env.unwrapped.unrealcv.set_rotation(env.unwrapped.player_list[0], oyaw - 180)
-                batch.set_cam(env)
+                env.teleport([ox, oy, oz], oyaw)
                 time.sleep(0.2)
                 origin_x, origin_y, origin_z, origin_yaw = ox, oy, oz, oyaw
                 current_pose = [0.0, 0.0, 0.0, 0.0]
@@ -444,9 +435,7 @@ def main() -> None:
                 except ValueError as e:
                     print("Invalid position: {}".format(e))
                     continue
-                env.unwrapped.unrealcv.set_obj_location(env.unwrapped.player_list[0], pos[0:3])
-                env.unwrapped.unrealcv.set_rotation(env.unwrapped.player_list[0], pos[3] - 180)
-                batch.set_cam(env)
+                env.teleport(pos[0:3], pos[3])
                 time.sleep(0.2)
                 origin_x, origin_y, origin_z, origin_yaw = pos[0], pos[1], pos[2], pos[3]
                 current_pose = [0.0, 0.0, 0.0, 0.0]
@@ -471,7 +460,7 @@ def main() -> None:
             )
             current_pose = [0.0, 0.0, 0.0, 0.0]
             if aborted:
-                _drain_connections_after_abort(env, batch, drone_cam_id)
+                _drain_connections_after_abort(env, drone_cam_id)
                 print("Action aborted.")
             else:
                 print("ACTION COMPLETE")
