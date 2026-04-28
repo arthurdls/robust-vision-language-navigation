@@ -223,8 +223,29 @@ def _run_subgoal(
     diary_artifacts.mkdir(parents=True, exist_ok=True)
 
     converter = SubgoalConverter(model=monitor_model)
-    converted_instruction = converter.convert(subgoal_nl)
+    conversion = converter.convert(subgoal_nl)
+    converted_instruction = conversion.instruction
     current_instruction = converted_instruction
+
+    if conversion.outside_of_distribution:
+        logger.warning(
+            "Subgoal '%s' flagged as outside OpenVLA distribution (sim mode, no interactive prompt).",
+            subgoal_nl,
+        )
+        next_origin_x, next_origin_y, next_origin_z, next_origin_yaw = (
+            origin_x, origin_y, origin_z, origin_yaw,
+        )
+        return {
+            "subgoal": subgoal_nl,
+            "converted_instruction": converted_instruction,
+            "total_steps": 0,
+            "stop_reason": "ood",
+            "corrections_used": 0,
+            "last_completion_pct": 0.0,
+            "peak_completion": 0.0,
+            "vlm_calls": converter.llm_call_records,
+            "next_origin": [next_origin_x, next_origin_y, next_origin_z, next_origin_yaw],
+        }
 
     monitor = LiveDiaryMonitor(
         subgoal=subgoal_nl,

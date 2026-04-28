@@ -164,8 +164,35 @@ def _run_single_ga(
 
     if use_llm:
         converter = SubgoalConverter(model=model)
-        converted_instruction = converter.convert(subgoal)
+        conversion = converter.convert(subgoal)
+        converted_instruction = conversion.instruction
         current_instruction = converted_instruction
+
+        if conversion.outside_of_distribution:
+            logger.warning(
+                "Subgoal '%s' flagged as outside OpenVLA distribution.", subgoal,
+            )
+            run_info: Dict[str, Any] = {
+                "task_config": task,
+                "mode": "llm",
+                "model": model,
+                "instruction_sent": converted_instruction,
+                "total_steps": 0,
+                "stop_reason": "ood",
+                "instruction_overrides": [],
+                "corrections_used": 0,
+                "last_completion_pct": 0.0,
+                "peak_completion": 0.0,
+                "parse_failures": 0,
+                "vlm_calls": 0,
+                "in_correction_at_end": False,
+                "playback_mp4": None,
+                "start_time": datetime.now().isoformat(),
+                "end_time": datetime.now().isoformat(),
+            }
+            with open(run_dir / "run_info.json", "w") as f:
+                json.dump(run_info, f, indent=2)
+            return run_info
 
         diary_artifacts = run_dir / "diary_artifacts"
         diary_artifacts.mkdir(parents=True, exist_ok=True)

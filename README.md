@@ -13,8 +13,9 @@ Instruction: "Go to the red building, then land near the tree"
 LTL Planner (LLM -> Spot automaton)
     |
     v  subgoal: "approach the red building"
-SubgoalConverter (LLM -> short OpenVLA command)
+SubgoalConverter (LLM -> short OpenVLA command + OOD check)
     |
+    |  if outside distribution -> ask_help / stop_reason="ood"
     v  command: "fly toward building"
 OpenVLA Server (VLA model, returns drone actions)
     |
@@ -49,12 +50,19 @@ The LiveDiaryMonitor supports two checkpoint modes:
 
 ### Operator Help
 
-When the monitor detects a stall (completion plateau over the last `stall_window` checkpoints), exhausts its correction budget, or hits the step/time limit:
+When the monitor detects a stall (completion plateau over the last `stall_window` checkpoints), exhausts its correction budget, hits the step/time limit, or the subgoal converter flags the instruction as outside OpenVLA's training distribution:
 
 - **Hardware (`run_hardware.py`)**: The drone pauses and the operator is prompted with four options: new instruction, replan, skip, or abort.
-- **Simulation (`run_integration.py`)**: The subgoal ends with `stop_reason="ask_help"` in the run summary. No interactive prompt (simulation runs are typically unattended).
+- **Simulation (`run_integration.py`)**: The subgoal ends with `stop_reason="ask_help"` (or `stop_reason="ood"` for out-of-distribution) in the run summary. No interactive prompt (simulation runs are typically unattended).
 
 Stall detection is controlled by `--stall_window` (default 3), `--stall_threshold` (default 0.05), and `--stall_completion_floor` (default 0.8).
+
+### Out-of-Distribution Detection
+
+The SubgoalConverter uses the LLM to assess whether a converted instruction falls outside OpenVLA's training distribution. OpenVLA was fine-tuned on first-person drone navigation in outdoor/suburban environments. Instructions involving indoor manipulation (pick up, grasp), non-drone locomotion (walk, drive), objects absent from typical drone footage (kitchen appliances, office furniture), or non-navigation tasks (answer a question, take a photo) are flagged as out-of-distribution. When an OOD instruction is detected:
+
+- **Hardware**: The same operator help prompt is triggered immediately, before any actions are sent. The operator can provide a replacement instruction, replan, skip, or abort.
+- **Simulation**: The subgoal returns immediately with `stop_reason="ood"` and zero steps executed.
 
 ## Prerequisites
 
@@ -206,7 +214,7 @@ Artifacts (frames, diary logs, trajectory, run_info.json) land in `results/hardw
 
 ### Operator help
 
-When the monitor detects a stall, exhausts its correction budget, or hits the step/time limit, the drone pauses and the operator is prompted:
+When the monitor detects a stall, exhausts its correction budget, hits the step/time limit, or the subgoal is flagged as outside OpenVLA's distribution, the drone pauses and the operator is prompted:
 
 ```
 [1] New low-level instruction   - replace the OpenVLA command, stay in current subgoal
