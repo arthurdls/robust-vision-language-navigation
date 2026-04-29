@@ -38,7 +38,7 @@ BINARIES_LINUX = {
 }
 
 BINARIES_WINDOWS = {
-    "simulator": "UE4_ExampleScene_Win.zip",
+    "simulator": "Collection_WinNoEditor_0424_25.zip",
     "textures": "Textures.zip",
 }
 
@@ -48,17 +48,50 @@ BINARIES_MAC = {
 }
 
 
-def get_platform_binaries():
+def _is_wsl() -> bool:
+    """Detect if running inside Windows Subsystem for Linux."""
+    try:
+        return "microsoft" in os.uname().release.lower()
+    except AttributeError:
+        return False
+
+
+def detect_platform() -> str:
+    """Return 'windows', 'linux', or 'mac' based on the current environment.
+
+    WSL2 is detected as Windows since the simulator runs natively on the
+    Windows host.
+    """
+    if _is_wsl():
+        return "windows"
     system = platform.system().lower()
+    if "darwin" in system:
+        return "mac"
+    if "win" in system:
+        return "windows"
     if "linux" in system:
-        return BINARIES_LINUX
-    elif "darwin" in system:
-        return BINARIES_MAC
-    elif "win" in system:
-        return BINARIES_WINDOWS
-    else:
-        print(f"Unsupported platform: {system}", file=sys.stderr)
+        return "linux"
+    return system
+
+
+PLATFORM_BINARIES = {
+    "linux": BINARIES_LINUX,
+    "windows": BINARIES_WINDOWS,
+    "mac": BINARIES_MAC,
+}
+
+
+def get_platform_binaries(override: str | None = None) -> dict:
+    plat = override or detect_platform()
+    if plat not in PLATFORM_BINARIES:
+        print(f"Unsupported platform: {plat!r} (choose from {', '.join(PLATFORM_BINARIES)})", file=sys.stderr)
         sys.exit(1)
+    detected = detect_platform()
+    if override and override != detected:
+        print(f"Platform override: {override} (auto-detected: {detected})")
+    else:
+        print(f"Detected platform: {plat}" + (" (WSL2)" if _is_wsl() else ""))
+    return PLATFORM_BINARIES[plat]
 
 
 def download_from_modelscope(filename, dest_dir):
@@ -107,7 +140,7 @@ def extract_and_move(zip_path, dest_dir, is_textures=False):
     zip_path.unlink()
     print(f"Cleaned up {zip_path}")
 
-    if not is_textures and "linux" in platform.system().lower():
+    if not is_textures and detect_platform() == "linux":
         for f in target.rglob("*.sh"):
             f.chmod(f.stat().st_mode | stat.S_IEXEC)
         for f in target.rglob("Collection"):
@@ -127,9 +160,15 @@ def main():
     group.add_argument("--env-only", action="store_true", help="Download simulator only (skip textures)")
     group.add_argument("--textures-only", action="store_true", help="Download textures only (skip simulator)")
     parser.add_argument("--force", action="store_true", help="Re-download even if already installed")
+    parser.add_argument(
+        "--platform",
+        choices=list(PLATFORM_BINARIES),
+        default=None,
+        help="Override auto-detected platform (default: auto-detect, WSL2 selects windows)",
+    )
     args = parser.parse_args()
 
-    binaries = get_platform_binaries()
+    binaries = get_platform_binaries(args.platform)
     dest = args.dest
     dest.mkdir(parents=True, exist_ok=True)
 
