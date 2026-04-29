@@ -73,7 +73,7 @@ def draw_label_overlay(img, text: str) -> None:
     import cv2
 
     font = cv2.FONT_HERSHEY_SIMPLEX
-    scale = 0.6
+    scale = 0.4
     thickness = 1
     color = (255, 255, 255)
     margin = 8
@@ -81,9 +81,8 @@ def draw_label_overlay(img, text: str) -> None:
     (tw, th), baseline = cv2.getTextSize(text, font, scale, thickness)
 
     max_w = img.shape[1] - 2 * margin
-    if tw > max_w and len(text) > 10:
-        ratio = max_w / tw
-        text = text[: max(10, int(len(text) * ratio) - 3)] + "..."
+    if tw > max_w:
+        scale = scale * max_w / tw
         (tw, th), baseline = cv2.getTextSize(text, font, scale, thickness)
 
     x, y = margin, margin + th
