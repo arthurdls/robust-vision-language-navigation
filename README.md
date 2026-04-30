@@ -51,6 +51,14 @@ The LTL planner automatically classifies predicates as goals or constraints usin
 
 Active constraints are passed to the LiveDiaryMonitor, which injects them into VLM prompts. On violation, the monitor triggers `force_converge` and the supervisor issues a corrective command (e.g., "move away from building B" or "ascend to restore altitude"), sharing the same correction budget as normal convergence corrections.
 
+### Prompt Separation (With vs. Without Constraints)
+
+The diary monitor maintains **separate prompt templates** for subgoals that have active constraints and subgoals that do not (see `src/rvln/ai/prompts.py`). For example, `DIARY_GLOBAL_PROMPT` is used when there are no constraints, while `DIARY_GLOBAL_PROMPT_WITH_CONSTRAINTS` is used when constraints are present. The same pattern applies to the convergence prompts.
+
+This separation is intentional: when no constraints are active, the VLM prompt contains no mention of constraints, the `constraint_violated` JSON field, or constraint-related instructions. Including constraint language in a prompt where no constraints exist would pollute the LLM's context with irrelevant concepts, potentially biasing its responses (e.g., hallucinating constraint violations, or spending reasoning capacity on an inapplicable field). The monitor selects the appropriate template at runtime based on whether `self._constraints` is non-empty (see `_format_global_prompt` and `_format_convergence_prompt` in `diary_monitor.py`).
+
+When adding new prompt variants, follow this pattern: create a constraint-free version and a separate `_WITH_CONSTRAINTS` version rather than conditionally injecting constraint blocks into a single template.
+
 ### Checkpoint Modes
 
 The LiveDiaryMonitor supports two checkpoint modes:
