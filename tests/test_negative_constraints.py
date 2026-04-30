@@ -95,6 +95,27 @@ def test_no_violation_continues(mock_sample, mock_grid, mock_vlm):
     assert result.action == "continue"
 
 
+@patch("rvln.ai.diary_monitor.query_vlm")
+@patch("rvln.ai.diary_monitor.build_frame_grid")
+@patch("rvln.ai.diary_monitor.sample_frames_every_n")
+def test_no_violation_field_without_constraints(mock_sample, mock_grid, mock_vlm):
+    """Without constraints, missing constraint_violated field is fine."""
+    m = _make_monitor()
+    m._frame_paths = [Path(f"/tmp/f{i}.png") for i in range(4)]
+    m._frame_timestamps = [float(i) for i in range(4)]
+    m._step = 4
+
+    mock_grid.return_value = MagicMock()
+    mock_sample.return_value = m._frame_paths[-4:]
+    mock_vlm.side_effect = [
+        "Drone moved forward.",
+        '{"complete": false, "completion_percentage": 0.5, "on_track": true, "should_stop": false}',
+    ]
+
+    result = m._run_checkpoint()
+    assert result.action == "continue"
+
+
 # ---------------------------------------------------------------------------
 # End-to-end integration tests (planner -> monitor, no simulator)
 # ---------------------------------------------------------------------------

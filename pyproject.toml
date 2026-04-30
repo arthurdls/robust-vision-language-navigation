@@ -52,6 +52,10 @@ server = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = [
+    "tier2: Tier 2 tests (real LLM API calls, pennies per run)",
+    "tier3: Tier 3 tests (real VLM API calls, pennies per run)",
+]
 
 [tool.setuptools.packages.find]
 where = ["src"]
