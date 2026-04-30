@@ -69,6 +69,7 @@ class DiaryCheckResult:
     reasoning: str
     diary_entry: str      # latest diary entry (what changed)
     completion_pct: float = 0.0  # latest estimated completion percentage
+    constraint_violated: bool = False
 
 # ---------------------------------------------------------------------------
 # LiveDiaryMonitor
@@ -926,6 +927,7 @@ class LiveDiaryMonitor:
                 reasoning=f"Constraint violated, stopping for correction. Raw: {response}",
                 diary_entry=diary_entry,
                 completion_pct=pct,
+                constraint_violated=True,
             )
 
         if parsed.get("complete", False):

@@ -1,0 +1,13 @@
+{
+  "task_id": "pilot_seq_constraint_01",
+  "category": "sequential_with_negative_constraints",
+  "instruction": "Go to the tree on the left, then navigate to the streetlight ahead, but stay away from the red car until you reach the streetlight.",
+  "initial_pos": [-7500, 848, 396, -177],
+  "constraints_expected": [
+    {"description": "stay away from the red car", "polarity": "negative"}
+  ],
+  "expected_subgoal_count": 2,
+  "difficulty": "medium",
+  "region": "region_1",
+  "notes": "Pilot task for initial condition validation. Sequential with avoidance constraint."
+}
