@@ -93,3 +93,123 @@ def test_no_violation_continues(mock_sample, mock_grid, mock_vlm):
 
     result = m._run_checkpoint()
     assert result.action == "continue"
+
+
+# ---------------------------------------------------------------------------
+# End-to-end integration tests (planner -> monitor, no simulator)
+# ---------------------------------------------------------------------------
+
+import pytest
+
+
+def test_end_to_end_constraint_flow():
+    """Full flow: planner classifies + extracts constraints, monitor receives them."""
+    spot = pytest.importorskip("spot", reason="spot not available")
+    from rvln.ai.ltl_planner import LTLSymbolicPlanner
+
+    class MockLLM:
+        def __init__(self):
+            self.ltl_nl_formula = {
+                "pi_predicates": {
+                    "pi_1": "Go to tree A",
+                    "pi_2": "Go to streetlight B",
+                    "pi_3": "Flying over building C",
+                },
+                "ltl_nl_formula": "F pi_2 & (!pi_2 U pi_1) & G(!pi_3)",
+            }
+        def make_natural_language_request(self, request):
+            return ""
+
+    planner = LTLSymbolicPlanner(MockLLM())
+    planner.plan_from_natural_language("Go to A then B, never fly over C")
+
+    assert "pi_3" in planner.constraint_predicates
+    assert "pi_1" not in planner.constraint_predicates
+
+    current = planner.get_next_predicate()
+    assert current == "Go to tree A"
+    constraints = planner.get_active_constraints()
+    assert constraints == ["Flying over building C"]
+
+    monitor = LiveDiaryMonitor(
+        subgoal=current,
+        check_interval=2,
+        model="gpt-4o",
+        negative_constraints=constraints,
+    )
+    assert monitor._negative_constraints == ["Flying over building C"]
+    block = monitor._constraints_block()
+    assert "Flying over building C" in block
+    assert "Active constraints" in block
+    monitor.cleanup()
+
+
+def test_end_to_end_backward_compat():
+    """Existing formulas without constraints work unchanged."""
+    spot = pytest.importorskip("spot", reason="spot not available")
+    from rvln.ai.ltl_planner import LTLSymbolicPlanner
+
+    class MockLLM:
+        def __init__(self):
+            self.ltl_nl_formula = {
+                "pi_predicates": {
+                    "pi_1": "Go to A",
+                    "pi_2": "Go to B",
+                },
+                "ltl_nl_formula": "F pi_2 & (!pi_2 U pi_1)",
+            }
+        def make_natural_language_request(self, request):
+            return ""
+
+    planner = LTLSymbolicPlanner(MockLLM())
+    planner.plan_from_natural_language("A then B")
+
+    assert planner.constraint_predicates == {}
+    current = planner.get_next_predicate()
+    assert planner.get_active_constraints() == []
+
+    monitor = LiveDiaryMonitor(
+        subgoal=current,
+        check_interval=2,
+        model="gpt-4o",
+    )
+    assert monitor._negative_constraints == []
+    assert monitor._constraints_block() == ""
+    monitor.cleanup()
+
+
+def test_scoped_constraint_release():
+    """Scoped constraint (!pi_3 U pi_2) releases after pi_2 is achieved."""
+    spot = pytest.importorskip("spot", reason="spot not available")
+    from rvln.ai.ltl_planner import LTLSymbolicPlanner
+
+    class MockLLM:
+        def __init__(self):
+            self.ltl_nl_formula = {
+                "pi_predicates": {
+                    "pi_1": "Approach tree",
+                    "pi_2": "Go to streetlight",
+                    "pi_3": "Near the red car",
+                },
+                "ltl_nl_formula": "F pi_2 & (!pi_2 U pi_1) & (!pi_3 U pi_2)",
+            }
+        def make_natural_language_request(self, request):
+            return ""
+
+    planner = LTLSymbolicPlanner(MockLLM())
+    planner.plan_from_natural_language("tree then streetlight, avoid car")
+
+    assert "pi_3" in planner.constraint_predicates
+
+    current = planner.get_next_predicate()
+    c1 = planner.get_active_constraints()
+    assert "Near the red car" in c1
+
+    planner.advance_state(current)
+    current = planner.get_next_predicate()
+    c2 = planner.get_active_constraints()
+    assert "Near the red car" in c2
+
+    planner.advance_state(current)
+    c3 = planner.get_active_constraints()
+    assert c3 == []
