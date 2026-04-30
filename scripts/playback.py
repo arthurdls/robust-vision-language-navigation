@@ -117,7 +117,34 @@ def main():
         action="store_true",
         help="Disable the command/subtask text overlay on each frame.",
     )
+    parser.add_argument(
+        "--all-videos",
+        action="store_true",
+        help="Generate a playback.mp4 for every run directory under results/.",
+    )
     args = parser.parse_args()
+
+    if args.all_videos:
+        root = Path(args.results_dir) if args.results_dir else _DEFAULT_RESULTS
+        if not root.is_dir():
+            print(f"Error: not a directory: {root}", file=sys.stderr)
+            sys.exit(1)
+        run_dirs = sorted(
+            d for d in root.rglob("run_*")
+            if d.is_dir() and iter_run_frame_paths(d)
+        )
+        if not run_dirs:
+            print(f"No run directories with frames found under {root}", file=sys.stderr)
+            sys.exit(1)
+        overlay = not args.disable_overlay
+        count = 0
+        for rd in run_dirs:
+            out = save_run_directory_mp4(rd, fps=args.fps, overlay=overlay)
+            if out:
+                print(f"Saved {out}")
+                count += 1
+        print(f"\nGenerated {count} video(s) from {len(run_dirs)} run dir(s).")
+        sys.exit(0)
 
     results_dir = args.results_dir
     if results_dir is None:
