@@ -21,7 +21,7 @@ OpenVLA server must be running: python scripts/start_server.py
 
 Usage (from repo root):
   # Single task from tasks/condition0/
-  python scripts/run_integration.py --task pilot_seq_constraint_01.json
+  python scripts/run_integration.py --task seq_constraint_01.json
   # All tasks in tasks/condition0/ (skips already completed)
   python scripts/run_integration.py --run_all_tasks
   # Ad-hoc command

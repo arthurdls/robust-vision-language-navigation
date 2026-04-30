@@ -61,8 +61,8 @@ Why: This is the proposed method. All other conditions ablate or
 
 CONDITION 1: NAIVE END-TO-END VLA
 ---------------------------------
-Pipeline: Full NL instruction --> SubgoalConverter --> OpenVLA
-          (no LTL decomposition, no monitoring)
+Pipeline: Full NL instruction --> OpenVLA
+          (no LTL decomposition, no subgoal conversion, no monitoring)
 Script: Modified run_ltl.py (skip planner, feed raw instruction)
 Implementation: Pass the entire long-horizon instruction directly to
   OpenVLA as a single instruction string. No LTL decomposition, no
