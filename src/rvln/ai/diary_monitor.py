@@ -136,12 +136,14 @@ class LiveDiaryMonitor:
         stall_window: int = 3,
         stall_threshold: float = 0.05,
         stall_completion_floor: float = 0.8,
+        negative_constraints: Optional[List[str]] = None,
     ):
         self._subgoal = subgoal
         self._check_interval = check_interval
         self._model = model
         self._artifacts_dir = artifacts_dir
         self._max_corrections = max_corrections
+        self._negative_constraints: List[str] = list(negative_constraints or [])
 
         # Time-based mode configuration
         self._time_based: bool = check_interval_s is not None
@@ -322,6 +324,7 @@ class LiveDiaryMonitor:
             diary=diary_blob,
             prev_completion_pct=self._last_completion_pct,
             displacement=disp_str,
+            constraints_block=self._constraints_block(),
         )
 
         sampled = sample_frames_every_n(self._frame_paths, self._check_interval)
@@ -494,6 +497,16 @@ class LiveDiaryMonitor:
             f"z: {d[2] / 100:.2f} m, yaw: {d[3]:.1f}°]"
         )
 
+    def _constraints_block(self) -> str:
+        """Return a prompt section listing active negative constraints, or empty string."""
+        if not self._negative_constraints:
+            return ""
+        lines = ["Active constraints (must be maintained throughout):"]
+        for c in self._negative_constraints:
+            lines.append(f"  - {c}")
+        lines.append("")
+        return "\n".join(lines)
+
     def _is_stalled(self) -> bool:
         """Return True if completion has plateaued over the last stall_window checkpoints."""
         history = self._completion_history
@@ -555,6 +568,7 @@ class LiveDiaryMonitor:
             diary=diary_blob,
             prev_completion_pct=self._last_completion_pct,
             displacement=disp_str,
+            constraints_block=self._constraints_block(),
         )
 
         response_global = self._timed_query_vlm(
@@ -666,6 +680,7 @@ class LiveDiaryMonitor:
             diary=diary_blob,
             prev_completion_pct=self._last_completion_pct,
             displacement=disp_str,
+            constraints_block=self._constraints_block(),
         )
 
         response_global = self._timed_query_vlm(
@@ -745,6 +760,7 @@ class LiveDiaryMonitor:
             diary=diary_blob,
             prev_completion_pct=self._last_completion_pct,
             displacement=disp_str,
+            constraints_block=self._constraints_block(),
         )
 
         with self._lock:
@@ -895,6 +911,15 @@ class LiveDiaryMonitor:
                 )
         pct = float(parsed.get("completion_percentage", self._last_completion_pct))
         pct = max(0.0, min(1.0, pct))
+
+        if self._negative_constraints and parsed.get("constraint_violated", False):
+            return DiaryCheckResult(
+                action="force_converge",
+                new_instruction="",
+                reasoning=f"Constraint violated, stopping for correction. Raw: {response}",
+                diary_entry=diary_entry,
+                completion_pct=pct,
+            )
 
         if parsed.get("complete", False):
             return DiaryCheckResult(

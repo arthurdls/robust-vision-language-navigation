@@ -63,7 +63,7 @@ Answer in ONE short sentence with only the key facts that directly bear on the s
 
 DIARY_GLOBAL_PROMPT = """\
 Subgoal: {subgoal}
-
+{constraints_block}
 Previous estimated completion: {prev_completion_pct}
 Current displacement from start: [x, y, z, yaw] = {displacement}
 
@@ -81,7 +81,8 @@ object (no markdown fences):
   "complete": true/false,
   "completion_percentage": 0.0 to 1.0,
   "on_track": true/false,
-  "should_stop": true/false
+  "should_stop": true/false,
+  "constraint_violated": true/false
 }}
 
 - "complete": true ONLY if you are highly confident the subgoal has been fully
@@ -92,11 +93,15 @@ object (no markdown fences):
 - "on_track": true if the drone is making any progress toward the subgoal.
 - "should_stop": true only if the drone is actively making things worse (e.g.,
   overshooting, moving away from target). The drone will be stopped and a
-  correction issued. Do NOT set true for slow progress."""
+  correction issued. Do NOT set true for slow progress.
+- "constraint_violated": true if any active constraint listed above has been
+  violated or is about to be violated based on the visual evidence and diary.
+  If true, also set "should_stop" to true. false if no constraints are listed
+  or none have been violated."""
 
 DIARY_CONVERGENCE_PROMPT = """\
 Subgoal: {subgoal}
-
+{constraints_block}
 Previous estimated completion: {prev_completion_pct}
 Current displacement from start: [x, y, z, yaw] = {displacement}
 
@@ -116,8 +121,9 @@ Respond with EXACTLY ONE JSON object (no markdown fences):
 {{
   "complete": true/false,
   "completion_percentage": 0.0 to 1.0,
-  "diagnosis": "stopped_short" or "overshot" or "complete",
-  "corrective_instruction": "..." or null
+  "diagnosis": "stopped_short" or "overshot" or "complete" or "constraint_violated",
+  "corrective_instruction": "..." or null,
+  "constraint_violated": true/false
 }}
 
 - "complete": true ONLY if you are highly confident the subgoal has been fully
@@ -128,10 +134,16 @@ Respond with EXACTLY ONE JSON object (no markdown fences):
   are highly confident the subtask is fully complete -- use at most 0.95 if the
   result looks close but you are not certain.
 - "diagnosis": "complete" if done, "stopped_short" if the drone needs to keep
-  going, "overshot" if the drone went past the goal.
+  going, "overshot" if the drone went past the goal, "constraint_violated" if
+  an active constraint was breached.
 - "corrective_instruction": REQUIRED if not complete -- a single-action drone
   command to fix the biggest gap (not compound -- one action per correction).
+  If a constraint was violated, the corrective instruction should move the drone
+  AWAY from the constraint violation (e.g., "move away from building B").
   null only if complete.
+- "constraint_violated": true if any active constraint listed above has been
+  violated based on the visual evidence and diary. false if no constraints are
+  listed or none have been violated.
 
   Useful corrective patterns:
     * "Turn toward <landmark>" -- re-orient the drone toward a visible or
@@ -140,6 +152,7 @@ Respond with EXACTLY ONE JSON object (no markdown fences):
       is off-screen or partially visible.
     * "Move forward <N> meters" / "Move closer to <landmark>" -- close a gap.
     * "Ascend/Descend <N> meters" -- altitude correction.
+    * "Move away from <landmark>" -- retreat from a constraint violation.
   Prefer a turn command when the target is not visible in the latest frame;
   the underlying policy needs to see the target to navigate toward it.
 
