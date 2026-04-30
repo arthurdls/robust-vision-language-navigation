@@ -3,7 +3,7 @@ LTL Symbolic Planner: parses natural language to LTL-NL via LLM, then uses Spot
 to manage the automaton state and determine the next short-horizon subgoal.
 """
 
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from typing import Literal, Optional
 
 import spot
@@ -226,6 +226,32 @@ class LTLSymbolicPlanner:
                 if (test_world_bdd & edge.cond) != self._bdd_false:
                     self._last_returned_predicate_key = key
                     return self.pi_map[key]
+
+        # BUG FIX: on some Spot versions the monitor automaton has fewer
+        # states, so the last goal's only outgoing edge leads to the sink.
+        # The loop above skips sink edges, which silently drops the final
+        # goal. Fall back to checking sink edges for any not-yet-returned
+        # goal predicate (skip _last_returned_predicate_key to avoid
+        # re-returning an already-completed goal at a true dead-end).
+        if self._sink_state is not None:
+            for key in self.pi_map:
+                if key in self.constraint_predicates:
+                    continue
+                if key == self._last_returned_predicate_key:
+                    continue
+                p_idx = _predicate_key_to_index(key)
+                try:
+                    test_world_bdd = self._get_bdd_goal_check(p_idx)
+                except ValueError:
+                    continue
+                for edge in self.automaton.out(self.current_automaton_state):
+                    if edge.dst == self.current_automaton_state:
+                        continue
+                    if edge.dst != self._sink_state:
+                        continue
+                    if (test_world_bdd & edge.cond) != self._bdd_false:
+                        self._last_returned_predicate_key = key
+                        return self.pi_map[key]
 
         print("[LTL Planner] No tasks trigger a state change. Mission Complete.")
         self.finished = True

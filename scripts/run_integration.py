@@ -95,6 +95,16 @@ CONDITION0_RESULTS_DIR = REPO_ROOT / "results" / "condition0"
 logger = logging.getLogger(__name__)
 
 
+class _SafeEncoder(json.JSONEncoder):
+    """Handle ConstraintInfo and other dataclass objects that leak into JSON."""
+
+    def default(self, o):
+        from dataclasses import asdict, fields
+        if hasattr(o, "__dataclass_fields__"):
+            return asdict(o)
+        return super().default(o)
+
+
 # ---------------------------------------------------------------------------
 # Completed-task detection
 # ---------------------------------------------------------------------------
@@ -274,7 +284,7 @@ def _run_subgoal(
             "vlm_call_count": 0,
             "vlm_call_records": list(converter.llm_call_records),
             "next_origin": [origin_x, origin_y, origin_z, origin_yaw],
-            "constraints": constraints or [],
+            "constraints": [{"description": c.description, "polarity": c.polarity} for c in (constraints or [])],
             "constraint_violation_count": 0,
             "parse_failures": 0,
         }
@@ -585,7 +595,7 @@ def _run_subgoal(
         "vlm_call_count": monitor.vlm_calls,
         "vlm_call_records": all_vlm_call_records,
         "next_origin": [next_origin_x, next_origin_y, next_origin_z, next_origin_yaw],
-        "constraints": constraints or [],
+        "constraints": [{"description": c.description, "polarity": c.polarity} for c in (constraints or [])],
         "constraint_violation_count": constraint_violation_count,
         "parse_failures": monitor.parse_failures,
     }
@@ -807,7 +817,7 @@ def run_integrated_control_loop(
         "wall_clock_seconds": round(wall_clock_seconds, 2),
     }
     with open(run_dir / "run_info.json", "w") as f:
-        json.dump(run_info, f, indent=2)
+        json.dump(run_info, f, indent=2, cls=_SafeEncoder)
 
     return run_info
 
