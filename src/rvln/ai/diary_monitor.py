@@ -48,7 +48,9 @@ from .prompts import (
     DIARY_SYSTEM_PROMPT as GENERAL_SYSTEM_PROMPT,
     DIARY_LOCAL_PROMPT as LOCAL_PROMPT_TEMPLATE,
     DIARY_GLOBAL_PROMPT as GLOBAL_PROMPT_TEMPLATE,
+    DIARY_GLOBAL_PROMPT_WITH_CONSTRAINTS as GLOBAL_PROMPT_TEMPLATE_CONSTRAINTS,
     DIARY_CONVERGENCE_PROMPT as CONVERGENCE_PROMPT_TEMPLATE,
+    DIARY_CONVERGENCE_PROMPT_WITH_CONSTRAINTS as CONVERGENCE_PROMPT_TEMPLATE_CONSTRAINTS,
 )
 from .utils.llm_providers import BaseLLM, LLMFactory
 from .utils.vision import build_frame_grid, query_vlm, sample_frames_every_n
@@ -323,13 +325,7 @@ class LiveDiaryMonitor:
 
         disp_str = self._format_displacement()
         diary_blob = "\n".join(self._diary) if self._diary else "(no diary entries yet)"
-        prompt = CONVERGENCE_PROMPT_TEMPLATE.format(
-            subgoal=self._subgoal,
-            diary=diary_blob,
-            prev_completion_pct=self._last_completion_pct,
-            displacement=disp_str,
-            constraints_block=self._constraints_block(),
-        )
+        prompt = self._format_convergence_prompt(diary_blob, disp_str)
 
         sampled = sample_frames_every_n(self._frame_paths, self._check_interval)
         if not sampled or sampled[-1] != path:
@@ -515,6 +511,38 @@ class LiveDiaryMonitor:
         lines.append("")
         return "\n".join(lines)
 
+    def _format_global_prompt(self, diary_blob: str, disp_str: str) -> str:
+        if self._constraints:
+            return GLOBAL_PROMPT_TEMPLATE_CONSTRAINTS.format(
+                subgoal=self._subgoal,
+                diary=diary_blob,
+                prev_completion_pct=self._last_completion_pct,
+                displacement=disp_str,
+                constraints_block=self._constraints_block(),
+            )
+        return GLOBAL_PROMPT_TEMPLATE.format(
+            subgoal=self._subgoal,
+            diary=diary_blob,
+            prev_completion_pct=self._last_completion_pct,
+            displacement=disp_str,
+        )
+
+    def _format_convergence_prompt(self, diary_blob: str, disp_str: str) -> str:
+        if self._constraints:
+            return CONVERGENCE_PROMPT_TEMPLATE_CONSTRAINTS.format(
+                subgoal=self._subgoal,
+                diary=diary_blob,
+                prev_completion_pct=self._last_completion_pct,
+                displacement=disp_str,
+                constraints_block=self._constraints_block(),
+            )
+        return CONVERGENCE_PROMPT_TEMPLATE.format(
+            subgoal=self._subgoal,
+            diary=diary_blob,
+            prev_completion_pct=self._last_completion_pct,
+            displacement=disp_str,
+        )
+
     def _is_stalled(self) -> bool:
         """Return True if completion has plateaued over the last stall_window checkpoints."""
         history = self._completion_history
@@ -571,13 +599,7 @@ class LiveDiaryMonitor:
 
         grid_global = build_frame_grid(sampled)
         diary_blob = "\n".join(self._diary)
-        prompt_global = GLOBAL_PROMPT_TEMPLATE.format(
-            subgoal=self._subgoal,
-            diary=diary_blob,
-            prev_completion_pct=self._last_completion_pct,
-            displacement=disp_str,
-            constraints_block=self._constraints_block(),
-        )
+        prompt_global = self._format_global_prompt(diary_blob, disp_str)
 
         response_global = self._timed_query_vlm(
             grid_global, prompt_global, "global_checkpoint",
@@ -683,13 +705,7 @@ class LiveDiaryMonitor:
 
         grid_global = build_frame_grid(sampled)
         diary_blob = "\n".join(self._diary)
-        prompt_global = GLOBAL_PROMPT_TEMPLATE.format(
-            subgoal=self._subgoal,
-            diary=diary_blob,
-            prev_completion_pct=self._last_completion_pct,
-            displacement=disp_str,
-            constraints_block=self._constraints_block(),
-        )
+        prompt_global = self._format_global_prompt(diary_blob, disp_str)
 
         response_global = self._timed_query_vlm(
             grid_global, prompt_global, "global_checkpoint_async",
@@ -763,13 +779,7 @@ class LiveDiaryMonitor:
         self._last_displacement = list(displacement)
         disp_str = self._format_displacement()
         diary_blob = "\n".join(self._diary) if self._diary else "(no diary entries yet)"
-        prompt = CONVERGENCE_PROMPT_TEMPLATE.format(
-            subgoal=self._subgoal,
-            diary=diary_blob,
-            prev_completion_pct=self._last_completion_pct,
-            displacement=disp_str,
-            constraints_block=self._constraints_block(),
-        )
+        prompt = self._format_convergence_prompt(diary_blob, disp_str)
 
         with self._lock:
             frame_paths_snap = list(self._frame_paths)

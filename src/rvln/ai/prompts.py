@@ -63,6 +63,39 @@ Answer in ONE short sentence with only the key facts that directly bear on the s
 
 DIARY_GLOBAL_PROMPT = """\
 Subgoal: {subgoal}
+
+Previous estimated completion: {prev_completion_pct}
+Current displacement from start: [x, y, z, yaw] = {displacement}
+
+Diary of changes observed so far:
+{diary}
+
+The grid shows up to the 9 most recent sampled frames (left to right, top to
+bottom, in temporal order). If there are more than 9 diary entries, earlier frames
+are no longer visible in the grid -- rely on the diary text for that history.
+
+Based on the diary and the grid of sampled frames, respond with EXACTLY ONE JSON
+object (no markdown fences):
+
+{{
+  "complete": true/false,
+  "completion_percentage": 0.0 to 1.0,
+  "on_track": true/false,
+  "should_stop": true/false
+}}
+
+- "complete": true ONLY if you are highly confident the subgoal has been fully
+  accomplished. Do NOT mark complete for partial progress.
+- "completion_percentage": your best estimate of how close the subgoal is to
+  completion (0.0 = not started, 1.0 = fully done). NEVER set 1.0 unless you
+  are highly confident -- use at most 0.95 when unsure.
+- "on_track": true if the drone is making any progress toward the subgoal.
+- "should_stop": true only if the drone is actively making things worse (e.g.,
+  overshooting, moving away from target). The drone will be stopped and a
+  correction issued. Do NOT set true for slow progress."""
+
+DIARY_GLOBAL_PROMPT_WITH_CONSTRAINTS = """\
+Subgoal: {subgoal}
 {constraints_block}
 Previous estimated completion: {prev_completion_pct}
 Current displacement from start: [x, y, z, yaw] = {displacement}
@@ -100,6 +133,61 @@ object (no markdown fences):
   or none have been violated."""
 
 DIARY_CONVERGENCE_PROMPT = """\
+Subgoal: {subgoal}
+
+Previous estimated completion: {prev_completion_pct}
+Current displacement from start: [x, y, z, yaw] = {displacement}
+
+Diary of changes observed so far:
+{diary}
+
+The drone has stopped moving. The grid shows up to the 9 most recent sampled
+frames (left to right, top to bottom, in temporal order). If there are more
+than 9 diary entries, earlier frames are no longer visible in the grid -- rely
+on the diary text for that history.
+
+Given the diary and the sampled frames, is the subgoal complete? If not, did
+the drone stop short or overshoot?
+
+Respond with EXACTLY ONE JSON object (no markdown fences):
+
+{{
+  "complete": true/false,
+  "completion_percentage": 0.0 to 1.0,
+  "diagnosis": "stopped_short" or "overshot" or "complete",
+  "corrective_instruction": "..." or null
+}}
+
+- "complete": true ONLY if you are highly confident the subgoal has been fully
+  accomplished. Do NOT mark complete for partial progress. When in doubt, keep
+  it false and issue a corrective instruction.
+- "completion_percentage": your best estimate of how close the subgoal is to
+  completion (0.0 = not started, 1.0 = fully done). NEVER set 1.0 unless you
+  are highly confident the subtask is fully complete -- use at most 0.95 if the
+  result looks close but you are not certain.
+- "diagnosis": "complete" if done, "stopped_short" if the drone needs to keep
+  going, "overshot" if the drone went past the goal.
+- "corrective_instruction": REQUIRED if not complete -- a single-action drone
+  command to fix the biggest gap (not compound -- one action per correction).
+  null only if complete.
+
+  Useful corrective patterns:
+    * "Turn toward <landmark>" -- re-orient the drone toward a visible or
+      expected landmark so the policy can locate it.
+    * "Turn right/left <N> degrees" -- precise yaw adjustment when the target
+      is off-screen or partially visible.
+    * "Move forward <N> meters" / "Move closer to <landmark>" -- close a gap.
+    * "Ascend/Descend <N> meters" -- altitude correction.
+  Prefer a turn command when the target is not visible in the latest frame;
+  the underlying policy needs to see the target to navigate toward it.
+
+  IMPORTANT -- orientation tolerance: if the subgoal is about turning toward or
+  facing a target and the target is already visible in the frame (even if
+  off-center), mark the subgoal complete instead of issuing further turn
+  corrections. Small yaw offsets are acceptable. Do NOT oscillate between
+  left and right turn corrections trying to perfectly center the target."""
+
+DIARY_CONVERGENCE_PROMPT_WITH_CONSTRAINTS = """\
 Subgoal: {subgoal}
 {constraints_block}
 Previous estimated completion: {prev_completion_pct}
@@ -172,25 +260,27 @@ You convert natural language drone subgoals into short, imperative instructions
 that a vision-language-action model (OpenVLA) can execute. You also assess whether
 the instruction is outside OpenVLA's training distribution.
 
-OpenVLA understands commands like:
-- "turn right", "turn left 90 degrees"
-- "move forward 5.0 meters", "proceed 6.0 meters towards the 20-degree right direction"
-- "go between the tree and the streetlight"
-- "move above the pergola", "descend 5 meters"
-- "approach the building", "get closer to the person ahead"
-- "advance past the sculpture from the left side"
-- "navigate to a point 4.0 meters away from the person"
+OpenVLA was fine-tuned exclusively on the following categories of first-person
+drone commands in outdoor/suburban environments. An instruction is IN-distribution
+only if it can be mapped to one of these categories:
 
-OpenVLA was fine-tuned on first-person drone navigation in outdoor/suburban
-environments (streets, buildings, trees, cars, people, streetlights, parks).
-An instruction is OUTSIDE the distribution when:
-- It refers to indoor manipulation (pick up, grasp, open drawer, push button).
-- It requires non-drone locomotion (walk, drive, swim).
-- It references objects or environments absent from typical outdoor drone
-  footage (kitchen appliances, office furniture, underwater features).
-- It is not a physical navigation command at all (answer a question, write code,
-  take a photo, describe the scene).
-- It is too abstract or vague to map to any concrete drone movement.
+  Movement: advance, cross, proceed, progress, move (with distances/angles),
+    navigate, orbit, circle, pass
+  Altitude: ascend, climb, descend, lower, take off
+  Landing: land at/to/on/toward various sides of objects
+  Orientation: face/turn toward an object, turn left/right by degrees, rotate
+  Approach/retreat: get closer, move closer/away/back, back off, withdraw
+  Composed: turn and move forward, navigate to a point X meters from an object
+
+An instruction is OUTSIDE the distribution when it cannot be mapped to any of
+the categories above. Common examples of OOD instructions:
+- Indoor manipulation (pick up, grasp, open drawer, push button).
+- Non-drone locomotion (walk, drive, swim).
+- Objects or environments absent from typical outdoor drone footage (kitchen
+  appliances, office furniture, underwater features).
+- Non-navigation commands (answer a question, write code, take a photo,
+  describe the scene).
+- Too abstract or vague to map to any concrete drone movement.
 
 Conversion rules:
 - If the clause after "until" describes a VISUAL DETECTION condition (seeing,

@@ -1031,34 +1031,65 @@ def _step(planner, n):
 
 
 # ------------------------------------------------------------------
-# Regression: last goal dropped when accepting state == sink
+# Regression: last goal dropped when Spot produces fewer states
 # ------------------------------------------------------------------
 
+def _make_smaller_automaton_planner():
+    """Build a planner whose automaton has fewer states.
+
+    spot.postprocess(aut, "monitor", "small") merges states, producing
+    the same structure that older/different Spot versions create natively.
+    The result is a real Spot automaton where the last goal's only path
+    goes through the sink edge.
+    """
+    mock = MockLLM()
+    mock.ltl_nl_formula = {
+        "pi_predicates": {
+            "pi_1": "Go to A",
+            "pi_2": "Go to B",
+            "pi_3": "Go to C",
+            "pi_4": "Go to D",
+            "pi_5": "Go to E",
+            "pi_6": "Go to F",
+        },
+        "ltl_nl_formula": (
+            "F pi_6 & (!pi_6 U pi_5) & (!pi_5 U pi_4) "
+            "& (!pi_4 U pi_3) & (!pi_3 U pi_2) & (!pi_2 U pi_1)"
+        ),
+    }
+    planner = LTLSymbolicPlanner(mock)
+    planner.plan_from_natural_language("A B C D E F")
+
+    smaller = spot.postprocess(planner.automaton, "monitor", "small")
+    planner.automaton = smaller
+    planner._bdd_false = spot.formula_to_bdd(
+        spot.formula("0"), planner.automaton.get_dict(), planner.automaton
+    )
+    planner._sink_state = None
+    planner.constraint_predicates = planner._classify_predicates()
+    planner._add_sink_state()
+    planner.current_automaton_state = planner.automaton.get_init_state_number()
+    planner.finished = False
+    planner._last_returned_predicate_key = None
+    return planner
+
+
 class TestLastGoalViaSinkEdge:
-    """Reproduce bug where get_next_predicate skips the last goal.
+    """Regression: get_next_predicate must return all goals even when the
+    Spot automaton has fewer states and the last goal's only outgoing edge
+    leads to the sink.
 
-    On some Spot versions the monitor automaton creates N states for an
-    N-predicate sequence (instead of N+1). The accepting state becomes the
-    dead-end, and _add_sink_state wires its only outgoing edge to the sink.
-    Because get_next_predicate unconditionally skips edges to the sink state,
-    the last goal is never returned.
-
-    We simulate this by reassigning _sink_state to the real accepting state
-    in the automaton, which is equivalent to what a Spot version with fewer
-    states would produce.
+    Uses spot.postprocess to produce a real smaller automaton (the same
+    structure that different Spot versions create natively).
     """
 
-    @staticmethod
-    def _make_six():
+    def test_normal_automaton_returns_all_six(self):
+        """Baseline: the default automaton returns all 6 goals."""
         mock = MockLLM()
         mock.ltl_nl_formula = {
             "pi_predicates": {
-                "pi_1": "Go to A",
-                "pi_2": "Go to B",
-                "pi_3": "Go to C",
-                "pi_4": "Go to D",
-                "pi_5": "Go to E",
-                "pi_6": "Go to F",
+                "pi_1": "Go to A", "pi_2": "Go to B", "pi_3": "Go to C",
+                "pi_4": "Go to D", "pi_5": "Go to E", "pi_6": "Go to F",
             },
             "ltl_nl_formula": (
                 "F pi_6 & (!pi_6 U pi_5) & (!pi_5 U pi_4) "
@@ -1067,19 +1098,6 @@ class TestLastGoalViaSinkEdge:
         }
         planner = LTLSymbolicPlanner(mock)
         planner.plan_from_natural_language("A B C D E F")
-        return planner
-
-    def _walk_to_penultimate(self, planner):
-        """Advance through the first 5 goals, leaving the 6th pending."""
-        for _ in range(5):
-            p = planner.get_next_predicate()
-            assert p is not None
-            planner.advance_state(p)
-        return planner
-
-    def test_six_predicate_sequence_normal(self):
-        """Baseline: all 6 goals returned with the normal automaton."""
-        planner = self._make_six()
         order = _run_full(planner)
         assert order == [
             "Go to A", "Go to B", "Go to C",
@@ -1087,38 +1105,23 @@ class TestLastGoalViaSinkEdge:
         ]
         assert planner.finished
 
-    def test_last_goal_when_accepting_state_is_sink(self):
-        """Bug repro: accepting state == sink causes last goal to be skipped.
-
-        On Spot versions that produce fewer automaton states, the edge from
-        the penultimate state to the accepting state IS the sink edge.
-        get_next_predicate must still return the last goal via that edge.
-        """
-        planner = self._make_six()
-        self._walk_to_penultimate(planner)
-
-        # State 5 has an edge to state 6 (accepting). Pretend state 6
-        # is the sink, simulating a Spot version with fewer states.
-        planner._sink_state = planner.current_automaton_state + 1
-        planner.finished = False
-
-        p = planner.get_next_predicate()
-        assert p == "Go to F", (
-            f"Last goal must be returned even when its edge leads to sink, got {p!r}"
+    def test_smaller_automaton_returns_all_six(self):
+        """Bug: postprocessed (smaller) automaton drops the last goal."""
+        planner = _make_smaller_automaton_planner()
+        order = _run_full(planner)
+        assert len(order) == 6, (
+            f"Expected 6 goals but got {len(order)}: {order}"
         )
+        assert order[-1] == "Go to F", (
+            f"Last goal must be 'Go to F', got {order[-1]!r}"
+        )
+        assert planner.finished
 
     def test_no_double_return_after_last_goal(self):
         """After the last goal is returned and advanced, None must follow."""
-        planner = self._make_six()
-        self._walk_to_penultimate(planner)
-
-        # Simulate fewer-states Spot version
-        planner._sink_state = planner.current_automaton_state + 1
-        planner.finished = False
-
-        p = planner.get_next_predicate()
-        assert p == "Go to F"
-        planner.advance_state(p)
+        planner = _make_smaller_automaton_planner()
+        order = _run_full(planner)
+        assert len(order) == 6
         assert planner.get_next_predicate() is None
         assert planner.finished
 

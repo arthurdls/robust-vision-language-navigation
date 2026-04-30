@@ -25,19 +25,23 @@ tier3 = pytest.mark.tier3
 
 
 def _render_global_prompt(subgoal, constraints, diary, displacement, prev_pct):
-    from rvln.ai.prompts import DIARY_GLOBAL_PROMPT
-
-    constraints_block = ""
     if constraints:
+        from rvln.ai.prompts import DIARY_GLOBAL_PROMPT_WITH_CONSTRAINTS
         lines = ["Active constraints (must be maintained throughout):"]
         for c in constraints:
             lines.append(f"  - {c}")
         lines.append("")
         constraints_block = "\n".join(lines)
-
+        return DIARY_GLOBAL_PROMPT_WITH_CONSTRAINTS.format(
+            subgoal=subgoal,
+            constraints_block=constraints_block,
+            diary=diary,
+            prev_completion_pct=prev_pct,
+            displacement=displacement,
+        )
+    from rvln.ai.prompts import DIARY_GLOBAL_PROMPT
     return DIARY_GLOBAL_PROMPT.format(
         subgoal=subgoal,
-        constraints_block=constraints_block,
         diary=diary,
         prev_completion_pct=prev_pct,
         displacement=displacement,

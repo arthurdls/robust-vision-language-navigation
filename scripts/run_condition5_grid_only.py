@@ -305,7 +305,7 @@ def _run_subgoal(
             "vlm_call_records": list(converter.llm_call_records),
             "parse_failures": 0,
             "next_origin": [origin_x, origin_y, origin_z, origin_yaw],
-            "constraints": constraints or [],
+            "constraints": [{"description": c.description, "polarity": c.polarity} for c in (constraints or [])],
             "constraint_violation_count": 0,
         }
 
@@ -571,7 +571,7 @@ def _run_subgoal(
         "vlm_call_records": all_vlm_call_records,
         "parse_failures": monitor.parse_failures,
         "next_origin": [next_origin_x, next_origin_y, next_origin_z, next_origin_yaw],
-        "constraints": constraints or [],
+        "constraints": [{"description": c.description, "polarity": c.polarity} for c in (constraints or [])],
         "constraint_violation_count": constraint_violation_count,
     }
 

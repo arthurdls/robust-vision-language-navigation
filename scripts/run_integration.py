@@ -96,13 +96,22 @@ logger = logging.getLogger(__name__)
 
 
 class _SafeEncoder(json.JSONEncoder):
-    """Handle ConstraintInfo and other dataclass objects that leak into JSON."""
+    """Encode dataclass instances and other non-serializable objects."""
 
     def default(self, o):
-        from dataclasses import asdict, fields
         if hasattr(o, "__dataclass_fields__"):
+            from dataclasses import asdict
             return asdict(o)
         return super().default(o)
+
+
+def _serialize_constraints(constraints):
+    """Convert ConstraintInfo objects to plain dicts for JSON storage."""
+    if not constraints:
+        return []
+    from dataclasses import asdict
+    return [asdict(c) if hasattr(c, "__dataclass_fields__") else c for c in constraints]
+
 
 
 # ---------------------------------------------------------------------------
@@ -284,7 +293,7 @@ def _run_subgoal(
             "vlm_call_count": 0,
             "vlm_call_records": list(converter.llm_call_records),
             "next_origin": [origin_x, origin_y, origin_z, origin_yaw],
-            "constraints": [{"description": c.description, "polarity": c.polarity} for c in (constraints or [])],
+            "constraints": _serialize_constraints(constraints),
             "constraint_violation_count": 0,
             "parse_failures": 0,
         }
@@ -595,7 +604,7 @@ def _run_subgoal(
         "vlm_call_count": monitor.vlm_calls,
         "vlm_call_records": all_vlm_call_records,
         "next_origin": [next_origin_x, next_origin_y, next_origin_z, next_origin_yaw],
-        "constraints": [{"description": c.description, "polarity": c.polarity} for c in (constraints or [])],
+        "constraints": _serialize_constraints(constraints),
         "constraint_violation_count": constraint_violation_count,
         "parse_failures": monitor.parse_failures,
     }

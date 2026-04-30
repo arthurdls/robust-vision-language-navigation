@@ -3,7 +3,8 @@ LTL Symbolic Planner: parses natural language to LTL-NL via LLM, then uses Spot
 to manage the automaton state and determine the next short-horizon subgoal.
 """
 
-from dataclasses import asdict, dataclass
+import re
+from dataclasses import dataclass
 from typing import Literal, Optional
 
 import spot
@@ -108,10 +109,15 @@ class LTLSymbolicPlanner:
         self._bdd_false = spot.formula_to_bdd(
             spot.formula("0"), self.automaton.get_dict(), self.automaton
         )
+        # IMPORTANT: classify predicates BEFORE adding the sink state.
+        # _classify_predicates uses _has_forward_edge which skips sink edges,
+        # so if the sink exists during classification, the last goal predicate
+        # (whose only forward edge leads to the sink) gets misclassified as a
+        # constraint and is never returned by get_next_predicate.
+        self.constraint_predicates = self._classify_predicates()
         self._add_sink_state()
         self.current_automaton_state = self.automaton.get_init_state_number()
         self.finished = False
-        self.constraint_predicates = self._classify_predicates()
         if self.constraint_predicates:
             print(f"[LTL Planner] Constraints: {self.constraint_predicates}")
 
@@ -227,12 +233,12 @@ class LTLSymbolicPlanner:
                     self._last_returned_predicate_key = key
                     return self.pi_map[key]
 
-        # BUG FIX: on some Spot versions the monitor automaton has fewer
-        # states, so the last goal's only outgoing edge leads to the sink.
-        # The loop above skips sink edges, which silently drops the final
-        # goal. Fall back to checking sink edges for any not-yet-returned
-        # goal predicate (skip _last_returned_predicate_key to avoid
-        # re-returning an already-completed goal at a true dead-end).
+        # BUG FIX: on some Spot versions (or after postprocessing) the monitor
+        # automaton has fewer states, so the last goal's only outgoing edge
+        # leads to the sink. The loop above skips sink edges, which silently
+        # drops the final goal. Fall back to checking sink edges for any
+        # not-yet-returned goal predicate (skip _last_returned_predicate_key
+        # to avoid re-returning an already-completed goal at a true dead-end).
         if self._sink_state is not None:
             for key in self.pi_map:
                 if key in self.constraint_predicates:
@@ -358,6 +364,20 @@ class LTLSymbolicPlanner:
             constraints[key] = ConstraintInfo(
                 description=self.pi_map[key], polarity="negative",
             )
+
+        # IMPORTANT: formula-level override for postprocessed/merged automata.
+        # spot.postprocess(aut, "monitor", "small") (or some Spot versions
+        # natively) can merge the final accepting state into an earlier state.
+        # This makes the last goal's accepting transition a self-loop, causing
+        # _has_forward_edge to miss it and misclassify the goal as a constraint.
+        # A predicate under an F (eventually) operator is semantically a goal
+        # that MUST be achieved, never a constraint. Remove any such predicate
+        # from the constraint set.
+        for key in list(constraints.keys()):
+            p_idx = _predicate_key_to_index(key)
+            if re.search(rf"\bF\s+pi_{p_idx}\b", self._raw_formula) or \
+               re.search(rf"\bF\s+p{p_idx}\b", self._raw_formula):
+                del constraints[key]
 
         return constraints
 
