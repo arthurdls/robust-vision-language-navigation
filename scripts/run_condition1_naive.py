@@ -109,8 +109,7 @@ def _load_task(path: Path) -> Dict[str, Any]:
         "initial_pos": [float(x) for x in initial_pos],
         "max_steps": int(data.get("max_steps_per_subgoal", DEFAULT_MAX_STEPS_PER_SUBGOAL)),
     }
-    for passthrough_key in ("task_id", "category", "difficulty", "region",
-                            "constraints_expected", "expected_subgoal_count", "notes"):
+    for passthrough_key in ("task_id", "category", "difficulty", "region", "notes"):
         if passthrough_key in data:
             result[passthrough_key] = data[passthrough_key]
     return result

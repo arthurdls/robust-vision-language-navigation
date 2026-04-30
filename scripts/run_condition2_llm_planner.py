@@ -184,8 +184,7 @@ def _load_task(path: Path) -> Dict[str, Any]:
         "diary_check_interval": int(data.get("diary_check_interval", DEFAULT_DIARY_CHECK_INTERVAL)),
         "max_corrections": int(data.get("max_corrections", DEFAULT_MAX_CORRECTIONS)),
     }
-    for passthrough_key in ("task_id", "category", "difficulty", "region",
-                            "constraints_expected", "expected_subgoal_count", "notes"):
+    for passthrough_key in ("task_id", "category", "difficulty", "region", "notes"):
         if passthrough_key in data:
             result[passthrough_key] = data[passthrough_key]
     return result
