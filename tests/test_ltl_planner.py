@@ -415,6 +415,11 @@ def main():
     test_advance_unknown_task()
     test_advance_no_edge_sink()
     test_normalize_key_variants()
+    test_classify_global_avoidance()
+    test_active_constraints_global()
+    test_active_constraints_scoped()
+    test_no_constraints_simple_sequence()
+    test_multiple_global_constraints()
     print("-" * 50)
     print("All robustness tests passed.")
 

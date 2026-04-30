@@ -103,6 +103,8 @@ class LTLSymbolicPlanner:
         self.current_automaton_state = self.automaton.get_init_state_number()
         self.finished = False
         self.constraint_predicates = self._classify_predicates()
+        if self.constraint_predicates:
+            print(f"[LTL Planner] Constraints: {self.constraint_predicates}")
 
     def _add_sink_state(self) -> None:
         """
@@ -253,15 +255,15 @@ class LTLSymbolicPlanner:
 
         for key in self.pi_map:
             p_idx = _predicate_key_to_index(key)
+            try:
+                test_bdd = self._get_bdd_for_single_task(p_idx)
+            except ValueError:
+                continue
             is_goal = False
 
             for state in range(num_states):
                 if state == self._sink_state:
                     continue
-                try:
-                    test_bdd = self._get_bdd_for_single_task(p_idx)
-                except ValueError:
-                    break
                 for edge in self.automaton.out(state):
                     if edge.dst == state:
                         continue
