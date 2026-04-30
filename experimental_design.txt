@@ -90,14 +90,14 @@ Implementation: Use the same LLM (gpt-4o) to break the instruction
 Why: Isolates the contribution of LTL formalism. Shows that without
   the automaton state machine and formal constraint encoding:
   (a) The LLM may hallucinate impossible orderings or skip steps.
-  (b) Negative constraints ("never fly over X") have no formal
-      enforcement mechanism.
+  (b) Temporal constraints ("never fly over X", "always stay above
+      10m") have no formal enforcement mechanism.
   (c) Complex temporal logic (OR branches, concurrent obligations)
       cannot be expressed as a flat sequential list.
 Expected outcome: Performs reasonably on simple sequential tasks but
-  fails on tasks with negative constraints, branching, or complex
-  temporal dependencies. The gap vs. Condition 0 should be largest on
-  tasks with negative constraints.
+  fails on tasks with temporal constraints, branching, or complex
+  dependencies. The gap vs. Condition 0 should be largest on tasks
+  with constraints.
 
 CONDITION 3: OPEN-LOOP LTL (No Monitor, No Corrections)
 --------------------------------------------------------
@@ -199,79 +199,133 @@ Expected outcome: Reasonable progress tracking but unreliable
   similar-looking landmarks.
 
 
-3. NEGATIVE CONSTRAINT SUPPORT (REQUIRED MODIFICATIONS)
+3. TEMPORAL CONSTRAINT SUPPORT
 ======================================================================
 
-Current system limitation: The LTL `!` operator is used only for
-sequencing (`!pi_2 U pi_1` = "pi_1 before pi_2"), not for genuine
-avoidance constraints. The following modifications are needed.
+The LTL planner supports temporal constraints (both avoidance and
+maintenance) in addition to goal sequencing. The system handles all
+constraint types that the Spot automaton can represent, using BDD
+queries rather than formula parsing. Four constraint forms are
+supported:
 
-3a. LTL PROMPT MODIFICATIONS
+  Negative (avoidance) constraints:
+  - G(!pi_X): Global avoidance. pi_X must never become true.
+    Example: "never fly over building C" with G(!pi_3).
+  - !pi_X U pi_Y: Scoped avoidance. pi_X must not become true until
+    pi_Y is achieved. Example: "stay away from the red car until you
+    reach the streetlight" with !pi_3 U pi_2.
+
+  Positive (maintenance) constraints:
+  - G(pi_X): Global maintenance. pi_X must always remain true.
+    Example: "always stay above 10 meters" with G(pi_2).
+  - pi_X U pi_Y: Scoped maintenance. pi_X must remain true until
+    pi_Y is achieved. Example: "keep the river visible until you
+    reach the tree" with pi_3 U pi_1.
+
+Each constraint carries a polarity (negative or positive) stored in
+a ConstraintInfo dataclass, which the monitor uses to label
+constraints as "AVOID" or "MAINTAIN" in VLM prompts.
+
+3a. LTL PROMPT DESIGN
 -----------------------------
-Add to LTL_NL_SYSTEM_PROMPT:
-  - New predicate type: CONSTRAINT predicates that represent conditions
-    to maintain throughout execution, not subgoals to achieve.
-  - Example: "Go to A then B, but never fly over building C"
-    pi_1 = "Go to A"
-    pi_2 = "Go to B"
-    pi_3 = "Flying over building C" (constraint predicate)
-    Formula: F pi_2 & (!pi_2 U pi_1) & G(!pi_3)
-    (G = Globally/Always, meaning pi_3 must NEVER become true)
-  - Alternative using Until for negative constraints during subgoals:
-    "Approach tree A while staying away from building B"
-    pi_1 = "Approach tree A"
-    pi_2 = "Near building B" (violation condition)
-    Formula: F pi_1 & (!pi_2 U pi_1)
-    This means "pi_2 must not become true until pi_1 is complete",
-    i.e., the drone must avoid building B during the approach.
+LTL_NL_SYSTEM_PROMPT includes documentation on constraint predicates:
+  - Constraint predicates represent CONDITIONS TO ENFORCE, not goals.
+  - Negative constraints: G(!pi_X) for unconditional avoidance,
+    !pi_X U pi_Y for scoped avoidance.
+  - Positive constraints: G(pi_X) for unconditional maintenance,
+    pi_X U pi_Y for scoped maintenance.
+  - Decision criteria: "never", "avoid", "stay away from" signal
+    negative constraint predicates; "always keep", "maintain",
+    "stay above" signal positive constraint predicates; "go to",
+    "approach", "reach" signal goals.
 
-Add examples to LTL_NL_EXAMPLES_PROMPT:
-  - Sequential with avoidance: "Go to A then B, never passing through
-    the restricted zone"
-  - Conditional avoidance: "Approach the tree, but stay away from the
-    building until you reach the tree"
+LTL_NL_EXAMPLES_PROMPT includes worked examples:
+  - Global avoidance: "Go to tree, then streetlight, never fly over
+    building" with G(!pi_3)
+  - Scoped avoidance: "Approach sculpture, stay away from red car
+    until you reach it" with !pi_2 U pi_1
+  - Multiple avoidance: "Go to park, then traffic light, never go
+    near building A or B" with G(!pi_3) & G(!pi_4)
+  - Global maintenance: "Fly to the landmark, always stay above
+    10 meters" with G(pi_2)
+  - Scoped maintenance: "Go to tree, then streetlight, keep river
+    visible until tree" with (pi_3 U pi_1)
+  - Mixed constraints: "Navigate to bridge, stay above treeline,
+    never over highway" with G(pi_2) & G(!pi_3)
 
-3b. GOAL ADHERENCE MONITOR MODIFICATIONS
------------------------------------------
-The diary monitor must be aware of active negative constraints for
-the current subgoal. Modifications needed:
-
-(i) Pass negative constraints to LiveDiaryMonitor constructor:
-    - New parameter: `negative_constraints: List[str]`
-    - Example: ["stay away from building B", "do not fly over zone C"]
-
-(ii) Inject constraints into DIARY_GLOBAL_PROMPT:
-    Add after subgoal line:
-    "Active constraints (must be maintained throughout):
-     - {constraint_1}
-     - {constraint_2}
-     ..."
-    Add to JSON output: "constraint_violated": true/false
-    When violated: set should_stop = true, provide reasoning.
-
-(iii) Inject constraints into DIARY_CONVERGENCE_PROMPT:
-    Same constraint injection. Check if constraints were maintained
-    during the entire subgoal execution.
-
-(iv) Extract constraints from LTL formula:
-    The LTL planner should output which negative predicates are active
-    for each subgoal. For "!pi_2 U pi_1", when executing pi_1, the
-    constraint is "pi_2 must not become true." The runner passes the
-    NL description of pi_2 as a negative constraint to the monitor.
-
-3c. SUBGOAL CONVERTER MODIFICATIONS
-------------------------------------
-When a subgoal has associated negative constraints, the SubgoalConverter
-should be aware of them but NOT embed them in the OpenVLA instruction
-(OpenVLA cannot handle "do X while avoiding Y"). Instead, the
-constraints are handled entirely by the diary monitor.
-
-3d. RUNNER MODIFICATIONS (run_integration.py)
+3b. AUTOMATON-BASED CONSTRAINT CLASSIFICATION
 ----------------------------------------------
-Before calling _run_subgoal, extract active negative constraints from
-the current LTL automaton state. Pass them to the LiveDiaryMonitor.
-When the monitor reports constraint_violated, halt the subgoal and
-report failure (the LTL formula is violated).
+After the Spot automaton is built, each predicate is classified as
+goal or constraint, and each constraint's polarity is determined,
+using a three-pass BDD query approach:
+
+  Pass 1 (goal vs. constraint): A predicate is a CONSTRAINT if it
+  never has a forward-progressing edge (dst != src) at any state.
+  Goal predicates advance the automaton; constraint predicates do
+  not.
+
+  Pass 2 (polarity detection): For each candidate constraint, two
+  BDDs are tested at the initial state:
+    - "Only this predicate TRUE" BDD: if edges exist, the automaton
+      accepts the predicate being true (positive candidate).
+    - "All predicates FALSE" BDD: if no edges exist, the automaton
+      rejects the predicate being false (positive confirmation).
+  A constraint is classified as positive when the first BDD has edges
+  and the second does not. Otherwise it defaults to negative.
+
+  Pass 3 (re-check with positive constraints): Candidates classified
+  as negative in pass 2 are re-checked using a BDD that sets the
+  candidate TRUE alongside all identified positive constraints.
+  If forward edges now appear, the candidate is actually a goal that
+  was blocked by unsatisfied positive constraints in pass 1, and it
+  is reclassified as a goal.
+
+  Active constraint detection per state uses polarity-aware BDDs:
+    - Negative: making the predicate TRUE produces no valid edge at
+      the current state (the violation is rejected).
+    - Positive: making the predicate FALSE (with other positive
+      constraints set TRUE) produces no valid edge at the current
+      state.
+  When a scoped constraint expires (e.g., !pi_X U pi_Y after pi_Y,
+  or pi_X U pi_Y after pi_Y), the violation BDD starts matching
+  edges and the constraint is released.
+
+  Goal checking (get_next_predicate, advance_state) also satisfies
+  positive constraints in BDD queries, so the automaton correctly
+  identifies forward edges even when positive constraints are present.
+
+This approach is robust to any formula structure the automaton can
+represent, with no regex parsing of the LTL formula string.
+
+3c. GOAL ADHERENCE MONITOR CONSTRAINT HANDLING
+-----------------------------------------------
+The LiveDiaryMonitor accepts a constraints parameter containing
+ConstraintInfo objects (with description and polarity). When
+constraints are present:
+
+  - Constraints are injected into DIARY_GLOBAL_PROMPT and
+    DIARY_CONVERGENCE_PROMPT after the subgoal line, labeled as
+    "AVOID: ..." for negative or "MAINTAIN: ..." for positive.
+  - The VLM JSON output includes a "constraint_violated": true/false
+    field.
+  - On violation: force_converge stops the drone, then the existing
+    convergence correction flow issues a corrective command (e.g.,
+    "move away from building B" for avoidance violations, or
+    "ascend to restore altitude" for maintenance violations).
+    Corrections share the same budget as normal convergence
+    corrections.
+
+The SubgoalConverter is NOT modified. Constraints are handled entirely
+by the diary monitor, since OpenVLA cannot process compound constraint
+instructions.
+
+3d. RUNNER INTEGRATION
+----------------------------------------------
+Before each subgoal, run_integration.py calls
+planner.get_active_constraints() to extract ConstraintInfo objects
+for constraints active at the current automaton state. These are
+passed to the LiveDiaryMonitor via _run_subgoal. Constraint status
+(including polarity) is logged per subgoal in the result dict.
 
 
 4. TASK DESIGN
@@ -308,17 +362,20 @@ Category 1: PURE SEQUENTIAL (3 tasks)
   Example: "Go past the first streetlamp, then turn right until you
   see the black car, then approach the black car."
 
-Category 2: SEQUENTIAL WITH NEGATIVE CONSTRAINTS (6 tasks)
-  Ordered sequences where certain zones or landmarks must be avoided
-  during execution.
-  LTL: F pi_2 & (!pi_2 U pi_1) & (!pi_3 U pi_2)
-  where pi_3 is a spatial violation (e.g., "near building X")
+Category 2: SEQUENTIAL WITH CONSTRAINTS (6 tasks)
+  Ordered sequences where temporal constraints (avoidance or
+  maintenance) must be enforced during execution.
+  LTL: F pi_2 & (!pi_2 U pi_1) & (!pi_3 U pi_2) (avoidance)
+       F pi_2 & (!pi_2 U pi_1) & G(pi_3) (maintenance)
   Purpose: THE KEY DIFFERENTIATOR. These tasks make the LTL formalism
   strictly necessary. Without formal constraint encoding, Condition 2
-  (LLM planner) has no mechanism to enforce avoidance.
-  Example: "Approach the tree from the right side, then go to the
-  streetlight, but stay away from the red car until you reach
-  the streetlight."
+  (LLM planner) has no mechanism to enforce temporal constraints.
+  Examples:
+    - "Approach the tree from the right side, then go to the
+      streetlight, but stay away from the red car until you reach
+      the streetlight."
+    - "Fly to the landmark, then the park, but always stay above
+      10 meters altitude."
 
 Category 3: BRANCHING / OR (3 tasks)
   Tasks with alternative paths (do A or B, then C).
@@ -328,19 +385,19 @@ Category 3: BRANCHING / OR (3 tasks)
   the white building."
 
 Category 4: COMPLEX MULTI-CONSTRAINT (3 tasks)
-  Combine sequencing, avoidance, and branching.
-  LTL: F pi_3 & (!pi_3 U pi_1) & (!pi_4 U pi_3)
-  with concurrent avoidance constraints.
+  Combine sequencing, mixed constraint types, and branching.
+  LTL: F pi_3 & (!pi_3 U pi_1) & G(pi_4) & G(!pi_5)
+  with concurrent avoidance and maintenance constraints.
   Purpose: Stress test the full system. Should maximally differentiate
   Condition 0 from all baselines.
   Example: "First approach the tree, then navigate to the traffic
-  light while staying away from the parked cars, then land near
-  the sculpture. Never fly above the building at any point."
+  light, then land near the sculpture. Always stay above the
+  treeline and never fly over the highway."
 
 NOTE ON TASK BALANCE: At least 9 of the 15 tasks (60%) must include
-meaningful negative constraints. This is critical: without them, the
-gap between Condition 0 and Condition 2 narrows, undermining the
-LTL contribution.
+meaningful temporal constraints (avoidance, maintenance, or both).
+This is critical: without them, the gap between Condition 0 and
+Condition 2 narrows, undermining the LTL contribution.
 
 4c. TASK JSON FORMAT
 ---------------------
@@ -352,8 +409,8 @@ Each task JSON should include:
     the streetlight, but stay away from the red car until you reach
     the streetlight.",
   "initial_pos": [-7500, 848, 396, -177],
-  "negative_constraints_expected": [
-    "stay away from the red car"
+  "constraints_expected": [
+    {"description": "stay away from the red car", "polarity": "negative"}
   ],
   "expected_subgoal_count": 2,
   "difficulty": "medium",
@@ -387,7 +444,8 @@ M1. Task Success Rate
 
 M2. Constraint Adherence Rate
   - Definition: Of all episodes (successful or not), what fraction
-    maintained all negative constraints throughout execution?
+    maintained all temporal constraints (both avoidance and
+    maintenance) throughout execution?
   - Measurement: Binary per episode. Checked via diary monitor
     constraint_violated flag (Conditions 0, 2, 4, 5, 6) or post-hoc
     trajectory analysis (Conditions 1, 3 which have no monitor).
@@ -595,7 +653,7 @@ Text Diary             | Yes | No  | Yes | No  | No  | No  | Yes
 Displacement Data      | Yes | No  | Yes | No  | No  | No  | Yes
 Convergence Correction | Yes | No  | Yes | No  | Yes*| Yes | Yes
 Stall Detection        | Yes | No  | Yes | No  | No  | No  | Yes
-Neg. Constraint Aware  | Yes | No  | No  | No  | No  | No  | No
+Constraint Enforcement | Yes | No  | No  | No  | No  | No  | No
 
 C4*: Uses single-frame VLM, no diary. Has convergence corrections
      but based on single-frame assessment only.
@@ -651,22 +709,22 @@ Before running the full experiment suite:
     grid provides no measurable benefit in these pilots, consider
     dropping Condition 5 and reducing scope. (Per user NOTE2.)
 
-[ ] NEGATIVE CONSTRAINT PIPELINE: Implement and test the modifications
-    described in Section 3. Verify that:
-    (a) LTL planner correctly generates formulas with G(!pi_X) or
-        !pi_X U pi_Y for avoidance constraints.
-    (b) Runner correctly extracts active negative constraints per
-        subgoal from the automaton state.
-    (c) Diary monitor correctly injects constraints into prompts and
-        detects violations.
-    Run at least 3 tasks with negative constraints end-to-end.
+[ ] CONSTRAINT PIPELINE: Verify end-to-end in the simulator.
+    Run at least 3 tasks with temporal constraints and confirm:
+    (a) LTL planner generates correct formulas with G(!pi_X),
+        !pi_X U pi_Y, G(pi_X), or pi_X U pi_Y.
+    (b) Planner classifies constraints with correct polarity
+        (negative for avoidance, positive for maintenance).
+    (c) Runner extracts active constraints per subgoal and passes
+        them to the diary monitor with polarity labels.
+    (d) Diary monitor detects violations and issues corrective commands.
 
 [ ] TASK SCOUTING: Use scripts/scout_locations.py to identify the 3
     map regions. For each region, verify:
     (a) Sufficient landmark diversity for 5 tasks.
-    (b) Negative constraint tasks are physically meaningful (e.g.,
-        there IS a building between the start and the tree that the
-        drone must avoid).
+    (b) Constraint tasks are physically meaningful (e.g., there IS a
+        building between the start and the tree that the drone must
+        avoid, or altitude bounds are verifiable).
     (c) Starting positions are valid and the drone spawns correctly.
 
 [ ] CONDITION IMPLEMENTATIONS: Verify each modified script runs
@@ -698,8 +756,9 @@ Before running the full experiment suite:
   Note that none of these prior methods target UAV control with LTL.
 
 - The strongest story comes from the gap between Condition 2 and
-  Condition 0 on negative-constraint tasks. This is the unique
-  contribution of LTL formalism over ad-hoc LLM planning.
+  Condition 0 on constraint tasks (both avoidance and maintenance).
+  This is the unique contribution of LTL formalism over ad-hoc LLM
+  planning.
 
 - The second strongest story comes from Condition 3 vs. Condition 0.
   This proves that even with perfect planning (same LTL), execution
@@ -717,7 +776,7 @@ Before running the full experiment suite:
 12. IMPLEMENTATION PRIORITY ORDER
 ======================================================================
 
-1. Negative constraint support (Section 3) -- load-bearing for the
+1. Temporal constraint support (Section 3) -- load-bearing for the
    paper's core contribution. Without this, the LTL advantage over
    Condition 2 is marginal.
 

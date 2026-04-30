@@ -3,11 +3,18 @@ LTL Symbolic Planner: parses natural language to LTL-NL via LLM, then uses Spot
 to manage the automaton state and determine the next short-horizon subgoal.
 """
 
-from typing import Optional
+from dataclasses import dataclass
+from typing import Literal, Optional
 
 import spot
 
 from .llm_interface import LLMUserInterface
+
+
+@dataclass
+class ConstraintInfo:
+    description: str
+    polarity: Literal["negative", "positive"]
 
 
 def _predicate_key_to_index(key: str) -> int:
@@ -51,7 +58,7 @@ class LTLSymbolicPlanner:
         self._last_returned_predicate_key: Optional[str] = None  # Key of predicate last returned by get_next_predicate (allows duplicate descriptions)
         self.finished = False
         self._raw_formula: str = ""
-        self.constraint_predicates: dict[str, str] = {}
+        self.constraint_predicates: dict[str, ConstraintInfo] = {}
 
     def plan_from_natural_language(self, instruction: str) -> None:
         """
@@ -154,6 +161,26 @@ class LTLSymbolicPlanner:
         f = spot.formula(formula_str)
         return spot.formula_to_bdd(f, self.automaton.get_dict(), self.automaton)
 
+    def _get_bdd_goal_check(self, goal_p_idx: int):
+        """BDD for goal checking: goal predicate TRUE, positive constraints TRUE, rest FALSE."""
+        positive_indices = {
+            _predicate_key_to_index(k)
+            for k, info in self.constraint_predicates.items()
+            if info.polarity == "positive"
+        }
+        clauses = []
+        for key in self.pi_map:
+            idx = _predicate_key_to_index(key)
+            if idx == goal_p_idx or idx in positive_indices:
+                clauses.append(f"p{idx}")
+            else:
+                clauses.append(f"!p{idx}")
+        return spot.formula_to_bdd(
+            spot.formula(" & ".join(clauses)),
+            self.automaton.get_dict(),
+            self.automaton,
+        )
+
     def get_next_predicate(self) -> Optional[str]:
         """
         Finds the next task by testing which 'p' allows us to leave the current state.
@@ -175,7 +202,7 @@ class LTLSymbolicPlanner:
                 continue
             p_idx = _predicate_key_to_index(key)
             try:
-                test_world_bdd = self._get_bdd_for_single_task(p_idx)
+                test_world_bdd = self._get_bdd_goal_check(p_idx)
             except ValueError:
                 continue
             for edge in self.automaton.out(self.current_automaton_state):
@@ -202,7 +229,7 @@ class LTLSymbolicPlanner:
             return
         p_idx = _predicate_key_to_index(pi_key)
         try:
-            current_world_bdd = self._get_bdd_for_single_task(p_idx)
+            current_world_bdd = self._get_bdd_goal_check(p_idx)
         except ValueError:
             return
         bdd_false = spot.formula_to_bdd(
@@ -223,8 +250,6 @@ class LTLSymbolicPlanner:
                 break
 
         if not found_next:
-            # No matching edge: move to sink if present (then get_next_predicate returns None),
-            # otherwise mark mission complete to avoid invalid state numbers.
             if self._sink_state is not None:
                 self.current_automaton_state = self._sink_state
                 print(
@@ -238,13 +263,17 @@ class LTLSymbolicPlanner:
                     "marking mission complete."
                 )
 
-    def _classify_predicates(self) -> dict[str, str]:
+    def _classify_predicates(self) -> dict[str, ConstraintInfo]:
         """Classify predicates as constraints vs goals using automaton structure.
 
-        A predicate is a CONSTRAINT (not a goal) if it never has a
-        forward-progressing edge (dst != src) at ANY state in the automaton.
-        Edges to the sink state (added by _add_sink_state) are excluded since
-        the sink is an implementation artifact, not a genuine LTL transition.
+        Uses a three-pass approach:
+        1. Identify candidate constraints: predicates with no forward edge
+           when only that predicate is TRUE (all others FALSE).
+        2. Detect polarity of each candidate.
+        3. Re-check candidates with "negative" polarity by setting all
+           identified positive constraints TRUE alongside the candidate.
+           If forward edges appear, the candidate is actually a goal that
+           was blocked by unsatisfied positive constraints in pass 1.
         """
         if not self.pi_map or self.automaton is None:
             return {}
@@ -253,40 +282,123 @@ class LTLSymbolicPlanner:
             spot.formula("0"), self.automaton.get_dict(), self.automaton
         )
         num_states = self.automaton.num_states()
-        constraints: dict[str, str] = {}
 
+        # Pass 1: find candidates (no forward edge with "only this TRUE" BDD)
+        candidate_keys: list[str] = []
         for key in self.pi_map:
             p_idx = _predicate_key_to_index(key)
             try:
                 test_bdd = self._get_bdd_for_single_task(p_idx)
             except ValueError:
                 continue
-            is_goal = False
-
-            for state in range(num_states):
-                if state == self._sink_state:
-                    continue
-                for edge in self.automaton.out(state):
-                    if edge.dst == state:
-                        continue
-                    if edge.dst == self._sink_state:
-                        continue
-                    if (test_bdd & edge.cond) != bdd_false:
-                        is_goal = True
-                        break
-                if is_goal:
-                    break
-
+            is_goal = self._has_forward_edge(test_bdd, bdd_false, num_states)
             if not is_goal:
-                constraints[key] = self.pi_map[key]
+                candidate_keys.append(key)
+
+        # Pass 2: detect polarity of each candidate
+        polarities: dict[str, Literal["negative", "positive"]] = {}
+        for key in candidate_keys:
+            polarities[key] = self._detect_polarity(key, bdd_false)
+
+        positive_keys = [k for k, p in polarities.items() if p == "positive"]
+
+        # Pass 3: re-check negative candidates with positive constraints satisfied
+        constraints: dict[str, ConstraintInfo] = {}
+        for key in candidate_keys:
+            if polarities[key] == "positive":
+                constraints[key] = ConstraintInfo(
+                    description=self.pi_map[key], polarity="positive",
+                )
+                continue
+
+            if positive_keys:
+                p_idx = _predicate_key_to_index(key)
+                recheck_bdd = self._get_bdd_with_positives(p_idx, positive_keys)
+                if self._has_forward_edge(recheck_bdd, bdd_false, num_states):
+                    continue
+
+            constraints[key] = ConstraintInfo(
+                description=self.pi_map[key], polarity="negative",
+            )
 
         return constraints
 
-    def get_active_constraints(self) -> list[str]:
-        """Return natural-language descriptions of constraints active at the current state.
+    def _has_forward_edge(self, test_bdd, bdd_false, num_states: int) -> bool:
+        """Check if test_bdd produces any forward (non-self, non-sink) edge at any state."""
+        for state in range(num_states):
+            if state == self._sink_state:
+                continue
+            for edge in self.automaton.out(state):
+                if edge.dst == state:
+                    continue
+                if edge.dst == self._sink_state:
+                    continue
+                if (test_bdd & edge.cond) != bdd_false:
+                    return True
+        return False
 
-        An active constraint at the current state is one where making the
-        predicate true produces NO valid edge at all (not even a self-loop).
+    def _get_bdd_with_positives(self, active_p_idx: int, positive_keys: list[str]):
+        """BDD where active_p_idx is TRUE, positive constraint predicates are TRUE, rest FALSE."""
+        positive_indices = {_predicate_key_to_index(k) for k in positive_keys}
+        clauses = []
+        for key in self.pi_map:
+            idx = _predicate_key_to_index(key)
+            if idx == active_p_idx or idx in positive_indices:
+                clauses.append(f"p{idx}")
+            else:
+                clauses.append(f"!p{idx}")
+        return spot.formula_to_bdd(
+            spot.formula(" & ".join(clauses)),
+            self.automaton.get_dict(),
+            self.automaton,
+        )
+
+    def _get_bdd_all_false(self):
+        """BDD where ALL predicates are FALSE."""
+        clauses = [f"!p{_predicate_key_to_index(k)}" for k in self.pi_map]
+        return spot.formula_to_bdd(
+            spot.formula(" & ".join(clauses)),
+            self.automaton.get_dict(),
+            self.automaton,
+        )
+
+    def _detect_polarity(self, key: str, bdd_false) -> Literal["negative", "positive"]:
+        """Detect whether a constraint is negative (avoid) or positive (maintain).
+
+        Tests two BDDs at the initial state:
+        - bdd_true: this predicate TRUE, all others FALSE
+        - bdd_all_false: all predicates FALSE
+
+        If bdd_true has edges but bdd_all_false does not, the predicate being
+        TRUE is accepted and being FALSE is rejected: positive (maintain).
+        Otherwise, default to negative (avoid).
+        """
+        p_idx = _predicate_key_to_index(key)
+        bdd_true = self._get_bdd_for_single_task(p_idx)
+        bdd_all_false = self._get_bdd_all_false()
+
+        init = self.automaton.get_init_state_number()
+        has_edge_true = any(
+            (bdd_true & edge.cond) != bdd_false
+            for edge in self.automaton.out(init)
+        )
+        has_edge_all_false = any(
+            (bdd_all_false & edge.cond) != bdd_false
+            for edge in self.automaton.out(init)
+        )
+
+        if has_edge_true and not has_edge_all_false:
+            return "positive"
+        return "negative"
+
+    def get_active_constraints(self) -> list[ConstraintInfo]:
+        """Return constraints active at the current automaton state.
+
+        A constraint is active when making its violation BDD true produces
+        NO valid edge at the current state:
+        - Negative: predicate TRUE (all others FALSE) has no edge.
+        - Positive: predicate FALSE (other positive constraints TRUE,
+          everything else FALSE) has no edge.
         """
         if self.finished or not self.constraint_predicates or self.automaton is None:
             return []
@@ -294,12 +406,11 @@ class LTLSymbolicPlanner:
         bdd_false = spot.formula_to_bdd(
             spot.formula("0"), self.automaton.get_dict(), self.automaton
         )
-        active: list[str] = []
+        active: list[ConstraintInfo] = []
 
-        for key, nl_desc in self.constraint_predicates.items():
-            p_idx = _predicate_key_to_index(key)
+        for key, info in self.constraint_predicates.items():
             try:
-                test_bdd = self._get_bdd_for_single_task(p_idx)
+                test_bdd = self._get_bdd_constraint_violation(key, bdd_false)
             except ValueError:
                 continue
 
@@ -310,7 +421,37 @@ class LTLSymbolicPlanner:
                     break
 
             if not has_any_edge:
-                active.append(nl_desc)
+                active.append(info)
 
         return active
+
+    def _get_bdd_constraint_violation(self, key: str, bdd_false) -> "spot.bdd":
+        """Build BDD representing the violation state for a constraint.
+
+        For negative constraints: predicate TRUE, all others FALSE.
+        For positive constraints: predicate FALSE, other positive constraints
+        TRUE (satisfied), everything else FALSE.
+        """
+        info = self.constraint_predicates[key]
+        target_idx = _predicate_key_to_index(key)
+
+        if info.polarity == "negative":
+            return self._get_bdd_for_single_task(target_idx)
+
+        clauses = []
+        for k in self.pi_map:
+            idx = _predicate_key_to_index(k)
+            if k == key:
+                clauses.append(f"!p{idx}")
+            elif (k in self.constraint_predicates
+                  and self.constraint_predicates[k].polarity == "positive"):
+                clauses.append(f"p{idx}")
+            else:
+                clauses.append(f"!p{idx}")
+
+        return spot.formula_to_bdd(
+            spot.formula(" & ".join(clauses)),
+            self.automaton.get_dict(),
+            self.automaton,
+        )
 

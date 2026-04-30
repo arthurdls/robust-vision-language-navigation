@@ -136,6 +136,7 @@ class LiveDiaryMonitor:
         stall_window: int = 3,
         stall_threshold: float = 0.05,
         stall_completion_floor: float = 0.8,
+        constraints: Optional[List[Any]] = None,
         negative_constraints: Optional[List[str]] = None,
     ):
         self._subgoal = subgoal
@@ -143,7 +144,9 @@ class LiveDiaryMonitor:
         self._model = model
         self._artifacts_dir = artifacts_dir
         self._max_corrections = max_corrections
-        self._negative_constraints: List[str] = list(negative_constraints or [])
+        self._constraints: List[Any] = list(
+            constraints or negative_constraints or []
+        )
 
         # Time-based mode configuration
         self._time_based: bool = check_interval_s is not None
@@ -498,12 +501,16 @@ class LiveDiaryMonitor:
         )
 
     def _constraints_block(self) -> str:
-        """Return a prompt section listing active negative constraints, or empty string."""
-        if not self._negative_constraints:
+        """Return a prompt section listing active constraints, or empty string."""
+        if not self._constraints:
             return ""
         lines = ["Active constraints (must be maintained throughout):"]
-        for c in self._negative_constraints:
-            lines.append(f"  - {c}")
+        for c in self._constraints:
+            if hasattr(c, "polarity"):
+                label = "AVOID" if c.polarity == "negative" else "MAINTAIN"
+                lines.append(f"  - {label}: {c.description}")
+            else:
+                lines.append(f"  - {c}")
         lines.append("")
         return "\n".join(lines)
 
@@ -912,7 +919,7 @@ class LiveDiaryMonitor:
         pct = float(parsed.get("completion_percentage", self._last_completion_pct))
         pct = max(0.0, min(1.0, pct))
 
-        if self._negative_constraints and parsed.get("constraint_violated", False):
+        if self._constraints and parsed.get("constraint_violated", False):
             return DiaryCheckResult(
                 action="force_converge",
                 new_instruction="",

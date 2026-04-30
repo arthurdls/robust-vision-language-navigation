@@ -7,12 +7,13 @@ This system decomposes multi-step natural language instructions into an LTL form
 ## Architecture
 
 ```
-Instruction: "Go to the red building, then land near the tree"
+Instruction: "Go to the red building, then land near the tree, never fly over the highway"
     |
     v
-LTL Planner (LLM -> Spot automaton)
+LTL Planner (LLM -> Spot automaton -> constraint classification)
     |
     v  subgoal: "approach the red building"
+    |  constraints: [AVOID: "Flying over the highway"]
 SubgoalConverter (LLM -> short OpenVLA command + OOD check)
     |
     |  if outside distribution -> ask_help / stop_reason="ood"
@@ -40,6 +41,15 @@ Operator Help (hardware) or stop_reason="ask_help" (simulation)
   [3] Skip subgoal
   [4] Abort mission
 ```
+
+### Temporal Constraints
+
+The LTL planner automatically classifies predicates as goals or constraints using BDD queries on the Spot automaton. Constraints carry a polarity:
+
+- **Negative (avoidance)**: `G(!pi_X)` (never do X) or `!pi_X U pi_Y` (avoid X until Y). The VLM prompt labels these as `AVOID: ...`.
+- **Positive (maintenance)**: `G(pi_X)` (always maintain X) or `pi_X U pi_Y` (maintain X until Y). The VLM prompt labels these as `MAINTAIN: ...`.
+
+Active constraints are passed to the LiveDiaryMonitor, which injects them into VLM prompts. On violation, the monitor triggers `force_converge` and the supervisor issues a corrective command (e.g., "move away from building B" or "ascend to restore altitude"), sharing the same correction budget as normal convergence corrections.
 
 ### Checkpoint Modes
 
