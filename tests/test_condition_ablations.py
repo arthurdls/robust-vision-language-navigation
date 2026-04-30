@@ -82,7 +82,7 @@ class TestCondition0FullSystem:
 
     def test_condition_label(self):
         source = _read_source("run_integration.py")
-        assert '"condition"' not in source or "condition0" not in source
+        assert '"condition0_full_system"' in source
 
 
 # -------------------------------------------------------------------------

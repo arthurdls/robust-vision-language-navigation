@@ -75,11 +75,13 @@ class SubgoalConverter:
         text = response.strip()
         try:
             parsed = json.loads(text)
+            if not isinstance(parsed, dict):
+                raise TypeError(f"Expected JSON object, got {type(parsed).__name__}")
             return ConversionResult(
                 instruction=str(parsed.get("sub_goal", original_subgoal)).strip(),
                 outside_of_distribution=bool(parsed.get("outside_of_distribution", False)),
             )
-        except (json.JSONDecodeError, TypeError, ValueError):
+        except (json.JSONDecodeError, TypeError, ValueError, AttributeError):
             logger.warning(
                 "SubgoalConverter: failed to parse JSON, falling back to plain text: %s",
                 text,
