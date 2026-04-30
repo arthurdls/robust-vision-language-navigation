@@ -263,6 +263,37 @@ Language (NL) to define complex, multi-step tasks for robots.
         * * **Logic**: We need '`pi_1` before `pi_2`' AND '`pi_2` before `pi_3`'.
         * * **Formula**: `F pi_3 & (!pi_2 U pi_1) & (!pi_3 U pi_2)`
         * ---
+        * ### Avoidance Constraints (G and Negative Predicates)
+        * Some predicates represent CONDITIONS TO AVOID rather than goals to achieve.
+        * These are called **constraint predicates**.
+        *
+        * **G (Globally/Always)**: `G(!pi_X)` means "pi_X must NEVER become true."
+        * Use this for unconditional avoidance: things the robot must avoid at all times.
+        *
+        * * **Example**: "Go to A then B, but never fly over building C."
+        *   * `pi_1` = "Go to A"
+        *   * `pi_2` = "Go to B"
+        *   * `pi_3` = "Flying over building C" (constraint predicate)
+        *   * Formula: `F pi_2 & (!pi_2 U pi_1) & G(!pi_3)`
+        *
+        * **Scoped avoidance using Until**: `!pi_X U pi_Y` can also encode
+        * "avoid pi_X until pi_Y is achieved" when pi_X is a spatial condition
+        * rather than a goal.
+        *
+        * * **Example**: "Approach the tree, but stay away from building B until you reach the tree."
+        *   * `pi_1` = "Approach the tree"
+        *   * `pi_2` = "Near building B" (constraint predicate)
+        *   * Formula: `F pi_1 & (!pi_2 U pi_1)`
+        *
+        * **How to decide if a predicate is a constraint vs. a goal**:
+        * * If the instruction says "never", "avoid", "stay away from", "do not go near",
+        *   "do not fly over" -- the predicate describes the VIOLATION CONDITION
+        *   (what would be bad), and it gets negated with G(!) or placed on the left of U.
+        * * If the instruction says "go to", "approach", "reach", "deliver" -- the
+        *   predicate describes a GOAL to achieve.
+        * * A constraint predicate should describe the state that must NOT occur
+        *   (e.g., "Flying over building C", "Near the red car"), NOT the desired
+        *   behavior (e.g., NOT "Stay away from building C").
 
 
 ### Your Task
@@ -364,6 +395,39 @@ Assistant:
         "pi_4": "Deliver Coke 2 to Location B"
     },
     "ltl_nl_formula": "F pi_4 & (!pi_4 U pi_1) & F pi_2 & (!pi_2 U pi_3)"
+}
+
+User: 'Go to the tree, then go to the streetlight, but never fly over the building.'
+Assistant:
+{
+    "pi_predicates": {
+        "pi_1": "Go to the tree",
+        "pi_2": "Go to the streetlight",
+        "pi_3": "Flying over the building"
+    },
+    "ltl_nl_formula": "F pi_2 & (!pi_2 U pi_1) & G(!pi_3)"
+}
+
+User: 'Approach the sculpture, but stay away from the red car until you reach the sculpture.'
+Assistant:
+{
+    "pi_predicates": {
+        "pi_1": "Approach the sculpture",
+        "pi_2": "Near the red car"
+    },
+    "ltl_nl_formula": "F pi_1 & (!pi_2 U pi_1)"
+}
+
+User: 'First go to the park, then navigate to the traffic light, and never go near building A or building B at any point.'
+Assistant:
+{
+    "pi_predicates": {
+        "pi_1": "Go to the park",
+        "pi_2": "Navigate to the traffic light",
+        "pi_3": "Near building A",
+        "pi_4": "Near building B"
+    },
+    "ltl_nl_formula": "F pi_2 & (!pi_2 U pi_1) & G(!pi_3) & G(!pi_4)"
 }"""
 
 LTL_NL_RESTATED_TASK_PROMPT = """\

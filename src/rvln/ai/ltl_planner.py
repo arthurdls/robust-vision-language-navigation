@@ -50,6 +50,7 @@ class LTLSymbolicPlanner:
         self.pi_map = {}  # Maps pi_x -> Natural Language description
         self._last_returned_predicate_key: Optional[str] = None  # Key of predicate last returned by get_next_predicate (allows duplicate descriptions)
         self.finished = False
+        self._raw_formula: str = ""
         self.constraint_predicates: dict[str, str] = {}
 
     def plan_from_natural_language(self, instruction: str) -> None:
@@ -76,6 +77,7 @@ class LTLSymbolicPlanner:
             )
 
         raw_formula = data["ltl_nl_formula"]
+        self._raw_formula = raw_formula.strip()
         if not isinstance(raw_formula, str) or not raw_formula.strip():
             raise ValueError("'ltl_nl_formula' must be a non-empty string.")
 
