@@ -12,4 +12,7 @@ def pytest_configure(config):
         plugin_name, plugin = name
         mod = getattr(plugin, "__name__", "") or ""
         if "launch_testing" in mod or "launch_testing" in (plugin_name or ""):
-            pm.unregister(plugin)
+            if plugin is not None:
+                pm.unregister(plugin)
+            elif plugin_name is not None:
+                pm.unregister(name=plugin_name)

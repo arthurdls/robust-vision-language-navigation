@@ -50,6 +50,7 @@ class LTLSymbolicPlanner:
         self.pi_map = {}  # Maps pi_x -> Natural Language description
         self._last_returned_predicate_key: Optional[str] = None  # Key of predicate last returned by get_next_predicate (allows duplicate descriptions)
         self.finished = False
+        self.constraint_predicates: dict[str, str] = {}
 
     def plan_from_natural_language(self, instruction: str) -> None:
         """
@@ -101,6 +102,7 @@ class LTLSymbolicPlanner:
         self._add_sink_state()
         self.current_automaton_state = self.automaton.get_init_state_number()
         self.finished = False
+        self.constraint_predicates = self._classify_predicates()
 
     def _add_sink_state(self) -> None:
         """
@@ -165,6 +167,8 @@ class LTLSymbolicPlanner:
         )
 
         for key in self.pi_map.keys():
+            if key in self.constraint_predicates:
+                continue
             p_idx = _predicate_key_to_index(key)
             try:
                 test_world_bdd = self._get_bdd_for_single_task(p_idx)
@@ -173,22 +177,13 @@ class LTLSymbolicPlanner:
             for edge in self.automaton.out(self.current_automaton_state):
                 if edge.dst == self.current_automaton_state:
                     continue
+                if edge.dst == self._sink_state:
+                    continue
                 if (test_world_bdd & edge.cond) != bdd_false:
                     self._last_returned_predicate_key = key
                     return self.pi_map[key]
 
-        # Sequence fallback: no edge fired; use state as index only if in range
-        pred_keys = list(self.pi_map.keys())
-        pred_values = list(self.pi_map.values())
-        n_states = self.automaton.num_states()
-        if 0 <= self.current_automaton_state < len(pred_values) and self.current_automaton_state < n_states:
-            self._last_returned_predicate_key = pred_keys[self.current_automaton_state]
-            return pred_values[self.current_automaton_state]
-
-        if len(self.pi_map) == 1:
-            k = next(iter(self.pi_map.keys()))
-            self._last_returned_predicate_key = k
-            return self.pi_map[k]
+        # No goal predicate triggers a forward (non-self-loop, non-sink) edge.
         print("[LTL Planner] No tasks trigger a state change. Mission Complete.")
         self.finished = True
         return None
@@ -238,4 +233,80 @@ class LTLSymbolicPlanner:
                     f"[LTL Planner] Task '{finished_task_nl}' completed but no outgoing edge; "
                     "marking mission complete."
                 )
+
+    def _classify_predicates(self) -> dict[str, str]:
+        """Classify predicates as constraints vs goals using automaton structure.
+
+        A predicate is a CONSTRAINT (not a goal) if it never has a
+        forward-progressing edge (dst != src) at ANY state in the automaton.
+        Edges to the sink state (added by _add_sink_state) are excluded since
+        the sink is an implementation artifact, not a genuine LTL transition.
+        """
+        if not self.pi_map or self.automaton is None:
+            return {}
+
+        bdd_false = spot.formula_to_bdd(
+            spot.formula("0"), self.automaton.get_dict(), self.automaton
+        )
+        num_states = self.automaton.num_states()
+        constraints: dict[str, str] = {}
+
+        for key in self.pi_map:
+            p_idx = _predicate_key_to_index(key)
+            is_goal = False
+
+            for state in range(num_states):
+                if state == self._sink_state:
+                    continue
+                try:
+                    test_bdd = self._get_bdd_for_single_task(p_idx)
+                except ValueError:
+                    break
+                for edge in self.automaton.out(state):
+                    if edge.dst == state:
+                        continue
+                    if edge.dst == self._sink_state:
+                        continue
+                    if (test_bdd & edge.cond) != bdd_false:
+                        is_goal = True
+                        break
+                if is_goal:
+                    break
+
+            if not is_goal:
+                constraints[key] = self.pi_map[key]
+
+        return constraints
+
+    def get_active_constraints(self) -> list[str]:
+        """Return natural-language descriptions of constraints active at the current state.
+
+        An active constraint at the current state is one where making the
+        predicate true produces NO valid edge at all (not even a self-loop).
+        """
+        if self.finished or not self.constraint_predicates or self.automaton is None:
+            return []
+
+        bdd_false = spot.formula_to_bdd(
+            spot.formula("0"), self.automaton.get_dict(), self.automaton
+        )
+        active: list[str] = []
+
+        for key, nl_desc in self.constraint_predicates.items():
+            p_idx = _predicate_key_to_index(key)
+            try:
+                test_bdd = self._get_bdd_for_single_task(p_idx)
+            except ValueError:
+                continue
+
+            has_any_edge = False
+            for edge in self.automaton.out(self.current_automaton_state):
+                if (test_bdd & edge.cond) != bdd_false:
+                    has_any_edge = True
+                    break
+
+            if not has_any_edge:
+                active.append(nl_desc)
+
+        return active
 

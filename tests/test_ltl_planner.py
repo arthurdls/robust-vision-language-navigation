@@ -273,6 +273,134 @@ def test_normalize_key_variants():
     print("  [OK] normalize key variants (p1/p2)")
 
 
+def test_classify_global_avoidance():
+    """G(!pi_3) makes pi_3 a constraint, not a goal."""
+    mock = MockLLM()
+    mock.ltl_nl_formula = {
+        "pi_predicates": {
+            "pi_1": "Go to tree A",
+            "pi_2": "Go to streetlight B",
+            "pi_3": "Flying over building C",
+        },
+        "ltl_nl_formula": "F pi_2 & (!pi_2 U pi_1) & G(!pi_3)",
+    }
+    planner = LTLSymbolicPlanner(mock)
+    planner.plan_from_natural_language("Go to A then B, never fly over C")
+
+    assert "pi_3" in planner.constraint_predicates
+    assert "pi_1" not in planner.constraint_predicates
+    assert "pi_2" not in planner.constraint_predicates
+
+
+def test_active_constraints_global():
+    """G(!pi_3) should be active at every state."""
+    mock = MockLLM()
+    mock.ltl_nl_formula = {
+        "pi_predicates": {
+            "pi_1": "Go to tree A",
+            "pi_2": "Go to streetlight B",
+            "pi_3": "Flying over building C",
+        },
+        "ltl_nl_formula": "F pi_2 & (!pi_2 U pi_1) & G(!pi_3)",
+    }
+    planner = LTLSymbolicPlanner(mock)
+    planner.plan_from_natural_language("Go to A then B, never fly over C")
+
+    # During pi_1
+    current = planner.get_next_predicate()
+    assert current == "Go to tree A"
+    constraints = planner.get_active_constraints()
+    assert constraints == ["Flying over building C"]
+
+    # During pi_2
+    planner.advance_state(current)
+    current = planner.get_next_predicate()
+    assert current == "Go to streetlight B"
+    constraints = planner.get_active_constraints()
+    assert constraints == ["Flying over building C"]
+
+    # After completion
+    planner.advance_state(current)
+    assert planner.get_next_predicate() is None
+    assert planner.get_active_constraints() == []
+
+
+def test_active_constraints_scoped():
+    """!pi_3 U pi_2: pi_3 active before pi_2, released after."""
+    mock = MockLLM()
+    mock.ltl_nl_formula = {
+        "pi_predicates": {
+            "pi_1": "Approach the tree",
+            "pi_2": "Go to the streetlight",
+            "pi_3": "Near the red car",
+        },
+        "ltl_nl_formula": "F pi_2 & (!pi_2 U pi_1) & (!pi_3 U pi_2)",
+    }
+    planner = LTLSymbolicPlanner(mock)
+    planner.plan_from_natural_language("Approach tree, then streetlight, avoid car")
+
+    # During pi_1: pi_3 is active
+    current = planner.get_next_predicate()
+    assert current == "Approach the tree"
+    constraints = planner.get_active_constraints()
+    assert "Near the red car" in constraints
+
+    # During pi_2: pi_3 still active (scoped until pi_2 done)
+    planner.advance_state(current)
+    current = planner.get_next_predicate()
+    assert current == "Go to the streetlight"
+    constraints = planner.get_active_constraints()
+    assert "Near the red car" in constraints
+
+    # After pi_2 done: pi_3 released
+    planner.advance_state(current)
+    assert planner.get_active_constraints() == []
+
+
+def test_no_constraints_simple_sequence():
+    """Pure sequence has no constraint predicates."""
+    mock = MockLLM()
+    mock.ltl_nl_formula = {
+        "pi_predicates": {
+            "pi_1": "Go to A",
+            "pi_2": "Go to B",
+            "pi_3": "Go to C",
+        },
+        "ltl_nl_formula": "F pi_3 & (!pi_3 U pi_2) & (!pi_2 U pi_1)",
+    }
+    planner = LTLSymbolicPlanner(mock)
+    planner.plan_from_natural_language("Go A then B then C")
+
+    assert planner.constraint_predicates == {}
+    _ = planner.get_next_predicate()
+    assert planner.get_active_constraints() == []
+
+
+def test_multiple_global_constraints():
+    """Multiple G(!pi_X) constraints all active simultaneously."""
+    mock = MockLLM()
+    mock.ltl_nl_formula = {
+        "pi_predicates": {
+            "pi_1": "Go to the park",
+            "pi_2": "Near building A",
+            "pi_3": "Near building B",
+        },
+        "ltl_nl_formula": "F pi_1 & G(!pi_2) & G(!pi_3)",
+    }
+    planner = LTLSymbolicPlanner(mock)
+    planner.plan_from_natural_language("Go to park, avoid both buildings")
+
+    assert "pi_2" in planner.constraint_predicates
+    assert "pi_3" in planner.constraint_predicates
+    assert "pi_1" not in planner.constraint_predicates
+
+    _ = planner.get_next_predicate()
+    constraints = planner.get_active_constraints()
+    assert len(constraints) == 2
+    assert "Near building A" in constraints
+    assert "Near building B" in constraints
+
+
 def main():
     print("LTL Planner robustness tests (Spot from rvln-sim)")
     print("-" * 50)
