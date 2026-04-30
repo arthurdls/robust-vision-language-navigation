@@ -1,0 +1,739 @@
+EXPERIMENTAL DESIGN: LTL-Guided Neuro-Symbolic UAV Control with
+Diary-Based Goal Adherence Monitoring
+======================================================================
+
+1. SYSTEM OVERVIEW (FULL PROPOSED METHOD)
+======================================================================
+
+Pipeline: NL --> LTL-NL (via LLM + Spot automaton) --> Subgoal sequence
+          --> SubgoalConverter --> OpenVLA control loop
+          + LiveDiaryMonitor (local + global prompts, 3x3 image grid,
+            text diary, displacement tracking)
+          + Convergence detection + Post-Convergence Supervisor Mode
+            (corrective commands up to budget)
+          + Stall detection (ask_help when plateaued)
+
+Key components:
+  - LTL Planner: LLM generates LTL-NL formula with pi predicates.
+    Spot translates to deterministic monitor automaton. State machine
+    advances through subgoals as each is confirmed complete.
+  - SubgoalConverter: Rewrites planner predicates into short OpenVLA
+    instructions. Strips visual detection conditions ("until you see X"),
+    converts spatial proximity ("until near X") to approach commands,
+    flags out-of-distribution instructions.
+  - LiveDiaryMonitor: Periodic VLM checkpoints during execution.
+    Local prompt: 2-frame comparison ("what changed?").
+    Global prompt: sampled 3x3 grid + text diary + displacement +
+    completion history ("how complete?").
+    Convergence prompt: evaluate on drone stop, issue corrective
+    command if incomplete.
+  - OpenVLA Server: Vision2Seq model fine-tuned on first-person drone
+    navigation. Takes image + proprioceptive state + instruction,
+    outputs action poses.
+
+Default parameters (from config.py):
+  - LLM model: gpt-4o (planning, subgoal conversion)
+  - VLM model: gpt-5.4 (diary monitoring)
+  - Max steps per subgoal: 300
+  - Diary check interval: every 20 frames
+  - Max corrections per subgoal: 15
+  - Stall window: 3 checkpoints
+  - Stall threshold: 0.05 (completion spread)
+  - Convergence: position delta < 3.0 cm AND yaw delta < 1.0 deg
+    for 10 consecutive steps
+
+Simulation: Unreal Engine (DowntownWest environment), UnrealCV gym.
+Single environment with diverse landmarks (buildings, trees, cars,
+streetlights, pergolas, sculptures, people, dogs, traffic lights).
+
+
+2. CONDITIONS (7 TOTAL: 1 FULL SYSTEM + 6 BASELINES)
+======================================================================
+
+CONDITION 0: FULL SYSTEM (Proposed Method)
+------------------------------------------
+Pipeline: NL --> LTL-NL --> Subgoal --> SubgoalConverter --> OpenVLA
+          + LiveDiaryMonitor (local + global with 3x3 grid + text diary
+            + displacement) + Convergence corrections + Stall detection
+Script: run_integration.py
+Why: This is the proposed method. All other conditions ablate or
+     replace components of this pipeline.
+
+CONDITION 1: NAIVE END-TO-END VLA
+---------------------------------
+Pipeline: Full NL instruction --> SubgoalConverter --> OpenVLA
+          (no LTL decomposition, no monitoring)
+Script: Modified run_ltl.py (skip planner, feed raw instruction)
+Implementation: Pass the entire long-horizon instruction directly to
+  OpenVLA as a single instruction string. No LTL decomposition, no
+  diary monitoring, no convergence corrections. Run the basic control
+  loop with convergence detection only (stop when drone stops moving).
+Why: Proves the base OpenVLA model cannot handle long-horizon,
+  multi-step instructions. Establishes that task decomposition is
+  strictly necessary.
+Expected outcome: Very low success rate. OpenVLA will attempt the
+  first mentioned action and then stop or drift.
+
+CONDITION 2: LLM SEQUENTIAL PLANNER (No LTL)
+---------------------------------------------
+Pipeline: NL --> LLM text-to-text decomposition --> Sequential subgoals
+          --> SubgoalConverter --> OpenVLA
+          + LiveDiaryMonitor (full, same as Condition 0)
+Script: Modified run_integration.py (replace LTL planner with simple
+  LLM decomposition, no Spot automaton, no formal state machine)
+Implementation: Use the same LLM (gpt-4o) to break the instruction
+  into a numbered list of subgoals (text-to-text, no LTL formula).
+  Execute subgoals sequentially with the same diary monitoring as the
+  full system. Advance to the next subgoal when the monitor confirms
+  completion. No automaton state tracking, no formal constraint
+  enforcement.
+Why: Isolates the contribution of LTL formalism. Shows that without
+  the automaton state machine and formal constraint encoding:
+  (a) The LLM may hallucinate impossible orderings or skip steps.
+  (b) Negative constraints ("never fly over X") have no formal
+      enforcement mechanism.
+  (c) Complex temporal logic (OR branches, concurrent obligations)
+      cannot be expressed as a flat sequential list.
+Expected outcome: Performs reasonably on simple sequential tasks but
+  fails on tasks with negative constraints, branching, or complex
+  temporal dependencies. The gap vs. Condition 0 should be largest on
+  tasks with negative constraints.
+
+CONDITION 3: OPEN-LOOP LTL (No Monitor, No Corrections)
+--------------------------------------------------------
+Pipeline: NL --> LTL-NL --> Subgoal --> SubgoalConverter --> OpenVLA
+          (NO diary monitoring, NO convergence corrections)
+          Advance to next subgoal on convergence (drone stops = done).
+Script: run_ltl.py (existing script, already implements this)
+Implementation: Use the full LTL planner and SubgoalConverter, but
+  run the basic OpenVLA control loop without any VLM monitoring. When
+  the drone stops moving (convergence detected), assume the subgoal is
+  achieved and advance the automaton to the next state. No completion
+  assessment, no corrective commands.
+Why: THE MOST IMPORTANT BASELINE. Directly attacks the assumption in
+  prior LTL + low-level-policy literature that low-level controllers
+  execute perfectly. By showing how often OpenVLA stops prematurely
+  (false convergence) and ruins the downstream LTL sequence, we
+  justify the entire diary monitoring and supervisor architecture.
+Expected outcome: Moderate planning accuracy (LTL decomposition works)
+  but frequent execution failures. The drone will stop short, think
+  it is done, and blindly advance, causing cascading failures in
+  subsequent subgoals.
+
+CONDITION 4: FRAME-BY-FRAME MONITOR (No Temporal Context)
+----------------------------------------------------------
+Pipeline: NL --> LTL-NL --> Subgoal --> SubgoalConverter --> OpenVLA
+          + Single-frame VLM check (current frame + subgoal only)
+          + Convergence corrections (using single-frame assessment)
+Script: Modified run_integration.py (replace LiveDiaryMonitor with
+  a single-frame VLM query at each checkpoint)
+Implementation: At each checkpoint interval, send ONLY the current
+  camera frame and the subgoal text to the VLM. Ask: "Is the drone
+  currently at the goal?" No diary history, no image grid, no
+  displacement data, no completion percentage tracking. On convergence,
+  use the same single-frame query to decide complete vs. stopped_short
+  and issue corrections.
+Why: Proves that temporal context (the diary) is necessary. A VLM
+  looking at a single frame cannot distinguish between:
+  - "Stalled" (no progress for many steps)
+  - "Making slow progress" (gradually approaching)
+  - "Achieved" (arrived at goal)
+  Without history, the VLM has no way to detect stalls, track
+  regression (moving away from target), or calibrate completion
+  percentage over time.
+Expected outcome: Higher false positive rate (premature completion
+  declarations) and inability to detect stalls. Success rate lower
+  than full system, particularly on approach/traversal tasks where
+  completion requires observing change over time.
+
+CONDITION 5: IMAGE-GRID ONLY MONITOR (No Text Diary)
+-----------------------------------------------------
+Pipeline: NL --> LTL-NL --> Subgoal --> SubgoalConverter --> OpenVLA
+          + LiveDiaryMonitor with 3x3 image grid but NO text diary
+            and NO displacement data
+          + Convergence corrections (using grid only)
+Script: Modified run_integration.py (remove diary text and displacement
+  from global/convergence prompts, keep image grid)
+Implementation: Same checkpoint interval. Build the 3x3 grid of
+  sampled frames as normal. But remove the running text diary entries
+  and displacement [x, y, z, yaw] data from the global and convergence
+  prompts. The VLM sees only the subgoal text and the image grid.
+Why: Tests whether VLMs can infer progress/completion from visual
+  history alone without explicit textual state tracking. Isolates the
+  contribution of the text diary and odometry data.
+Expected outcome: VLM can detect gross completion (target clearly
+  visible and close) but struggles with:
+  - Precise distance estimation (no displacement data)
+  - Detecting subtle regression (text diary tracks "moved closer then
+    moved away")
+  - Stall detection (no completion percentage history to detect plateau)
+  Performance between Condition 4 and Condition 0.
+
+CONDITION 6: TEXT-ONLY DIARY (No Image Grid, "Blind LLM")
+----------------------------------------------------------
+Pipeline: NL --> LTL-NL --> Subgoal --> SubgoalConverter --> OpenVLA
+          + LiveDiaryMonitor with text diary + displacement but NO
+            3x3 image grid (use standard LLM, not VLM)
+          + Convergence corrections (using text + displacement only)
+Script: Modified run_integration.py (remove image grid from global/
+  convergence prompts, use LLM instead of VLM for global checks)
+Implementation: Keep the local prompt (2-frame VLM query for diary
+  entries, since it needs images). For global and convergence checks,
+  send only the text diary and displacement data to a text-only LLM.
+  No image grid in the global/convergence prompts.
+
+  NOTE: The local prompt still requires a VLM call (it compares two
+  frames to generate the diary entry). The key change is that the
+  global assessment (completion %, complete/incomplete, corrections)
+  is made by a text-only LLM reading the diary entries and
+  displacement, with no image grid.
+Why: Tests whether the text diary and odometry data are sufficient
+  for completion assessment, or whether visual confirmation from the
+  image grid is strictly required. The text log might say "moved
+  closer to the object" but only the camera can verify the drone
+  arrived at the correct target (not a similar-looking one).
+Expected outcome: Reasonable progress tracking but unreliable
+  completion verification. The text diary tracks relative motion
+  accurately but cannot visually confirm the drone is at the right
+  target. Higher false positive rate on completion for tasks with
+  similar-looking landmarks.
+
+
+3. NEGATIVE CONSTRAINT SUPPORT (REQUIRED MODIFICATIONS)
+======================================================================
+
+Current system limitation: The LTL `!` operator is used only for
+sequencing (`!pi_2 U pi_1` = "pi_1 before pi_2"), not for genuine
+avoidance constraints. The following modifications are needed.
+
+3a. LTL PROMPT MODIFICATIONS
+-----------------------------
+Add to LTL_NL_SYSTEM_PROMPT:
+  - New predicate type: CONSTRAINT predicates that represent conditions
+    to maintain throughout execution, not subgoals to achieve.
+  - Example: "Go to A then B, but never fly over building C"
+    pi_1 = "Go to A"
+    pi_2 = "Go to B"
+    pi_3 = "Flying over building C" (constraint predicate)
+    Formula: F pi_2 & (!pi_2 U pi_1) & G(!pi_3)
+    (G = Globally/Always, meaning pi_3 must NEVER become true)
+  - Alternative using Until for negative constraints during subgoals:
+    "Approach tree A while staying away from building B"
+    pi_1 = "Approach tree A"
+    pi_2 = "Near building B" (violation condition)
+    Formula: F pi_1 & (!pi_2 U pi_1)
+    This means "pi_2 must not become true until pi_1 is complete",
+    i.e., the drone must avoid building B during the approach.
+
+Add examples to LTL_NL_EXAMPLES_PROMPT:
+  - Sequential with avoidance: "Go to A then B, never passing through
+    the restricted zone"
+  - Conditional avoidance: "Approach the tree, but stay away from the
+    building until you reach the tree"
+
+3b. GOAL ADHERENCE MONITOR MODIFICATIONS
+-----------------------------------------
+The diary monitor must be aware of active negative constraints for
+the current subgoal. Modifications needed:
+
+(i) Pass negative constraints to LiveDiaryMonitor constructor:
+    - New parameter: `negative_constraints: List[str]`
+    - Example: ["stay away from building B", "do not fly over zone C"]
+
+(ii) Inject constraints into DIARY_GLOBAL_PROMPT:
+    Add after subgoal line:
+    "Active constraints (must be maintained throughout):
+     - {constraint_1}
+     - {constraint_2}
+     ..."
+    Add to JSON output: "constraint_violated": true/false
+    When violated: set should_stop = true, provide reasoning.
+
+(iii) Inject constraints into DIARY_CONVERGENCE_PROMPT:
+    Same constraint injection. Check if constraints were maintained
+    during the entire subgoal execution.
+
+(iv) Extract constraints from LTL formula:
+    The LTL planner should output which negative predicates are active
+    for each subgoal. For "!pi_2 U pi_1", when executing pi_1, the
+    constraint is "pi_2 must not become true." The runner passes the
+    NL description of pi_2 as a negative constraint to the monitor.
+
+3c. SUBGOAL CONVERTER MODIFICATIONS
+------------------------------------
+When a subgoal has associated negative constraints, the SubgoalConverter
+should be aware of them but NOT embed them in the OpenVLA instruction
+(OpenVLA cannot handle "do X while avoiding Y"). Instead, the
+constraints are handled entirely by the diary monitor.
+
+3d. RUNNER MODIFICATIONS (run_integration.py)
+----------------------------------------------
+Before calling _run_subgoal, extract active negative constraints from
+the current LTL automaton state. Pass them to the LiveDiaryMonitor.
+When the monitor reports constraint_violated, halt the subgoal and
+report failure (the LTL formula is violated).
+
+
+4. TASK DESIGN
+======================================================================
+
+4a. ENVIRONMENT
+----------------
+Simulation environment: DowntownWest (Unreal Engine, UnrealCV)
+  - Outdoor suburban setting with diverse landmarks
+  - Buildings (white building, red building, multi-story structures)
+  - Vegetation (trees, hedges, parks)
+  - Vehicles (black car, red car, white car, parked vehicles)
+  - Infrastructure (streetlights, traffic lights, pergolas, sculptures)
+  - People and dogs
+
+NOTE: Currently only one simulation environment (DowntownWest) is
+available. The "3 distinct environments" from the original plan
+should be reframed as 3 distinct REGIONS within DowntownWest, each
+with different landmark compositions and visual characteristics.
+Select 3 non-overlapping regions of the map with sufficiently
+different scenery (e.g., a residential area with trees and houses,
+a commercial area with cars and buildings, a park area with
+sculptures and pergolas).
+
+4b. TASK CATEGORIES (5 tasks per region, 15 total)
+---------------------------------------------------
+Each task is a multi-step long-horizon instruction. Tasks are designed
+to exercise different LTL operators and constraint types.
+
+Category 1: PURE SEQUENTIAL (3 tasks)
+  Simple ordered sequences (A then B then C).
+  LTL: F pi_3 & (!pi_3 U pi_2) & (!pi_2 U pi_1)
+  Purpose: Baseline difficulty. All conditions should handle these.
+  Example: "Go past the first streetlamp, then turn right until you
+  see the black car, then approach the black car."
+
+Category 2: SEQUENTIAL WITH NEGATIVE CONSTRAINTS (6 tasks)
+  Ordered sequences where certain zones or landmarks must be avoided
+  during execution.
+  LTL: F pi_2 & (!pi_2 U pi_1) & (!pi_3 U pi_2)
+  where pi_3 is a spatial violation (e.g., "near building X")
+  Purpose: THE KEY DIFFERENTIATOR. These tasks make the LTL formalism
+  strictly necessary. Without formal constraint encoding, Condition 2
+  (LLM planner) has no mechanism to enforce avoidance.
+  Example: "Approach the tree from the right side, then go to the
+  streetlight, but stay away from the red car until you reach
+  the streetlight."
+
+Category 3: BRANCHING / OR (3 tasks)
+  Tasks with alternative paths (do A or B, then C).
+  LTL: F pi_3 & (!pi_3 U (pi_1 | pi_2))
+  Purpose: Tests automaton's ability to handle non-linear execution.
+  Example: "Go to either the sculpture or the pergola, then approach
+  the white building."
+
+Category 4: COMPLEX MULTI-CONSTRAINT (3 tasks)
+  Combine sequencing, avoidance, and branching.
+  LTL: F pi_3 & (!pi_3 U pi_1) & (!pi_4 U pi_3)
+  with concurrent avoidance constraints.
+  Purpose: Stress test the full system. Should maximally differentiate
+  Condition 0 from all baselines.
+  Example: "First approach the tree, then navigate to the traffic
+  light while staying away from the parked cars, then land near
+  the sculpture. Never fly above the building at any point."
+
+NOTE ON TASK BALANCE: At least 9 of the 15 tasks (60%) must include
+meaningful negative constraints. This is critical: without them, the
+gap between Condition 0 and Condition 2 narrows, undermining the
+LTL contribution.
+
+4c. TASK JSON FORMAT
+---------------------
+Each task JSON should include:
+{
+  "task_id": "region1_seq_neg_01",
+  "category": "sequential_with_negative_constraints",
+  "instruction": "Approach the tree from the right side, then go to
+    the streetlight, but stay away from the red car until you reach
+    the streetlight.",
+  "initial_pos": [-7500, 848, 396, -177],
+  "negative_constraints_expected": [
+    "stay away from the red car"
+  ],
+  "expected_subgoal_count": 2,
+  "difficulty": "medium",
+  "region": "region_1_residential",
+  "notes": ""
+}
+
+4d. STARTING POSITION VARIATIONS
+----------------------------------
+Each task runs 3 times with different starting positions/orientations.
+Variations:
+  - Run 1: Default position (as specified in task JSON)
+  - Run 2: Same position, rotated 90 degrees
+  - Run 3: Offset 5-10 meters from default in a random direction
+This tests robustness to initial conditions without requiring
+entirely different scenarios.
+
+
+5. EVALUATION METRICS
+======================================================================
+
+PRIMARY METRICS (reported in main results table):
+
+M1. Task Success Rate
+  - Definition: Fraction of episodes where the final long-horizon goal
+    was fully completed (all subgoals achieved in correct order).
+  - Measurement: Binary per episode. A task is successful only if all
+    LTL subgoals were confirmed complete by the monitor (or by
+    convergence in Condition 3).
+  - Report: Mean +/- 95% Wilson confidence interval per condition.
+
+M2. Constraint Adherence Rate
+  - Definition: Of all episodes (successful or not), what fraction
+    maintained all negative constraints throughout execution?
+  - Measurement: Binary per episode. Checked via diary monitor
+    constraint_violated flag (Conditions 0, 2, 4, 5, 6) or post-hoc
+    trajectory analysis (Conditions 1, 3 which have no monitor).
+  - Report: Mean +/- 95% Wilson CI per condition.
+  - NOTE: For Conditions 1 and 3 (no monitor), constraint adherence
+    must be evaluated post-hoc by passing the trajectory frames
+    through a VLM and asking whether the constraint was violated at
+    any point. This adds compute cost but is necessary for fair
+    comparison.
+
+M3. Subgoal Success Rate
+  - Definition: Fraction of individual subgoals (across all episodes)
+    that were successfully completed.
+  - Measurement: Per-subgoal binary. Confirmed by monitor (Conditions
+    0, 2, 4, 5, 6) or by convergence (Condition 3).
+  - Report: Mean +/- 95% Wilson CI per condition.
+
+DIAGNOSTIC METRICS (reported in analysis section):
+
+M4. Supervisor Correction Rate (Rescue Rate)
+  - Definition: Of all convergence events where the drone stopped
+    prematurely (before subgoal completion), what fraction were
+    successfully rescued by the supervisor's corrective commands?
+  - Applicable to: Conditions 0, 2, 4, 5, 6 (not 1 or 3).
+  - Measurement: (rescued convergences) / (total premature
+    convergences)
+
+M5. False Positive / False Negative Rate of Convergence Assessment
+  - False Positive: Monitor declares subgoal complete but it is not
+    (verified by post-hoc inspection or by failure of subsequent
+    subgoal).
+  - False Negative: Monitor issues correction when subgoal was
+    actually complete (causes unnecessary additional steps).
+  - Applicable to: Conditions 0, 4, 5, 6.
+  - Measurement: Manual annotation of a subset of episodes (at least
+    10 per condition) by reviewing frame sequences and monitor logs.
+
+M6. Control Frequency / Latency
+  - OpenVLA loop Hz: Frames per second of the control loop
+    (excluding VLM checkpoint time in sync mode).
+  - Monitor checkpoint latency: Wall-clock time per VLM checkpoint
+    (local + global prompt pair).
+  - Report: Mean and p95 per condition.
+  - Purpose: Proves VLM monitoring does not block drone control in
+    async mode, and quantifies overhead in sync mode.
+
+M7. Token / Inference Overhead
+  - Total VLM/LLM calls per episode (broken down by type: local,
+    global, convergence, planning, subgoal conversion).
+  - Total input tokens per episode.
+  - Total output tokens per episode.
+  - Estimated API cost per episode.
+  - Report: Mean per condition.
+  - Purpose: Proves computational feasibility. Addresses reviewer
+    concern about running VLM monitoring continuously.
+
+M8. Average Episode Length
+  - Total steps (frames) per episode.
+  - Total wall-clock time per episode.
+  - Report: Mean +/- std per condition.
+  - Purpose: Reveals whether monitoring adds overhead that slows
+    task completion, even when it succeeds.
+
+
+6. EXPERIMENTAL PROCEDURE
+======================================================================
+
+6a. PER-EPISODE PROCEDURE
+---------------------------
+1. Load task JSON (instruction, initial_pos, constraints).
+2. Teleport drone to starting position. Wait for stabilization.
+3. Reset OpenVLA model state.
+4. Execute the pipeline for the active condition:
+   - Condition 0: run_integration.py (full pipeline)
+   - Condition 1: Single OpenVLA pass with raw instruction
+   - Condition 2: LLM decomposition + diary monitoring
+   - Condition 3: run_ltl.py (LTL + blind execution)
+   - Condition 4: Single-frame monitor variant
+   - Condition 5: Grid-only monitor variant
+   - Condition 6: Text-only global assessment variant
+5. Log all frames, diary entries, monitor decisions, corrections,
+   VLM call records, and trajectory poses.
+6. Record final outcome: success/failure, stop_reason, subgoal
+   completion status, constraint violations.
+
+6b. EPISODE COUNT
+------------------
+15 tasks x 3 starting variations = 45 episodes per condition
+7 conditions x 45 = 315 total episodes
+
+6c. RANDOMIZATION
+------------------
+- Starting position variations are fixed across conditions (same
+  3 positions per task for all 7 conditions) to enable paired
+  comparison.
+- Task presentation order is randomized per condition to avoid
+  systematic ordering effects.
+
+6d. MANUAL ANNOTATION
+-----------------------
+For M5 (false positive/negative analysis), manually annotate at least
+10 episodes per condition (70 total) by reviewing:
+  - Frame sequences around convergence events
+  - Monitor decisions (complete vs. stopped_short)
+  - Whether the decision was correct given the visual evidence
+This can be done post-hoc from saved artifacts.
+
+
+7. COMPUTE BUDGET
+======================================================================
+
+7a. TOKEN COST ESTIMATE (REVISED)
+----------------------------------
+These estimates need empirical validation before committing.
+
+Per VLM checkpoint (local + global):
+  - Local prompt: 1 system message + 2 images (224x224 each)
+    Estimated: ~600 tokens (text) + ~1,700 tokens (2 images) = ~2,300
+  - Global prompt: 1 system message + 3x3 grid image + diary text
+    Estimated: ~800 tokens (text + diary) + ~4,000 tokens (grid image)
+    = ~4,800
+  - Total per checkpoint: ~7,100 input tokens
+
+Per convergence assessment:
+  - Similar to global: ~5,000 input tokens
+
+Per episode (rough estimate):
+  - ~15 checkpoints per subgoal x 3 subgoals avg = 45 checkpoints
+  - 45 x 7,100 = ~320,000 input tokens
+  - Plus ~5 convergence assessments x 5,000 = ~25,000
+  - Plus planning + subgoal conversion: ~5,000
+  - Total per episode: ~350,000 input tokens
+
+IMPORTANT: These estimates must be validated empirically by running
+2-3 test episodes and measuring actual token usage from the VLM call
+logs. The image token count depends heavily on the VLM provider's
+image encoding. Adjust the budget after validation.
+
+Per-condition cost (at $2.50/MTok input for gpt-4o, or $10/MTok for
+GPT-5.4):
+  - gpt-4o monitor: 45 eps x 350K tokens x $2.50/MTok = ~$39
+  - gpt-5.4 monitor: 45 eps x 350K tokens x $10/MTok = ~$158
+
+Total for 7 conditions:
+  - If all use gpt-5.4 monitor: ~$1,100
+  - If Conditions 1, 3 use no monitor: savings of ~$316
+  - Net estimate: ~$800-$1,100
+
+NOTE: Condition 1 (naive) and Condition 3 (open-loop) do not use the
+diary monitor at all, saving significant cost. Condition 6 uses an
+LLM (not VLM) for global checks, which is cheaper but still requires
+VLM for local diary entries.
+
+7b. GPU COMPUTE
+----------------
+- OpenVLA inference: 1x GPU (CUDA, bfloat16)
+- Simulation: Unreal Engine rendering (separate from GPU inference
+  or on same machine with sufficient VRAM)
+- VLM API calls: External API (no local GPU needed)
+
+7c. WALL-CLOCK TIME ESTIMATE
+------------------------------
+Per episode: ~5-15 minutes (depends on task complexity and number of
+convergence corrections)
+Per condition: 45 eps x 10 min avg = ~7.5 hours
+Total: 7 conditions x 7.5 hours = ~52.5 hours
+With setup/teardown overhead: ~60-70 hours
+
+This can be parallelized if multiple simulation instances are
+available, but VLM API rate limits may be a bottleneck.
+
+
+8. STATISTICAL ANALYSIS PLAN
+======================================================================
+
+8a. PRIMARY COMPARISONS
+-------------------------
+For each primary metric (M1, M2, M3):
+  - Report mean and 95% Wilson confidence interval per condition.
+  - Pairwise comparison: Condition 0 vs. each baseline using Fisher's
+    exact test (for binary outcomes) or McNemar's test (for paired
+    episodes with matched starting positions).
+  - Significance threshold: p < 0.05 with Bonferroni correction for
+    6 pairwise comparisons (adjusted threshold: p < 0.0083).
+
+8b. EFFECT SIZE
+----------------
+With n=45 per condition, a Fisher's exact test can detect a difference
+of ~25 percentage points (e.g., 85% vs. 60%) at 80% power with
+alpha = 0.05. Design tasks to produce large effect sizes. If pilot
+runs suggest smaller gaps, increase episode count or reduce the
+number of conditions.
+
+8c. ABLATION SUMMARY TABLE
+----------------------------
+Present a table showing which components are present in each condition:
+
+Component              | C0  | C1  | C2  | C3  | C4  | C5  | C6
+-----------------------|-----|-----|-----|-----|-----|-----|-----
+LTL Decomposition      | Yes | No  | No  | Yes | Yes | Yes | Yes
+Spot Automaton         | Yes | No  | No  | Yes | Yes | Yes | Yes
+Diary Monitor          | Yes | No  | Yes | No  | No* | Mod | Mod
+3x3 Image Grid         | Yes | No  | Yes | No  | No  | Yes | No
+Text Diary             | Yes | No  | Yes | No  | No  | No  | Yes
+Displacement Data      | Yes | No  | Yes | No  | No  | No  | Yes
+Convergence Correction | Yes | No  | Yes | No  | Yes*| Yes | Yes
+Stall Detection        | Yes | No  | Yes | No  | No  | No  | Yes
+Neg. Constraint Aware  | Yes | No  | No  | No  | No  | No  | No
+
+C4*: Uses single-frame VLM, no diary. Has convergence corrections
+     but based on single-frame assessment only.
+Mod: Modified version (C5 = grid only, C6 = text only for global).
+
+
+9. KEY ASSUMPTIONS AND LIMITATIONS
+======================================================================
+
+A1. Low-level UAV safety is handled separately.
+    Physical collision avoidance, altitude bounds, and geofencing are
+    assumed to be implemented via control barrier functions (CBF) or
+    depth-map heuristics. This is standard in UAV systems and is
+    orthogonal to the task-level planning contribution of this work.
+    State this as a scope limitation in the paper.
+
+A2. Single simulation environment.
+    All experiments run in DowntownWest. Frame this as evaluating
+    across 3 diverse regions of a realistic suburban environment.
+    Acknowledge single-environment limitation in the paper and
+    suggest real-world validation as future work.
+
+A3. OpenVLA as the fixed low-level policy.
+    The system is designed to be policy-agnostic. OpenVLA is one
+    instantiation. The contribution is the LTL + monitoring framework,
+    not the specific VLA model.
+
+A4. VLM accuracy for constraint monitoring.
+    The diary monitor relies on VLM visual understanding to detect
+    constraint violations. VLM errors (failing to notice the drone
+    is near a forbidden landmark) will propagate as undetected
+    violations. Quantify this in M5.
+
+A5. Simulation fidelity.
+    UnrealCV provides photorealistic rendering but lacks dynamic
+    obstacles, weather variation, and wind disturbances present in
+    real-world flight.
+
+
+10. PRE-EXPERIMENT VALIDATION CHECKLIST
+======================================================================
+
+Before running the full experiment suite:
+
+[ ] TOKEN COST VALIDATION: Run 3 test episodes with full monitoring.
+    Measure actual token usage per VLM call type (local, global,
+    convergence). Compare to estimates in Section 7a. Adjust budget.
+    Special attention to image token counts, which vary by provider
+    and resolution.
+
+[ ] 3x3 GRID NECESSITY: Run 5 test episodes comparing full system
+    (with grid) vs. text-only diary (no grid) informally. If the
+    grid provides no measurable benefit in these pilots, consider
+    dropping Condition 5 and reducing scope. (Per user NOTE2.)
+
+[ ] NEGATIVE CONSTRAINT PIPELINE: Implement and test the modifications
+    described in Section 3. Verify that:
+    (a) LTL planner correctly generates formulas with G(!pi_X) or
+        !pi_X U pi_Y for avoidance constraints.
+    (b) Runner correctly extracts active negative constraints per
+        subgoal from the automaton state.
+    (c) Diary monitor correctly injects constraints into prompts and
+        detects violations.
+    Run at least 3 tasks with negative constraints end-to-end.
+
+[ ] TASK SCOUTING: Use scripts/scout_locations.py to identify the 3
+    map regions. For each region, verify:
+    (a) Sufficient landmark diversity for 5 tasks.
+    (b) Negative constraint tasks are physically meaningful (e.g.,
+        there IS a building between the start and the tree that the
+        drone must avoid).
+    (c) Starting positions are valid and the drone spawns correctly.
+
+[ ] CONDITION IMPLEMENTATIONS: Verify each modified script runs
+    without errors on at least 1 task:
+    - Condition 1: Raw instruction to OpenVLA
+    - Condition 2: LLM sequential planner (no LTL)
+    - Condition 4: Single-frame monitor
+    - Condition 5: Grid-only monitor
+    - Condition 6: Text-only global monitor
+
+[ ] ARTIFACT LOGGING: Verify all conditions produce comparable output
+    artifacts (frames, trajectories, monitor logs) for post-hoc
+    analysis. Conditions 1 and 3 need trajectory logging even without
+    a monitor, for post-hoc constraint violation analysis.
+
+[ ] POST-HOC CONSTRAINT CHECKER: Implement a script that takes saved
+    trajectory frames from Conditions 1 and 3 and evaluates constraint
+    adherence via VLM, so M2 can be computed fairly across all
+    conditions.
+
+
+11. PAPER FRAMING NOTES
+======================================================================
+
+- Frame Condition 2 as a SOTA-representative baseline. Cite SayCan,
+  Inner Monologue, Code-as-Policies as related LLM-planner methods
+  and argue Condition 2 captures their core approach (LLM text
+  decomposition + sequential execution) applied to UAV navigation.
+  Note that none of these prior methods target UAV control with LTL.
+
+- The strongest story comes from the gap between Condition 2 and
+  Condition 0 on negative-constraint tasks. This is the unique
+  contribution of LTL formalism over ad-hoc LLM planning.
+
+- The second strongest story comes from Condition 3 vs. Condition 0.
+  This proves that even with perfect planning (same LTL), execution
+  monitoring is critical.
+
+- Conditions 4, 5, 6 are design ablations that justify architectural
+  choices. They can go in an ablation subsection or appendix if
+  space is tight.
+
+- Report M7 (token overhead) prominently to preempt feasibility
+  concerns. Show that monitoring adds <X% wall-clock overhead in
+  async mode.
+
+
+12. IMPLEMENTATION PRIORITY ORDER
+======================================================================
+
+1. Negative constraint support (Section 3) -- load-bearing for the
+   paper's core contribution. Without this, the LTL advantage over
+   Condition 2 is marginal.
+
+2. Task design and scouting (Section 4) -- tasks must be designed
+   before any experiments run.
+
+3. Token cost validation (Section 10, first item) -- determines
+   whether the budget is feasible.
+
+4. Condition 3 implementation (already exists as run_ltl.py) --
+   most important baseline, run first.
+
+5. Condition 0 implementation (already exists as run_integration.py)
+   -- full system, run second.
+
+6. Remaining conditions (1, 2, 4, 5, 6) -- implement and run in
+   parallel if possible.
+
+7. Post-hoc analysis scripts and manual annotation.
