@@ -75,6 +75,10 @@ def parse_ltl_nl(formula: str, predicate_map: dict[str, str]) -> str:
         sub_formula = formula[1:].strip()
         return f"(eventually {parse_ltl_nl(sub_formula, predicate_map)} must be accomplished)"
 
+    if formula.startswith('G ') or formula.startswith('G('):
+        sub_formula = formula[2:].strip() if formula.startswith('G ') else formula[1:].strip()
+        return f"(it must ALWAYS be the case that {parse_ltl_nl(sub_formula, predicate_map)})"
+
     if formula.startswith('!'):
         sub_formula = formula[1:].strip()
         return f"(it must NOT be the case that {parse_ltl_nl(sub_formula, predicate_map)})"

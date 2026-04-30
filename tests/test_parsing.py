@@ -88,5 +88,30 @@ class TestParseLtlNl:
             parse_ltl_nl("UNKNOWN", {})
 
 
+class TestParseLtlNlConstraints:
+    def test_globally_not(self):
+        pmap = {"pi_1": "go to A", "pi_2": "flying over building C"}
+        result = parse_ltl_nl("G(!pi_2)", pmap)
+        assert "ALWAYS" in result or "always" in result
+        assert "flying over building C" in result
+
+    def test_globally_bare(self):
+        pmap = {"pi_1": "stay on course"}
+        result = parse_ltl_nl("G pi_1", pmap)
+        assert "ALWAYS" in result or "always" in result
+        assert "stay on course" in result
+
+    def test_formula_with_global_constraint(self):
+        pmap = {
+            "pi_1": "go to A",
+            "pi_2": "go to B",
+            "pi_3": "flying over building C",
+        }
+        result = parse_ltl_nl("F pi_2 & (!pi_2 U pi_1) & G(!pi_3)", pmap)
+        assert "go to A" in result
+        assert "go to B" in result
+        assert "flying over building C" in result
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
