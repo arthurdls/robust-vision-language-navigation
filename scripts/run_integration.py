@@ -207,6 +207,7 @@ def _run_subgoal(
     trajectory_log: List[Dict[str, Any]],
     check_interval_s: Optional[float] = None,
     max_seconds: Optional[float] = None,
+    negative_constraints: Optional[List[str]] = None,
 ) -> Dict[str, Any]:
     """Run the diary-monitored control loop for a single subgoal.
 
@@ -245,6 +246,7 @@ def _run_subgoal(
             "peak_completion": 0.0,
             "vlm_calls": converter.llm_call_records,
             "next_origin": [next_origin_x, next_origin_y, next_origin_z, next_origin_yaw],
+            "negative_constraints": negative_constraints or [],
         }
 
     monitor = LiveDiaryMonitor(
@@ -254,6 +256,7 @@ def _run_subgoal(
         artifacts_dir=diary_artifacts,
         max_corrections=max_corrections,
         check_interval_s=check_interval_s,
+        negative_constraints=negative_constraints,
     )
 
     current_pose: List[float] = [0.0, 0.0, 0.0, 0.0]
@@ -540,6 +543,7 @@ def _run_subgoal(
         "peak_completion": monitor.peak_completion,
         "vlm_calls": monitor.vlm_calls,
         "next_origin": [next_origin_x, next_origin_y, next_origin_z, next_origin_yaw],
+        "negative_constraints": negative_constraints or [],
     }
 
 
@@ -615,6 +619,13 @@ def run_integrated_control_loop(
         safe_name = _sanitize_name(current_subgoal)
         subgoal_dir = run_dir / f"subgoal_{subgoal_index:02d}_{safe_name}"
 
+        active_constraints = planner.get_active_constraints()
+        if active_constraints:
+            logger.info(
+                "Active constraints for subgoal %d: %s",
+                subgoal_index, active_constraints,
+            )
+
         logger.info(
             "--- Subgoal %d: '%s' ---", subgoal_index, current_subgoal,
         )
@@ -640,6 +651,7 @@ def run_integrated_control_loop(
                 trajectory_log=trajectory_log,
                 check_interval_s=check_interval_s,
                 max_seconds=max_seconds,
+                negative_constraints=active_constraints,
             )
         except CUDAOutOfMemoryError as e:
             logger.error(
