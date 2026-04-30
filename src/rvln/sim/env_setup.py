@@ -156,15 +156,35 @@ def setup_sim_env(
     sim_host: str = DEFAULT_SIM_HOST,
     sim_port: int = DEFAULT_SIM_PORT,
     sim_api_port: int = DEFAULT_SIM_API_PORT,
+    init_retries: int = 10,
+    retry_delay: float = 15.0,
 ) -> Any:
     """Connect to the sim API server and initialize the environment.
 
     Returns a SimClient. The server (run_simulator.py) must already be running.
+
+    The server's /init endpoint is idempotent: if the first request times out
+    while the server is still initializing, retries will either trigger the
+    same initialization check or hit the fast "already_initialized" path once
+    the server finishes.
     """
+    from requests.exceptions import ConnectionError, ReadTimeout
+
     from rvln.sim.sim_client import SimClient
 
     client = SimClient(f"http://{sim_host}:{sim_api_port}")
-    client.init_env(env_id, time_dilation_val, seed)
+    for attempt in range(1, init_retries + 1):
+        try:
+            client.init_env(env_id, time_dilation_val, seed)
+            break
+        except (ReadTimeout, ConnectionError) as exc:
+            if attempt == init_retries:
+                raise
+            logger.warning(
+                "init_env attempt %d/%d failed (%s), retrying in %.0fs...",
+                attempt, init_retries, exc, retry_delay,
+            )
+            time.sleep(retry_delay)
     time.sleep(batch.SLEEP_AFTER_RESET_S)
     return client
 
