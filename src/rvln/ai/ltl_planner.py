@@ -3,7 +3,6 @@ LTL Symbolic Planner: parses natural language to LTL-NL via LLM, then uses Spot
 to manage the automaton state and determine the next short-horizon subgoal.
 """
 
-import re
 from dataclasses import dataclass
 from typing import Literal, Optional
 
@@ -16,6 +15,24 @@ from .llm_interface import LLMUserInterface
 class ConstraintInfo:
     description: str
     polarity: Literal["negative", "positive"]
+
+
+def _find_eventuality_aps(node) -> set[str]:
+    """Find all atomic propositions under F (eventually) operators in a Spot formula tree."""
+    results: set[str] = set()
+    if node.kind() == spot.op_F:
+        _collect_aps(node, results)
+    for i in range(node.size()):
+        results |= _find_eventuality_aps(node[i])
+    return results
+
+
+def _collect_aps(node, results: set[str]) -> None:
+    """Collect all atomic propositions in a formula subtree."""
+    if node.kind() == spot.op_ap:
+        results.add(str(node))
+    for i in range(node.size()):
+        _collect_aps(node[i], results)
 
 
 def _predicate_key_to_index(key: str) -> int:
@@ -371,12 +388,16 @@ class LTLSymbolicPlanner:
         # This makes the last goal's accepting transition a self-loop, causing
         # _has_forward_edge to miss it and misclassify the goal as a constraint.
         # A predicate under an F (eventually) operator is semantically a goal
-        # that MUST be achieved, never a constraint. Remove any such predicate
-        # from the constraint set.
+        # that MUST be achieved, never a constraint. We walk Spot's own parse
+        # tree to find these predicates reliably.
+        spot_formula = self._raw_formula.replace("pi_", "p")
+        try:
+            eventuality_aps = _find_eventuality_aps(spot.formula(spot_formula))
+        except Exception:
+            eventuality_aps = set()
         for key in list(constraints.keys()):
             p_idx = _predicate_key_to_index(key)
-            if re.search(rf"\bF\s+pi_{p_idx}\b", self._raw_formula) or \
-               re.search(rf"\bF\s+p{p_idx}\b", self._raw_formula):
+            if f"p{p_idx}" in eventuality_aps:
                 del constraints[key]
 
         return constraints
