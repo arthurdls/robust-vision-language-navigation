@@ -624,45 +624,60 @@ def _ask_operator_for_help(
     """Prompt operator for help when the drone is stuck.
 
     Returns (choice, value) where choice is one of:
-      "instruction" - new low-level OpenVLA instruction (value = the instruction)
-      "replan"      - new high-level mission instruction to re-plan (value = the instruction)
-      "skip"        - continue or end subgoal without changes
-      "abort"       - stop the mission entirely
+      "instruction"      - new low-level OpenVLA instruction (value = the instruction)
+      "override_subgoal" - new subgoal text (value = subgoal)
+      "replan"           - new high-level mission instruction to re-plan (value = the instruction)
+      "skip"             - continue or end subgoal without changes
+      "abort"            - stop the mission entirely
     """
     print(f"\n{'='*60}")
-    print(f"{header} - subgoal: {subgoal_nl}")
-    print(f"Completion: {completion_pct:.0%}")
-    print(f"Current instruction: {current_instruction}")
+    print(f"{header}")
+    print(f"  Subgoal: {subgoal_nl}")
+    print(f"  Completion: {completion_pct:.0%}")
+    print(f"  Current instruction: {current_instruction}")
     if reasoning:
-        print(f"Reasoning: {reasoning}")
+        print(f"  Reasoning: {reasoning}")
     print(f"{'='*60}")
     print("[1] New low-level instruction (e.g. 'move forward 1m')")
-    print("[2] Replan from new high-level instruction")
-    print("[3] Skip (continue/end subgoal)")
-    print("[4] Abort mission")
-    choice = input("Choice [1/2/3/4]: ").strip()
-    if choice == "1":
-        instr = input("Instruction: ").strip()
-        if instr:
+    print("[2] Override current subgoal")
+    print("[3] Replan from new high-level instruction")
+    print("[4] Skip (continue/end subgoal)")
+    print("[5] Abort mission")
+    while True:
+        choice = input("Choice [1/2/3/4/5]: ").strip()
+        if choice == "1":
+            instr = input("Instruction: ").strip()
+            if not instr:
+                print("Empty instruction, please try again.")
+                continue
             return ("instruction", instr)
-        return ("skip", "")
-    elif choice == "2":
-        instr = input("New mission instruction: ").strip()
-        if instr:
+        elif choice == "2":
+            subgoal = input("New subgoal: ").strip()
+            if not subgoal:
+                print("Empty subgoal, please try again.")
+                continue
+            return ("override_subgoal", subgoal)
+        elif choice == "3":
+            instr = input("New high-level instruction: ").strip()
+            if not instr:
+                print("Empty instruction, please try again.")
+                continue
             return ("replan", instr)
-        return ("skip", "")
-    elif choice == "4":
-        return ("abort", "")
-    else:
-        return ("skip", "")
+        elif choice == "4":
+            return ("skip", "")
+        elif choice == "5":
+            return ("abort", "")
+        else:
+            print("Invalid choice, please enter 1, 2, 3, 4, or 5.")
 
 
 @dataclass
 class OperatorHelpResult:
     """Result of prompting the operator for help."""
-    stop_reason: Optional[str]  # Set if the loop should break ("operator_abort", "replan", "max_steps", "max_seconds")
+    stop_reason: Optional[str]  # Set if the loop should break ("operator_abort", "replan", "override_subgoal", "max_steps", "max_seconds")
     replan_instruction: str
     new_instruction: Optional[str]  # Set if choice was "instruction"
+    new_subgoal: Optional[str]  # Set if choice was "override_subgoal"
     reasoning: str
 
 
@@ -692,25 +707,47 @@ def _handle_ask_help(
     choice, value = _ask_operator_for_help(
         subgoal_nl, header, completion_pct, current_instruction, reasoning,
     )
+    logger.info(
+        "Operator chose '%s' at step %d (value: %s)",
+        choice, step, repr(value) if value else "(none)",
+    )
     if choice == "abort":
+        logger.info("Operator aborted mission at step %d.", step)
         return OperatorHelpResult(
             stop_reason="operator_abort", replan_instruction="",
-            new_instruction=None, reasoning=reasoning,
+            new_instruction=None, new_subgoal=None, reasoning=reasoning,
         )
     elif choice == "replan":
+        logger.info(
+            "Operator requesting full replan with new instruction: '%s'", value,
+        )
         return OperatorHelpResult(
             stop_reason="replan", replan_instruction=value,
-            new_instruction=None, reasoning=reasoning,
+            new_instruction=None, new_subgoal=None, reasoning=reasoning,
+        )
+    elif choice == "override_subgoal":
+        logger.info(
+            "Operator overriding subgoal: '%s' -> '%s'", subgoal_nl, value,
+        )
+        return OperatorHelpResult(
+            stop_reason="override_subgoal", replan_instruction="",
+            new_instruction=None, new_subgoal=value, reasoning=reasoning,
         )
     elif choice == "instruction":
+        logger.info(
+            "Operator correction: '%s' -> '%s' (subgoal unchanged: '%s')",
+            current_instruction, value, subgoal_nl,
+        )
         return OperatorHelpResult(
             stop_reason=None, replan_instruction="",
-            new_instruction=value, reasoning=reasoning,
+            new_instruction=value, new_subgoal=None, reasoning=reasoning,
         )
     else:
+        logger.info("Operator skipped at step %d.", step)
         return OperatorHelpResult(
             stop_reason=header.lower().replace(" ", "_").strip("_"),
-            replan_instruction="", new_instruction=None, reasoning=reasoning,
+            replan_instruction="", new_instruction=None,
+            new_subgoal=None, reasoning=reasoning,
         )
 
 
@@ -790,9 +827,18 @@ def run_subgoal(
                 "vlm_calls": converter.llm_call_records,
                 "next_origin": list(origin_world),
                 "replan_instruction": help_result.replan_instruction,
+                "new_subgoal_override": help_result.new_subgoal or "",
                 "override_history": [{"step": 0, "type": "ood_help", "reasoning": help_result.reasoning}],
             }
-        current_instruction = help_result.new_instruction
+        if help_result.new_subgoal:
+            subgoal_nl = help_result.new_subgoal
+            logger.info("OOD subgoal overridden to: '%s'. Re-converting...", subgoal_nl)
+            converter = SubgoalConverter(model=monitor_model)
+            conversion = converter.convert(subgoal_nl)
+            converted_instruction = conversion.instruction
+            current_instruction = converted_instruction
+        else:
+            current_instruction = help_result.new_instruction
         converted_instruction = current_instruction
 
     subgoal_dir = run_dir / f"subgoal_{subgoal_index:02d}_{sanitize_name(subgoal_nl)}"
@@ -820,6 +866,7 @@ def run_subgoal(
     stop_reason = "max_steps"
     total_steps = 0
     replan_instruction = ""
+    new_subgoal_override = ""
     override_history: List[Dict[str, Any]] = []
 
     use_async = check_interval_s is not None
@@ -849,6 +896,7 @@ def run_subgoal(
                     if help_result.stop_reason:
                         stop_reason = help_result.stop_reason
                         replan_instruction = help_result.replan_instruction
+                        new_subgoal_override = help_result.new_subgoal or ""
                         total_steps = step
                         break
                     override_history.append({
@@ -902,6 +950,7 @@ def run_subgoal(
                                 if help_result.stop_reason:
                                     stop_reason = help_result.stop_reason
                                     replan_instruction = help_result.replan_instruction
+                                    new_subgoal_override = help_result.new_subgoal or ""
                                     total_steps = step
                                     break
                                 override_history.append({
@@ -946,6 +995,7 @@ def run_subgoal(
                             if help_result.stop_reason:
                                 stop_reason = help_result.stop_reason
                                 replan_instruction = help_result.replan_instruction
+                                new_subgoal_override = help_result.new_subgoal or ""
                                 total_steps = step
                                 break
                             override_history.append({
@@ -1002,6 +1052,7 @@ def run_subgoal(
                         if help_result.stop_reason:
                             stop_reason = help_result.stop_reason
                             replan_instruction = help_result.replan_instruction
+                            new_subgoal_override = help_result.new_subgoal or ""
                             total_steps = step
                             break
                         override_history.append({
@@ -1088,6 +1139,7 @@ def run_subgoal(
                             if help_result.stop_reason:
                                 stop_reason = help_result.stop_reason
                                 replan_instruction = help_result.replan_instruction
+                                new_subgoal_override = help_result.new_subgoal or ""
                                 total_steps = step
                                 break
                             override_history.append({
@@ -1155,6 +1207,7 @@ def run_subgoal(
                             if help_result.stop_reason:
                                 stop_reason = help_result.stop_reason
                                 replan_instruction = help_result.replan_instruction
+                                new_subgoal_override = help_result.new_subgoal or ""
                                 total_steps = step
                                 break
                             override_history.append({
@@ -1197,6 +1250,7 @@ def run_subgoal(
                 if help_result.stop_reason:
                     stop_reason = help_result.stop_reason
                     replan_instruction = help_result.replan_instruction
+                    new_subgoal_override = help_result.new_subgoal or ""
                     total_steps = step + 1
                     break
                 override_history.append({
@@ -1256,6 +1310,7 @@ def run_subgoal(
         "llm_call_records": all_llm_records,
         "next_origin": list(next_world_origin),
         "replan_instruction": replan_instruction,
+        "new_subgoal_override": new_subgoal_override,
     }
 
 
@@ -1484,16 +1539,36 @@ def main() -> None:
             frame_offset += result["total_steps"]
             subgoal_summaries.append(result)
 
+            if result["stop_reason"] == "operator_abort":
+                logger.info("Mission aborted by operator.")
+                break
+
             if result["stop_reason"] == "replan":
                 new_instruction = result["replan_instruction"]
-                logger.info("Replanning from new instruction: %s", new_instruction)
+                logger.info(
+                    "Full replan requested. Old instruction: '%s'. New instruction: '%s'.",
+                    instruction, new_instruction,
+                )
                 instruction = new_instruction
+                llm_interface = LLMUserInterface(model=llm_model)
+                planner = LTLSymbolicPlanner(llm_interface)
                 planner.plan_from_natural_language(new_instruction)
                 ltl_plan = {
                     "ltl_nl_formula": llm_interface.ltl_nl_formula.get("ltl_nl_formula", ""),
                     "pi_predicates": dict(planner.pi_map),
                 }
+                logger.info("Replan LTL: %s", json.dumps(ltl_plan, indent=2))
                 current_subgoal = planner.get_next_predicate()
+                continue
+
+            if result["stop_reason"] == "override_subgoal":
+                new_sub = result.get("new_subgoal_override", "")
+                logger.info(
+                    "Subgoal overridden by operator: '%s' -> '%s'. "
+                    "Re-running subgoal (planner state unchanged).",
+                    current_subgoal, new_sub,
+                )
+                current_subgoal = new_sub
                 continue
 
             planner.advance_state(current_subgoal)

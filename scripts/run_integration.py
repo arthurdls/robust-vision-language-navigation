@@ -233,6 +233,66 @@ def _sanitize_name(text: str, max_len: int = 40) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Interactive help prompt
+# ---------------------------------------------------------------------------
+
+def _ask_user_for_help(
+    subgoal_nl: str,
+    completion_pct: float,
+    current_instruction: str,
+    reasoning: str = "",
+) -> tuple:
+    """Prompt user for help when the system is stuck.
+
+    Returns (choice, value) where choice is one of:
+      "correction"       - new OpenVLA instruction, same subgoal (value = instruction)
+      "override_subgoal" - new subgoal text (value = subgoal)
+      "replan"           - new high-level NL instruction for full LTL replanning (value = instruction)
+      "skip"             - skip this subgoal
+      "abort"            - abort the entire mission
+    """
+    print(f"\n{'='*60}")
+    print("SYSTEM REQUESTING HELP")
+    print(f"  Subgoal: {subgoal_nl}")
+    print(f"  Completion: {completion_pct:.0%}")
+    print(f"  Current instruction: {current_instruction}")
+    if reasoning:
+        print(f"  Reasoning: {reasoning}")
+    print(f"{'='*60}")
+    print("[a] Provide a correction (new OpenVLA instruction, same subgoal)")
+    print("[b] Override current subgoal")
+    print("[c] Override entire plan (new high-level instruction)")
+    print("[d] Skip this subgoal")
+    print("[e] Abort mission")
+    while True:
+        choice = input("Choice [a/b/c/d/e]: ").strip().lower()
+        if choice == "a":
+            instr = input("New OpenVLA instruction: ").strip()
+            if not instr:
+                print("Empty instruction, please try again.")
+                continue
+            return ("correction", instr)
+        elif choice == "b":
+            subgoal = input("New subgoal: ").strip()
+            if not subgoal:
+                print("Empty subgoal, please try again.")
+                continue
+            return ("override_subgoal", subgoal)
+        elif choice == "c":
+            instr = input("New high-level instruction: ").strip()
+            if not instr:
+                print("Empty instruction, please try again.")
+                continue
+            return ("replan", instr)
+        elif choice == "d":
+            return ("skip", "")
+        elif choice == "e":
+            return ("abort", "")
+        else:
+            print("Invalid choice, please enter a, b, c, d, or e.")
+
+
+# ---------------------------------------------------------------------------
 # Per-subgoal control loop
 # ---------------------------------------------------------------------------
 
@@ -296,6 +356,7 @@ def _run_subgoal(
             "constraints": _serialize_constraints(constraints),
             "constraint_violation_count": 0,
             "parse_failures": 0,
+            "replan_instruction": "",
         }
 
     monitor = LiveDiaryMonitor(
@@ -319,12 +380,128 @@ def _run_subgoal(
     subgoal_start_time = time.time()
     stop_reason = "max_steps"
     total_steps = 0
+    replan_instruction = ""
 
     batch.reset_model(server_url)
 
     cam_id = drone_cam_id
     result = None
     step = 0
+
+    def _process_help(completion_pct: float, reasoning: str, trigger: str) -> str:
+        """Handle interactive help prompt. Returns "retry" or "break"."""
+        nonlocal current_instruction, subgoal_nl, converted_instruction
+        nonlocal openvla_pose_origin, small_count, last_pose
+        nonlocal in_correction, last_correction_step, last_correction_time
+        nonlocal monitor, converter
+        nonlocal stop_reason, total_steps, replan_instruction
+
+        logger.warning(
+            "Ask-help triggered at step %d by %s (completion: %.0f%%): %s",
+            step, trigger, completion_pct * 100, reasoning,
+        )
+
+        choice, value = _ask_user_for_help(
+            subgoal_nl, completion_pct, current_instruction, reasoning,
+        )
+
+        logger.info(
+            "User chose '%s' at step %d (value: %s)",
+            choice, step, repr(value) if value else "(none)",
+        )
+
+        if choice == "correction":
+            old_instruction = current_instruction
+            current_instruction = value
+            openvla_pose_origin = list(current_pose)
+            small_count = 0
+            last_pose = None
+            in_correction = True
+            last_correction_step = step
+            if use_async:
+                last_correction_time = time.time()
+            batch.reset_model(server_url)
+            override_history.append({
+                "step": step,
+                "type": "user_correction",
+                "trigger": trigger,
+                "old_instruction": old_instruction,
+                "new_instruction": value,
+            })
+            logger.info(
+                "User correction applied: '%s' -> '%s' (subgoal unchanged: '%s')",
+                old_instruction, value, subgoal_nl,
+            )
+            return "retry"
+
+        if choice == "override_subgoal":
+            monitor.cleanup()
+            old_subgoal = subgoal_nl
+            subgoal_nl = value
+            logger.info(
+                "User overriding subgoal: '%s' -> '%s'. Running SubgoalConverter...",
+                old_subgoal, value,
+            )
+            converter = SubgoalConverter(model=monitor_model)
+            conversion = converter.convert(subgoal_nl)
+            if conversion.outside_of_distribution:
+                logger.warning(
+                    "New subgoal '%s' flagged as OOD by SubgoalConverter, proceeding anyway.",
+                    subgoal_nl,
+                )
+            converted_instruction = conversion.instruction
+            current_instruction = converted_instruction
+            monitor = LiveDiaryMonitor(
+                subgoal=subgoal_nl,
+                check_interval=check_interval,
+                model=monitor_model,
+                artifacts_dir=diary_artifacts,
+                max_corrections=max_corrections,
+                check_interval_s=check_interval_s,
+                constraints=constraints,
+            )
+            openvla_pose_origin = list(current_pose)
+            small_count = 0
+            last_pose = None
+            in_correction = False
+            last_correction_step = step
+            if use_async:
+                last_correction_time = time.time()
+            batch.reset_model(server_url)
+            override_history.append({
+                "step": step,
+                "type": "user_override_subgoal",
+                "trigger": trigger,
+                "old_subgoal": old_subgoal,
+                "new_subgoal": value,
+                "new_instruction": converted_instruction,
+            })
+            logger.info(
+                "Subgoal overridden: '%s' -> '%s' (OpenVLA instruction: '%s')",
+                old_subgoal, value, converted_instruction,
+            )
+            return "retry"
+
+        if choice == "replan":
+            logger.info(
+                "User requesting full replan with new instruction: '%s'", value,
+            )
+            stop_reason = "replan"
+            replan_instruction = value
+            total_steps = step
+            return "break"
+
+        if choice == "abort":
+            logger.info("User aborted mission at step %d.", step)
+            stop_reason = "abort"
+            total_steps = step
+            return "break"
+
+        # skip
+        logger.info("User skipped subgoal '%s' at step %d.", subgoal_nl, step)
+        stop_reason = "skipped"
+        total_steps = step
+        return "break"
 
     while step < max_steps:
         if max_seconds is not None and (time.time() - subgoal_start_time) >= max_seconds:
@@ -342,9 +519,8 @@ def _run_subgoal(
                     total_steps = step
                     break
                 if async_result.action == "ask_help":
-                    logger.warning("Async monitor ask_help at step %d: %s", step, async_result.reasoning)
-                    stop_reason = "ask_help"
-                    total_steps = step
+                    if _process_help(async_result.completion_pct, async_result.reasoning, "async_monitor") == "retry":
+                        continue
                     break
                 if async_result.action == "force_converge":
                     logger.info("Async monitor force_converge at step %d: %s", step, async_result.reasoning)
@@ -385,12 +561,8 @@ def _run_subgoal(
                 total_steps = step
                 break
             if result.action == "ask_help":
-                logger.warning(
-                    "Monitor ask_help at step %d (completion: %.0f%%): %s",
-                    step, result.completion_pct * 100, result.reasoning,
-                )
-                stop_reason = "ask_help"
-                total_steps = step
+                if _process_help(result.completion_pct, result.reasoning, "sync_monitor") == "retry":
+                    continue
                 break
             if result.action == "force_converge":
                 logger.info("Monitor force_converge at step %d: %s", step, result.reasoning)
@@ -517,17 +689,16 @@ def _run_subgoal(
                 stop_reason = "monitor_complete"
                 break
 
-            if conv_result.action == "ask_help":
-                logger.warning(
-                    "Convergence ask_help at step %d (completion: %.0f%%): %s",
-                    step, conv_result.completion_pct * 100, conv_result.reasoning,
-                )
+            elif conv_result.action == "ask_help":
                 in_correction = False
-                stop_reason = "ask_help"
-                total_steps = step
-                break
+                help_decision = _process_help(
+                    conv_result.completion_pct, conv_result.reasoning, "convergence",
+                )
+                if help_decision == "break":
+                    break
+                # "retry": fall through to step += 1
 
-            if conv_result.new_instruction:
+            elif conv_result.new_instruction:
                 logger.info(
                     "Supervisor %s at step %d: '%s'",
                     conv_result.action, step, conv_result.new_instruction,
@@ -607,6 +778,7 @@ def _run_subgoal(
         "constraints": _serialize_constraints(constraints),
         "constraint_violation_count": constraint_violation_count,
         "parse_failures": monitor.parse_failures,
+        "replan_instruction": replan_instruction,
     }
 
 
@@ -656,101 +828,146 @@ def run_integrated_control_loop(
 
     start_ts = datetime.now().isoformat()
 
-    # --- LTL planning phase ---
-    logger.info("Planning instruction: '%s'", instruction)
-    llm_interface = LLMUserInterface(model=llm_model)
-    planner = LTLSymbolicPlanner(llm_interface)
-    planner.plan_from_natural_language(instruction)
-
-    ltl_plan = {
-        "ltl_nl_formula": llm_interface.ltl_nl_formula.get("ltl_nl_formula", ""),
-        "pi_predicates": dict(planner.pi_map),
-    }
-    logger.info("LTL plan: %s", json.dumps(ltl_plan, indent=2))
-
-    # --- Subgoal execution loop ---
+    # --- Planning and execution (with replan support) ---
     subgoal_summaries: List[Dict[str, Any]] = []
     trajectory_log: List[Dict[str, Any]] = []
+    ltl_plans: List[Dict[str, Any]] = []
     total_frame_count = 0
     subgoal_index = 0
+    replan_count = 0
+    aborted = False
 
     origin_x, origin_y, origin_z = initial_pos[0], initial_pos[1], initial_pos[2]
     origin_yaw = initial_pos[4]
 
-    current_subgoal = planner.get_next_predicate()
-    if current_subgoal is None:
-        raise RuntimeError("LTL planning produced no subgoals.")
-
-    while current_subgoal is not None:
-        subgoal_index += 1
-        safe_name = _sanitize_name(current_subgoal)
-        subgoal_dir = run_dir / f"subgoal_{subgoal_index:02d}_{safe_name}"
-
-        active_constraints = planner.get_active_constraints()
-        if active_constraints:
-            logger.info(
-                "Active constraints for subgoal %d: %s",
-                subgoal_index, active_constraints,
-            )
-
+    while True:
+        # --- LTL planning phase ---
         logger.info(
-            "--- Subgoal %d: '%s' ---", subgoal_index, current_subgoal,
+            "%sPlanning instruction: '%s'",
+            f"[REPLAN #{replan_count}] " if replan_count > 0 else "",
+            instruction,
         )
+        llm_interface = LLMUserInterface(model=llm_model)
+        planner = LTLSymbolicPlanner(llm_interface)
+        planner.plan_from_natural_language(instruction)
 
-        try:
-            subgoal_result = _run_subgoal(
-                env=env,
-                batch=batch,
-                server_url=server_url,
-                subgoal_nl=current_subgoal,
-                monitor_model=monitor_model,
-                check_interval=check_interval,
-                max_steps=max_steps_per_subgoal,
-                max_corrections=max_corrections,
-                origin_x=origin_x,
-                origin_y=origin_y,
-                origin_z=origin_z,
-                origin_yaw=origin_yaw,
-                drone_cam_id=drone_cam_id,
-                frames_dir=frames_dir,
-                subgoal_dir=subgoal_dir,
-                frame_offset=total_frame_count,
-                trajectory_log=trajectory_log,
-                check_interval_s=check_interval_s,
-                max_seconds=max_seconds,
-                constraints=active_constraints,
-            )
-        except CUDAOutOfMemoryError as e:
-            logger.error(
-                "Aborting run: OpenVLA server ran out of GPU memory. %s", e,
-            )
-            raise
-
-        total_frame_count += subgoal_result["total_steps"]
-        subgoal_summaries.append(subgoal_result)
-
-        logger.info(
-            "Subgoal %d finished: stop_reason=%s, steps=%d, completion=%.2f",
-            subgoal_index,
-            subgoal_result["stop_reason"],
-            subgoal_result["total_steps"],
-            subgoal_result.get("last_completion_pct", 0.0),
-        )
-
-        # Advance planner state
-        planner.advance_state(current_subgoal)
-
-        # Update world-space origin for the next subgoal
-        next_origin = subgoal_result["next_origin"]
-        origin_x, origin_y, origin_z, origin_yaw = (
-            next_origin[0], next_origin[1], next_origin[2], next_origin[3],
-        )
+        ltl_plan = {
+            "ltl_nl_formula": llm_interface.ltl_nl_formula.get("ltl_nl_formula", ""),
+            "pi_predicates": dict(planner.pi_map),
+            "replan_index": replan_count,
+            "instruction": instruction,
+        }
+        ltl_plans.append(ltl_plan)
+        logger.info("LTL plan: %s", json.dumps(ltl_plan, indent=2))
 
         current_subgoal = planner.get_next_predicate()
-        if current_subgoal is not None:
-            logger.info("Advancing to next subgoal: '%s'", current_subgoal)
+        if current_subgoal is None:
+            logger.error("LTL planning produced no subgoals for instruction: '%s'", instruction)
+            if replan_count > 0:
+                logger.warning("Replan produced no subgoals, ending run.")
+                break
+            raise RuntimeError("LTL planning produced no subgoals.")
 
-    logger.info("All subgoals processed (%d total).", subgoal_index)
+        replan_requested = False
+
+        while current_subgoal is not None:
+            subgoal_index += 1
+            safe_name = _sanitize_name(current_subgoal)
+            subgoal_dir = run_dir / f"subgoal_{subgoal_index:02d}_{safe_name}"
+
+            active_constraints = planner.get_active_constraints()
+            if active_constraints:
+                logger.info(
+                    "Active constraints for subgoal %d: %s",
+                    subgoal_index, active_constraints,
+                )
+
+            logger.info(
+                "--- Subgoal %d: '%s' ---", subgoal_index, current_subgoal,
+            )
+
+            try:
+                subgoal_result = _run_subgoal(
+                    env=env,
+                    batch=batch,
+                    server_url=server_url,
+                    subgoal_nl=current_subgoal,
+                    monitor_model=monitor_model,
+                    check_interval=check_interval,
+                    max_steps=max_steps_per_subgoal,
+                    max_corrections=max_corrections,
+                    origin_x=origin_x,
+                    origin_y=origin_y,
+                    origin_z=origin_z,
+                    origin_yaw=origin_yaw,
+                    drone_cam_id=drone_cam_id,
+                    frames_dir=frames_dir,
+                    subgoal_dir=subgoal_dir,
+                    frame_offset=total_frame_count,
+                    trajectory_log=trajectory_log,
+                    check_interval_s=check_interval_s,
+                    max_seconds=max_seconds,
+                    constraints=active_constraints,
+                )
+            except CUDAOutOfMemoryError as e:
+                logger.error(
+                    "Aborting run: OpenVLA server ran out of GPU memory. %s", e,
+                )
+                raise
+
+            total_frame_count += subgoal_result["total_steps"]
+            subgoal_summaries.append(subgoal_result)
+
+            sr = subgoal_result["stop_reason"]
+            logger.info(
+                "Subgoal %d finished: stop_reason=%s, steps=%d, completion=%.2f",
+                subgoal_index, sr,
+                subgoal_result["total_steps"],
+                subgoal_result.get("last_completion_pct", 0.0),
+            )
+
+            # Update world-space origin from wherever the drone ended up
+            next_origin = subgoal_result["next_origin"]
+            origin_x, origin_y, origin_z, origin_yaw = (
+                next_origin[0], next_origin[1], next_origin[2], next_origin[3],
+            )
+
+            if sr == "abort":
+                logger.info("Mission aborted by user.")
+                aborted = True
+                break
+
+            if sr == "replan":
+                new_instr = subgoal_result["replan_instruction"]
+                replan_count += 1
+                logger.info(
+                    "Full replan requested (replan #%d). "
+                    "Old instruction: '%s'. New instruction: '%s'. "
+                    "Drone origin for replan: [%.1f, %.1f, %.1f, %.1f]",
+                    replan_count, instruction, new_instr,
+                    origin_x, origin_y, origin_z, origin_yaw,
+                )
+                instruction = new_instr
+                replan_requested = True
+                break
+
+            if sr == "skipped":
+                logger.info("Subgoal '%s' skipped by user, advancing planner.", current_subgoal)
+
+            # Advance planner state (for all non-abort/non-replan outcomes)
+            planner.advance_state(current_subgoal)
+
+            current_subgoal = planner.get_next_predicate()
+            if current_subgoal is not None:
+                logger.info("Advancing to next subgoal: '%s'", current_subgoal)
+
+        if aborted or not replan_requested:
+            break
+
+    logger.info(
+        "Run finished: %d subgoals processed, %d replan(s), aborted=%s.",
+        subgoal_index, replan_count, aborted,
+    )
 
     end_ts = datetime.now().isoformat()
 
@@ -810,7 +1027,10 @@ def run_integrated_control_loop(
                 "consecutive_steps": batch.ACTION_SMALL_STEPS,
             },
         },
-        "ltl_plan": ltl_plan,
+        "ltl_plan": ltl_plans[0] if ltl_plans else {},
+        "ltl_plans": ltl_plans,
+        "replan_count": replan_count,
+        "aborted": aborted,
         "subgoal_count": subgoal_index,
         "subgoal_summaries": subgoal_summaries,
         "total_steps": total_steps_all,

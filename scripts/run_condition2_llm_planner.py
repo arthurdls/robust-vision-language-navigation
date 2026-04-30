@@ -251,6 +251,62 @@ def _sanitize_name(text: str, max_len: int = 40) -> str:
     return safe[:max_len] or "subgoal"
 
 
+def _ask_user_for_help(
+    subgoal_nl: str,
+    completion_pct: float,
+    current_instruction: str,
+    reasoning: str = "",
+) -> tuple:
+    """Prompt user for help when the system is stuck.
+
+    Returns (choice, value) where choice is one of:
+      "correction"       - new OpenVLA instruction, same subgoal (value = instruction)
+      "override_subgoal" - new subgoal text (value = subgoal)
+      "replan"           - new high-level NL instruction for full replanning (value = instruction)
+      "skip"             - skip this subgoal
+      "abort"            - abort the entire mission
+    """
+    print(f"\n{'='*60}")
+    print("SYSTEM REQUESTING HELP")
+    print(f"  Subgoal: {subgoal_nl}")
+    print(f"  Completion: {completion_pct:.0%}")
+    print(f"  Current instruction: {current_instruction}")
+    if reasoning:
+        print(f"  Reasoning: {reasoning}")
+    print(f"{'='*60}")
+    print("[a] Provide a correction (new OpenVLA instruction, same subgoal)")
+    print("[b] Override current subgoal")
+    print("[c] Override entire plan (new high-level instruction)")
+    print("[d] Skip this subgoal")
+    print("[e] Abort mission")
+    while True:
+        choice = input("Choice [a/b/c/d/e]: ").strip().lower()
+        if choice == "a":
+            instr = input("New OpenVLA instruction: ").strip()
+            if not instr:
+                print("Empty instruction, please try again.")
+                continue
+            return ("correction", instr)
+        elif choice == "b":
+            subgoal = input("New subgoal: ").strip()
+            if not subgoal:
+                print("Empty subgoal, please try again.")
+                continue
+            return ("override_subgoal", subgoal)
+        elif choice == "c":
+            instr = input("New high-level instruction: ").strip()
+            if not instr:
+                print("Empty instruction, please try again.")
+                continue
+            return ("replan", instr)
+        elif choice == "d":
+            return ("skip", "")
+        elif choice == "e":
+            return ("abort", "")
+        else:
+            print("Invalid choice, please enter a, b, c, d, or e.")
+
+
 def _run_subgoal(
     env, batch, server_url, subgoal_nl, monitor_model, check_interval,
     max_steps, max_corrections, origin_x, origin_y, origin_z, origin_yaw,
@@ -285,6 +341,7 @@ def _run_subgoal(
             "vlm_call_records": list(converter.llm_call_records),
             "parse_failures": 0,
             "next_origin": [origin_x, origin_y, origin_z, origin_yaw],
+            "replan_instruction": "",
         }
 
     monitor = LiveDiaryMonitor(
@@ -307,10 +364,125 @@ def _run_subgoal(
     subgoal_start_time = time.time()
     stop_reason = "max_steps"
     total_steps = 0
+    replan_instruction = ""
 
     batch.reset_model(server_url)
     result = None
     step = 0
+
+    def _process_help(completion_pct: float, reasoning: str, trigger: str) -> str:
+        """Handle interactive help prompt. Returns "retry" or "break"."""
+        nonlocal current_instruction, subgoal_nl, converted_instruction
+        nonlocal openvla_pose_origin, small_count, last_pose
+        nonlocal in_correction, last_correction_step, last_correction_time
+        nonlocal monitor, converter
+        nonlocal stop_reason, total_steps, replan_instruction
+
+        logger.warning(
+            "Ask-help triggered at step %d by %s (completion: %.0f%%): %s",
+            step, trigger, completion_pct * 100, reasoning,
+        )
+
+        choice, value = _ask_user_for_help(
+            subgoal_nl, completion_pct, current_instruction, reasoning,
+        )
+
+        logger.info(
+            "User chose '%s' at step %d (value: %s)",
+            choice, step, repr(value) if value else "(none)",
+        )
+
+        if choice == "correction":
+            old_instruction = current_instruction
+            current_instruction = value
+            openvla_pose_origin = list(current_pose)
+            small_count = 0
+            last_pose = None
+            in_correction = True
+            last_correction_step = step
+            if use_async:
+                last_correction_time = time.time()
+            batch.reset_model(server_url)
+            override_history.append({
+                "step": step,
+                "type": "user_correction",
+                "trigger": trigger,
+                "old_instruction": old_instruction,
+                "new_instruction": value,
+            })
+            logger.info(
+                "User correction applied: '%s' -> '%s' (subgoal unchanged: '%s')",
+                old_instruction, value, subgoal_nl,
+            )
+            return "retry"
+
+        if choice == "override_subgoal":
+            monitor.cleanup()
+            old_subgoal = subgoal_nl
+            subgoal_nl = value
+            logger.info(
+                "User overriding subgoal: '%s' -> '%s'. Running SubgoalConverter...",
+                old_subgoal, value,
+            )
+            converter = SubgoalConverter(model=monitor_model)
+            conversion = converter.convert(subgoal_nl)
+            if conversion.outside_of_distribution:
+                logger.warning(
+                    "New subgoal '%s' flagged as OOD by SubgoalConverter, proceeding anyway.",
+                    subgoal_nl,
+                )
+            converted_instruction = conversion.instruction
+            current_instruction = converted_instruction
+            monitor = LiveDiaryMonitor(
+                subgoal=subgoal_nl,
+                check_interval=check_interval,
+                model=monitor_model,
+                artifacts_dir=diary_artifacts,
+                max_corrections=max_corrections,
+                check_interval_s=check_interval_s,
+            )
+            openvla_pose_origin = list(current_pose)
+            small_count = 0
+            last_pose = None
+            in_correction = False
+            last_correction_step = step
+            if use_async:
+                last_correction_time = time.time()
+            batch.reset_model(server_url)
+            override_history.append({
+                "step": step,
+                "type": "user_override_subgoal",
+                "trigger": trigger,
+                "old_subgoal": old_subgoal,
+                "new_subgoal": value,
+                "new_instruction": converted_instruction,
+            })
+            logger.info(
+                "Subgoal overridden: '%s' -> '%s' (OpenVLA instruction: '%s')",
+                old_subgoal, value, converted_instruction,
+            )
+            return "retry"
+
+        if choice == "replan":
+            logger.info(
+                "User requesting full replan with new instruction: '%s'", value,
+            )
+            stop_reason = "replan"
+            replan_instruction = value
+            total_steps = step
+            return "break"
+
+        if choice == "abort":
+            logger.info("User aborted mission at step %d.", step)
+            stop_reason = "abort"
+            total_steps = step
+            return "break"
+
+        # skip
+        logger.info("User skipped subgoal '%s' at step %d.", subgoal_nl, step)
+        stop_reason = "skipped"
+        total_steps = step
+        return "break"
 
     while step < max_steps:
         if max_seconds is not None and (time.time() - subgoal_start_time) >= max_seconds:
@@ -326,8 +498,8 @@ def _run_subgoal(
                     total_steps = step
                     break
                 if async_result.action == "ask_help":
-                    stop_reason = "ask_help"
-                    total_steps = step
+                    if _process_help(async_result.completion_pct, async_result.reasoning, "async_monitor") == "retry":
+                        continue
                     break
 
         image = set_drone_cam_and_get_image(env, drone_cam_id)
@@ -359,8 +531,8 @@ def _run_subgoal(
                 total_steps = step
                 break
             if result.action == "ask_help":
-                stop_reason = "ask_help"
-                total_steps = step
+                if _process_help(result.completion_pct, result.reasoning, "sync_monitor") == "retry":
+                    continue
                 break
 
         openvla_pose = [c - o for c, o in zip(current_pose, openvla_pose_origin)]
@@ -459,12 +631,17 @@ def _run_subgoal(
             if conv_result.action == "stop":
                 stop_reason = "monitor_complete"
                 break
-            if conv_result.action == "ask_help":
-                stop_reason = "ask_help"
-                total_steps = step
-                break
 
-            if conv_result.new_instruction:
+            elif conv_result.action == "ask_help":
+                in_correction = False
+                help_decision = _process_help(
+                    conv_result.completion_pct, conv_result.reasoning, "convergence",
+                )
+                if help_decision == "break":
+                    break
+                # "retry": fall through to step += 1
+
+            elif conv_result.new_instruction:
                 override_history.append({
                     "step": step,
                     "type": f"convergence_{conv_result.action}",
@@ -527,6 +704,7 @@ def _run_subgoal(
         "vlm_call_records": all_vlm_call_records,
         "parse_failures": monitor.parse_failures,
         "next_origin": [next_origin_x, next_origin_y, next_origin_z, next_origin_yaw],
+        "replan_instruction": replan_instruction,
     }
 
 
@@ -553,43 +731,110 @@ def run_llm_planner_control_loop(
 
     start_ts = datetime.now().isoformat()
 
-    logger.info("LLM decomposition for: '%s'", instruction)
-    subgoals, decomposition_call_record = _llm_decompose(instruction, llm_model)
-    logger.info("LLM subgoals: %s", subgoals)
-
+    # --- Decomposition and execution (with replan support) ---
     subgoal_summaries = []
     trajectory_log = []
+    decomposition_records = []
     total_frame_count = 0
+    subgoal_index = 0
+    replan_count = 0
+    aborted = False
 
     origin_x, origin_y, origin_z = initial_pos[0], initial_pos[1], initial_pos[2]
     origin_yaw = initial_pos[4]
 
-    for subgoal_index, subgoal_nl in enumerate(subgoals, 1):
-        safe_name = _sanitize_name(subgoal_nl)
-        subgoal_dir = run_dir / f"subgoal_{subgoal_index:02d}_{safe_name}"
-
-        logger.info("--- Subgoal %d/%d: '%s' ---", subgoal_index, len(subgoals), subgoal_nl)
-
-        subgoal_result = _run_subgoal(
-            env=env, batch=batch, server_url=server_url,
-            subgoal_nl=subgoal_nl, monitor_model=monitor_model,
-            check_interval=check_interval, max_steps=max_steps_per_subgoal,
-            max_corrections=max_corrections,
-            origin_x=origin_x, origin_y=origin_y,
-            origin_z=origin_z, origin_yaw=origin_yaw,
-            drone_cam_id=drone_cam_id, frames_dir=frames_dir,
-            subgoal_dir=subgoal_dir, frame_offset=total_frame_count,
-            trajectory_log=trajectory_log,
-            check_interval_s=check_interval_s, max_seconds=max_seconds,
+    while True:
+        logger.info(
+            "%sLLM decomposition for: '%s'",
+            f"[REPLAN #{replan_count}] " if replan_count > 0 else "",
+            instruction,
         )
+        subgoals, decomposition_call_record = _llm_decompose(instruction, llm_model)
+        decomposition_records.append({
+            "replan_index": replan_count,
+            "instruction": instruction,
+            "subgoals": subgoals,
+            "call_record": decomposition_call_record,
+        })
+        logger.info("LLM subgoals: %s", subgoals)
 
-        total_frame_count += subgoal_result["total_steps"]
-        subgoal_summaries.append(subgoal_result)
+        if not subgoals:
+            logger.error("LLM decomposition produced no subgoals for: '%s'", instruction)
+            if replan_count > 0:
+                logger.warning("Replan produced no subgoals, ending run.")
+                break
+            raise ValueError("LLM decomposition produced no subgoals.")
 
-        next_origin = subgoal_result["next_origin"]
-        origin_x, origin_y, origin_z, origin_yaw = (
-            next_origin[0], next_origin[1], next_origin[2], next_origin[3],
-        )
+        replan_requested = False
+
+        for sg_i, subgoal_nl in enumerate(subgoals, 1):
+            subgoal_index += 1
+            safe_name = _sanitize_name(subgoal_nl)
+            subgoal_dir = run_dir / f"subgoal_{subgoal_index:02d}_{safe_name}"
+
+            logger.info(
+                "--- Subgoal %d (plan step %d/%d): '%s' ---",
+                subgoal_index, sg_i, len(subgoals), subgoal_nl,
+            )
+
+            subgoal_result = _run_subgoal(
+                env=env, batch=batch, server_url=server_url,
+                subgoal_nl=subgoal_nl, monitor_model=monitor_model,
+                check_interval=check_interval, max_steps=max_steps_per_subgoal,
+                max_corrections=max_corrections,
+                origin_x=origin_x, origin_y=origin_y,
+                origin_z=origin_z, origin_yaw=origin_yaw,
+                drone_cam_id=drone_cam_id, frames_dir=frames_dir,
+                subgoal_dir=subgoal_dir, frame_offset=total_frame_count,
+                trajectory_log=trajectory_log,
+                check_interval_s=check_interval_s, max_seconds=max_seconds,
+            )
+
+            total_frame_count += subgoal_result["total_steps"]
+            subgoal_summaries.append(subgoal_result)
+
+            sr = subgoal_result["stop_reason"]
+            logger.info(
+                "Subgoal %d finished: stop_reason=%s, steps=%d, completion=%.2f",
+                subgoal_index, sr,
+                subgoal_result["total_steps"],
+                subgoal_result.get("last_completion_pct", 0.0),
+            )
+
+            next_origin = subgoal_result["next_origin"]
+            origin_x, origin_y, origin_z, origin_yaw = (
+                next_origin[0], next_origin[1], next_origin[2], next_origin[3],
+            )
+
+            if sr == "abort":
+                logger.info("Mission aborted by user.")
+                aborted = True
+                break
+
+            if sr == "replan":
+                new_instr = subgoal_result["replan_instruction"]
+                replan_count += 1
+                logger.info(
+                    "Full replan requested (replan #%d). "
+                    "Old instruction: '%s'. New instruction: '%s'. "
+                    "Drone origin for replan: [%.1f, %.1f, %.1f, %.1f]",
+                    replan_count, instruction, new_instr,
+                    origin_x, origin_y, origin_z, origin_yaw,
+                )
+                instruction = new_instr
+                replan_requested = True
+                break
+
+            if sr == "skipped":
+                logger.info("Subgoal '%s' skipped by user.", subgoal_nl)
+
+        if aborted or not replan_requested:
+            break
+
+    logger.info(
+        "Run finished: %d subgoals processed, %d replan(s), aborted=%s.",
+        subgoal_index, replan_count, aborted,
+    )
 
     end_ts = datetime.now().isoformat()
 
@@ -607,7 +852,7 @@ def run_llm_planner_control_loop(
     total_steps_all = sum(s["total_steps"] for s in subgoal_summaries)
     total_vlm_calls = sum(s.get("vlm_call_count", 0) for s in subgoal_summaries)
     total_corrections = sum(s.get("corrections_used", 0) for s in subgoal_summaries)
-    all_vlm_records = [decomposition_call_record]
+    all_vlm_records = [r["call_record"] for r in decomposition_records]
     for s in subgoal_summaries:
         all_vlm_records.extend(s.get("vlm_call_records", []))
     total_input_tokens = sum(r.get("input_tokens", 0) for r in all_vlm_records)
@@ -643,9 +888,12 @@ def run_llm_planner_control_loop(
                 "consecutive_steps": batch.ACTION_SMALL_STEPS,
             },
         },
-        "llm_subgoals": subgoals,
-        "decomposition_call_record": decomposition_call_record,
-        "subgoal_count": len(subgoals),
+        "llm_subgoals": decomposition_records[0]["subgoals"] if decomposition_records else [],
+        "decomposition_call_record": decomposition_records[0]["call_record"] if decomposition_records else {},
+        "decomposition_records": decomposition_records,
+        "replan_count": replan_count,
+        "aborted": aborted,
+        "subgoal_count": subgoal_index,
         "subgoal_summaries": subgoal_summaries,
         "total_steps": total_steps_all,
         "total_vlm_calls": total_vlm_calls,
