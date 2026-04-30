@@ -428,23 +428,29 @@ class LTLSymbolicPlanner:
     def _get_bdd_constraint_violation(self, key: str, bdd_false) -> "spot.bdd":
         """Build BDD representing the violation state for a constraint.
 
-        For negative constraints: predicate TRUE, all others FALSE.
+        For negative constraints: predicate TRUE, positive constraints TRUE
+        (satisfied), everything else FALSE.
         For positive constraints: predicate FALSE, other positive constraints
         TRUE (satisfied), everything else FALSE.
         """
         info = self.constraint_predicates[key]
         target_idx = _predicate_key_to_index(key)
 
-        if info.polarity == "negative":
-            return self._get_bdd_for_single_task(target_idx)
+        positive_indices = {
+            _predicate_key_to_index(k)
+            for k, ci in self.constraint_predicates.items()
+            if ci.polarity == "positive"
+        }
 
         clauses = []
         for k in self.pi_map:
             idx = _predicate_key_to_index(k)
             if k == key:
-                clauses.append(f"!p{idx}")
-            elif (k in self.constraint_predicates
-                  and self.constraint_predicates[k].polarity == "positive"):
+                if info.polarity == "negative":
+                    clauses.append(f"p{idx}")
+                else:
+                    clauses.append(f"!p{idx}")
+            elif idx in positive_indices:
                 clauses.append(f"p{idx}")
             else:
                 clauses.append(f"!p{idx}")
