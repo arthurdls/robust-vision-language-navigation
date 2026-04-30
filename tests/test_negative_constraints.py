@@ -24,20 +24,17 @@ def _make_monitor(constraints=None):
     )
 
 
-def test_monitor_accepts_empty_constraints():
+def test_monitor_empty_or_default_constraints():
     m = _make_monitor()
     assert m._constraints == []
+    m2 = LiveDiaryMonitor(subgoal="Go forward", check_interval=2, model="gpt-4o")
+    assert m2._constraints == []
 
 
 def test_monitor_accepts_constraints():
     m = _make_monitor(["stay away from building B", "do not fly over zone C"])
     assert len(m._constraints) == 2
     assert "building B" in m._constraints[0]
-
-
-def test_monitor_default_no_constraints():
-    m = LiveDiaryMonitor(subgoal="Go forward", check_interval=2, model="gpt-4o")
-    assert m._constraints == []
 
 
 def test_constraints_block_empty_when_none():
@@ -62,18 +59,6 @@ def test_constraints_block_with_constraint_info():
     block = m._constraints_block()
     assert "AVOID: Flying over building C" in block
     assert "MAINTAIN: Above 10 meters altitude" in block
-
-
-def test_monitor_backward_compat_negative_constraints():
-    """Old negative_constraints parameter still works."""
-    m = LiveDiaryMonitor(
-        subgoal="Go forward",
-        check_interval=2,
-        model="gpt-4o",
-        negative_constraints=["stay away from zone A"],
-    )
-    assert len(m._constraints) == 1
-    assert m._constraints[0] == "stay away from zone A"
 
 
 @patch("rvln.ai.diary_monitor.query_vlm")

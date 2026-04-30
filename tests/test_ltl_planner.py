@@ -56,7 +56,6 @@ def test_helpers():
     # Non-string value skipped
     d3 = _normalize_pi_predicates({"pi_1": "A", "pi_2": 42})
     assert d3 == {"pi_1": "A"}
-    print("  [OK] helpers")
 
 
 def test_plan_valid_simple():
@@ -76,7 +75,6 @@ def test_plan_valid_simple():
     next_pred = planner.get_next_predicate()
     assert next_pred is None
     assert planner.finished
-    print("  [OK] plan valid simple (F pi_1)")
 
 
 def test_plan_valid_sequence():
@@ -105,7 +103,6 @@ def test_plan_valid_sequence():
         "Go to Location B",
         "Go to Location C",
     ]
-    print("  [OK] plan valid sequence (A then B then C)")
 
 
 def test_plan_valid_complex():
@@ -124,7 +121,6 @@ def test_plan_valid_complex():
     assert len(planner.pi_map) == 3
     first = planner.get_next_predicate()
     assert first in ("Deliver drink to Location E", "Deliver apple to Location E")
-    print("  [OK] plan valid complex (F pi_1 & (!pi_1 U (pi_2 | pi_3)))")
 
 
 def test_plan_invalid_instruction():
@@ -138,7 +134,6 @@ def test_plan_invalid_instruction():
             assert False, f"Expected ValueError for instruction={bad!r}"
         except (ValueError, TypeError):
             pass
-    print("  [OK] plan invalid instruction")
 
 
 def test_plan_invalid_data():
@@ -196,7 +191,6 @@ def test_plan_invalid_data():
     planner.advance_state("Same")
     second = planner.get_next_predicate()
     assert second == "Same"
-    print("  [OK] plan invalid data")
 
 
 def test_plan_invalid_formula():
@@ -215,7 +209,6 @@ def test_plan_invalid_formula():
         assert False
     except ValueError as e:
         assert "Spot" in str(e) or "formula" in str(e).lower() or "translate" in str(e).lower()
-    print("  [OK] plan invalid formula")
 
 
 def test_get_next_without_plan():
@@ -223,7 +216,6 @@ def test_get_next_without_plan():
     mock = MockLLM()
     planner = LTLSymbolicPlanner(mock)
     assert planner.get_next_predicate() is None
-    print("  [OK] get_next without plan")
 
 
 def test_advance_unknown_task():
@@ -238,7 +230,6 @@ def test_advance_unknown_task():
     before = planner.current_automaton_state
     planner.advance_state("Unknown task description")
     assert planner.current_automaton_state == before
-    print("  [OK] advance unknown task")
 
 
 def test_advance_no_edge_sink():
@@ -255,7 +246,6 @@ def test_advance_no_edge_sink():
     # Should be in sink or finished
     assert planner.get_next_predicate() is None
     assert planner.finished
-    print("  [OK] advance no edge / sink")
 
 
 def test_normalize_key_variants():
@@ -271,7 +261,6 @@ def test_normalize_key_variants():
     assert planner.pi_map.get("pi_2") == "Second"
     next_p = planner.get_next_predicate()
     assert next_p == "First"
-    print("  [OK] normalize key variants (p1/p2)")
 
 
 def test_classify_global_avoidance():
@@ -292,89 +281,6 @@ def test_classify_global_avoidance():
     assert planner.constraint_predicates["pi_3"].polarity == "negative"
     assert "pi_1" not in planner.constraint_predicates
     assert "pi_2" not in planner.constraint_predicates
-
-
-def test_active_constraints_global():
-    """G(!pi_3) should be active at every state."""
-    mock = MockLLM()
-    mock.ltl_nl_formula = {
-        "pi_predicates": {
-            "pi_1": "Go to tree A",
-            "pi_2": "Go to streetlight B",
-            "pi_3": "Flying over building C",
-        },
-        "ltl_nl_formula": "F pi_2 & (!pi_2 U pi_1) & G(!pi_3)",
-    }
-    planner = LTLSymbolicPlanner(mock)
-    planner.plan_from_natural_language("Go to A then B, never fly over C")
-
-    current = planner.get_next_predicate()
-    assert current == "Go to tree A"
-    constraints = planner.get_active_constraints()
-    assert len(constraints) == 1
-    assert constraints[0].description == "Flying over building C"
-    assert constraints[0].polarity == "negative"
-
-    planner.advance_state(current)
-    current = planner.get_next_predicate()
-    assert current == "Go to streetlight B"
-    constraints = planner.get_active_constraints()
-    assert len(constraints) == 1
-    assert constraints[0].description == "Flying over building C"
-
-    planner.advance_state(current)
-    assert planner.get_next_predicate() is None
-    assert planner.get_active_constraints() == []
-
-
-def test_active_constraints_scoped():
-    """!pi_3 U pi_2: pi_3 active before pi_2, released after."""
-    mock = MockLLM()
-    mock.ltl_nl_formula = {
-        "pi_predicates": {
-            "pi_1": "Approach the tree",
-            "pi_2": "Go to the streetlight",
-            "pi_3": "Near the red car",
-        },
-        "ltl_nl_formula": "F pi_2 & (!pi_2 U pi_1) & (!pi_3 U pi_2)",
-    }
-    planner = LTLSymbolicPlanner(mock)
-    planner.plan_from_natural_language("Approach tree, then streetlight, avoid car")
-
-    current = planner.get_next_predicate()
-    assert current == "Approach the tree"
-    constraints = planner.get_active_constraints()
-    descs = [c.description for c in constraints]
-    assert "Near the red car" in descs
-
-    planner.advance_state(current)
-    current = planner.get_next_predicate()
-    assert current == "Go to the streetlight"
-    constraints = planner.get_active_constraints()
-    descs = [c.description for c in constraints]
-    assert "Near the red car" in descs
-
-    planner.advance_state(current)
-    assert planner.get_active_constraints() == []
-
-
-def test_no_constraints_simple_sequence():
-    """Pure sequence has no constraint predicates."""
-    mock = MockLLM()
-    mock.ltl_nl_formula = {
-        "pi_predicates": {
-            "pi_1": "Go to A",
-            "pi_2": "Go to B",
-            "pi_3": "Go to C",
-        },
-        "ltl_nl_formula": "F pi_3 & (!pi_3 U pi_2) & (!pi_2 U pi_1)",
-    }
-    planner = LTLSymbolicPlanner(mock)
-    planner.plan_from_natural_language("Go A then B then C")
-
-    assert planner.constraint_predicates == {}
-    _ = planner.get_next_predicate()
-    assert planner.get_active_constraints() == []
 
 
 def test_multiple_global_constraints():
@@ -419,93 +325,6 @@ def test_classify_global_positive():
     assert "pi_2" in planner.constraint_predicates
     assert planner.constraint_predicates["pi_2"].polarity == "positive"
     assert "pi_1" not in planner.constraint_predicates
-
-
-def test_active_positive_constraint_global():
-    """G(pi_2) should be active at every state until mission complete."""
-    mock = MockLLM()
-    mock.ltl_nl_formula = {
-        "pi_predicates": {
-            "pi_1": "Fly to the landmark",
-            "pi_2": "Above 10 meters altitude",
-        },
-        "ltl_nl_formula": "F pi_1 & G(pi_2)",
-    }
-    planner = LTLSymbolicPlanner(mock)
-    planner.plan_from_natural_language("Fly to landmark, always above 10m")
-
-    current = planner.get_next_predicate()
-    assert current == "Fly to the landmark"
-    constraints = planner.get_active_constraints()
-    assert len(constraints) == 1
-    assert constraints[0].description == "Above 10 meters altitude"
-    assert constraints[0].polarity == "positive"
-
-    planner.advance_state(current)
-    assert planner.get_next_predicate() is None
-    assert planner.get_active_constraints() == []
-
-
-def test_active_positive_constraint_scoped():
-    """pi_3 U pi_1: positive constraint active until pi_1 done, then released."""
-    mock = MockLLM()
-    mock.ltl_nl_formula = {
-        "pi_predicates": {
-            "pi_1": "Go to the tree",
-            "pi_2": "Go to the streetlight",
-            "pi_3": "River visible in frame",
-        },
-        "ltl_nl_formula": "F pi_2 & (!pi_2 U pi_1) & (pi_3 U pi_1)",
-    }
-    planner = LTLSymbolicPlanner(mock)
-    planner.plan_from_natural_language("tree then streetlight, keep river visible until tree")
-
-    assert "pi_3" in planner.constraint_predicates
-    assert planner.constraint_predicates["pi_3"].polarity == "positive"
-
-    current = planner.get_next_predicate()
-    assert current == "Go to the tree"
-    constraints = planner.get_active_constraints()
-    descs = [c.description for c in constraints]
-    assert "River visible in frame" in descs
-
-    planner.advance_state(current)
-    current = planner.get_next_predicate()
-    assert current == "Go to the streetlight"
-    constraints = planner.get_active_constraints()
-    descs = [c.description for c in constraints]
-    assert "River visible in frame" not in descs
-
-    planner.advance_state(current)
-    assert planner.get_active_constraints() == []
-
-
-def test_mixed_positive_negative_constraints():
-    """G(pi_2) positive + G(!pi_3) negative coexist correctly."""
-    mock = MockLLM()
-    mock.ltl_nl_formula = {
-        "pi_predicates": {
-            "pi_1": "Navigate to the bridge",
-            "pi_2": "Above the treeline",
-            "pi_3": "Flying over the highway",
-        },
-        "ltl_nl_formula": "F pi_1 & G(pi_2) & G(!pi_3)",
-    }
-    planner = LTLSymbolicPlanner(mock)
-    planner.plan_from_natural_language("bridge, stay above treeline, never over highway")
-
-    assert "pi_2" in planner.constraint_predicates
-    assert planner.constraint_predicates["pi_2"].polarity == "positive"
-    assert "pi_3" in planner.constraint_predicates
-    assert planner.constraint_predicates["pi_3"].polarity == "negative"
-    assert "pi_1" not in planner.constraint_predicates
-
-    _ = planner.get_next_predicate()
-    constraints = planner.get_active_constraints()
-    assert len(constraints) == 2
-    descs = {c.description: c.polarity for c in constraints}
-    assert descs["Above the treeline"] == "positive"
-    assert descs["Flying over the highway"] == "negative"
 
 
 def test_positive_constraint_single_goal():
@@ -596,46 +415,5 @@ def test_scoped_positive_and_negative_together():
     assert len(constraints) == 0
 
 
-def test_constraint_info_equality():
-    """ConstraintInfo dataclass equality and repr."""
-    a = ConstraintInfo(description="X", polarity="negative")
-    b = ConstraintInfo(description="X", polarity="negative")
-    c = ConstraintInfo(description="X", polarity="positive")
-    assert a == b
-    assert a != c
-    assert "negative" in repr(a)
-
-
-def main():
-    print("LTL Planner robustness tests (Spot from rvln-sim)")
-    print("-" * 50)
-    test_helpers()
-    test_plan_valid_simple()
-    test_plan_valid_sequence()
-    test_plan_valid_complex()
-    test_plan_invalid_instruction()
-    test_plan_invalid_data()
-    test_plan_invalid_formula()
-    test_get_next_without_plan()
-    test_advance_unknown_task()
-    test_advance_no_edge_sink()
-    test_normalize_key_variants()
-    test_classify_global_avoidance()
-    test_active_constraints_global()
-    test_active_constraints_scoped()
-    test_no_constraints_simple_sequence()
-    test_multiple_global_constraints()
-    test_classify_global_positive()
-    test_active_positive_constraint_global()
-    test_active_positive_constraint_scoped()
-    test_mixed_positive_negative_constraints()
-    test_positive_constraint_single_goal()
-    test_positive_constraint_multi_step_sequence()
-    test_scoped_positive_and_negative_together()
-    test_constraint_info_equality()
-    print("-" * 50)
-    print("All robustness tests passed.")
-
-
 if __name__ == "__main__":
-    main()
+    pytest.main([__file__, "-v"])

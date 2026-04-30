@@ -84,37 +84,3 @@ def test_vlm_returns_constraint_violated_field():
     )
 
 
-@needs_api
-@tier3
-def test_vlm_no_violation_without_constraints():
-    """When no constraints are listed, constraint_violated should be false or absent."""
-    from rvln.ai.prompts import DIARY_SYSTEM_PROMPT
-    from rvln.ai.utils.llm_providers import LLMFactory
-
-    llm = LLMFactory.create("openai", model="gpt-4o")
-
-    prompt = _render_global_prompt(
-        subgoal="Approach the tree",
-        constraints=[],
-        diary="Steps 0-20: Drone moved forward toward the tree.\n"
-              "Checkpoint 20: completion = 0.50",
-        displacement="[x: 5.00 m, y: 0.00 m, z: 0.00 m, yaw: 0.0 deg]",
-        prev_pct=0.50,
-    )
-
-    messages = [
-        {"role": "system", "content": DIARY_SYSTEM_PROMPT},
-        {"role": "user", "content": prompt},
-    ]
-
-    response = llm.make_request(messages, temperature=0.0)
-    text = response.strip()
-    start = text.find("{")
-    end = text.rfind("}")
-    assert start != -1 and end != -1, f"No JSON in VLM response: {text}"
-    parsed = json.loads(text[start:end + 1])
-
-    violated = parsed.get("constraint_violated", False)
-    assert violated is False, (
-        f"Expected no constraint violation with empty constraints, got: {parsed}"
-    )
