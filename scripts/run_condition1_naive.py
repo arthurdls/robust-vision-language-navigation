@@ -3,7 +3,7 @@
 Condition 1: Naive End-to-End VLA.
 
 Passes the full multi-step NL instruction directly to OpenVLA as a single
-instruction. No LTL decomposition, no subgoal conversion, no diary monitoring,
+instruction. No LTL decomposition, no subgoal conversion, no goal adherence monitoring,
 no convergence corrections.
 
 The drone runs until convergence (stops moving) or max_steps. This establishes

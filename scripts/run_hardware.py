@@ -3,7 +3,7 @@
 Run the MiniNav real-drone integration pipeline.
 
 Drives a real (or mocked) drone via the boieng wire format using the OpenVLA
-server, LTL planner, and live diary monitor. Results land under
+server, LTL planner, and live goal adherence monitor. Results land under
 results/hardware/run_<timestamp>/. See README "Running on Hardware (MiniNav)"
 for the full terminal layout.
 

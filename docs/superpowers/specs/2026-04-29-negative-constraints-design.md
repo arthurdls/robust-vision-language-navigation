@@ -53,7 +53,7 @@ for each constraint predicate pi_X:
 
 ### Prompt Injection
 
-Active constraint NL descriptions are passed to the `LiveDiaryMonitor` constructor via a new `negative_constraints: Optional[List[str]]` parameter (default `None`, empty list internally).
+Active constraint NL descriptions are passed to the `GoalAdherenceMonitor` constructor via a new `negative_constraints: Optional[List[str]]` parameter (default `None`, empty list internally).
 
 When constraints are present, they are injected into `DIARY_GLOBAL_PROMPT` and `DIARY_CONVERGENCE_PROMPT` after the subgoal line:
 
@@ -87,7 +87,7 @@ In `run_integrated_control_loop`, before each `_run_subgoal` call:
 
 1. Call `planner.get_active_constraints()` to get NL descriptions.
 2. Pass them to `_run_subgoal` via a new `negative_constraints` parameter.
-3. `_run_subgoal` passes them to the `LiveDiaryMonitor` constructor.
+3. `_run_subgoal` passes them to the `GoalAdherenceMonitor` constructor.
 4. The subgoal result dict gains a `constraint_violated: bool` field for logging.
 
 ### LTL Prompt Updates

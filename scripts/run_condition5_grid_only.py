@@ -2,7 +2,7 @@
 """
 Condition 5: Image-Grid Only Monitor (No Text Diary).
 
-Uses the full LTL planner and SubgoalConverter. The LiveDiaryMonitor runs
+Uses the full LTL planner and SubgoalConverter. The GoalAdherenceMonitor runs
 normally for local checkpoints (2-frame VLM queries generate diary entries),
 but the GLOBAL and CONVERGENCE prompts are modified to remove the text diary
 and displacement data. The VLM sees only the subgoal text and the 3x3 image
@@ -168,14 +168,14 @@ Respond with EXACTLY ONE JSON object (no markdown fences):
 
 
 # ---------------------------------------------------------------------------
-# Monkey-patch the diary monitor prompts for this condition
+# Monkey-patch the goal adherence monitor prompts for this condition
 # ---------------------------------------------------------------------------
 
 def _patch_prompts():
-    """Replace global and convergence prompt templates in diary_monitor module."""
-    import rvln.ai.diary_monitor as dm_module
-    dm_module.GLOBAL_PROMPT_TEMPLATE = GRID_ONLY_GLOBAL_PROMPT
-    dm_module.CONVERGENCE_PROMPT_TEMPLATE = GRID_ONLY_CONVERGENCE_PROMPT
+    """Replace global and convergence prompt templates in goal_adherence_monitor module."""
+    import rvln.ai.goal_adherence_monitor as gam_module
+    gam_module.GLOBAL_PROMPT_TEMPLATE = GRID_ONLY_GLOBAL_PROMPT
+    gam_module.CONVERGENCE_PROMPT_TEMPLATE = GRID_ONLY_CONVERGENCE_PROMPT
 
 
 # ---------------------------------------------------------------------------
@@ -278,7 +278,7 @@ def _run_subgoal(
     drone_cam_id, frames_dir, subgoal_dir, frame_offset, trajectory_log,
     check_interval_s=None, max_seconds=None, constraints=None,
 ):
-    from rvln.ai.diary_monitor import DiaryCheckResult, LiveDiaryMonitor
+    from rvln.ai.goal_adherence_monitor import DiaryCheckResult, GoalAdherenceMonitor
     from rvln.ai.subgoal_converter import SubgoalConverter
 
     use_async = check_interval_s is not None
@@ -309,7 +309,7 @@ def _run_subgoal(
             "constraint_violation_count": 0,
         }
 
-    monitor = LiveDiaryMonitor(
+    monitor = GoalAdherenceMonitor(
         subgoal=subgoal_nl,
         check_interval=check_interval,
         model=monitor_model,

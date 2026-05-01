@@ -5,7 +5,7 @@ Interactive REPL for issuing natural-language commands directly to OpenVLA.
 Uses the same simulation environment as the other runners. After the simulator
 initialises, you are prompted for the initial drone position (x,y,z,yaw) and
 then enter an interactive loop where you type commands that are sent straight
-to the VLA — no LTL planning or diary monitoring.
+to the VLA — no LTL planning or goal adherence monitoring.
 
 Capabilities:
 - An action runs until the model predicts small changes 10 steps in a row, or

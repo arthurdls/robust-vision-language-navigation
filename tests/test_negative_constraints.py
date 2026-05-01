@@ -1,5 +1,5 @@
 """
-Tier 1 tests for constraint support in LiveDiaryMonitor.
+Tier 1 tests for constraint support in GoalAdherenceMonitor.
 No API calls, no GPU, no simulator. All LLM responses are mocked.
 Run: conda run -n rvln-sim pytest tests/test_negative_constraints.py -v
 """
@@ -11,12 +11,12 @@ _SRC = Path(__file__).resolve().parent.parent / "src"
 if _SRC.is_dir() and str(_SRC) not in sys.path:
     sys.path.insert(0, str(_SRC))
 
-from rvln.ai.diary_monitor import LiveDiaryMonitor, DiaryCheckResult
+from rvln.ai.goal_adherence_monitor import GoalAdherenceMonitor, DiaryCheckResult
 from rvln.ai.ltl_planner import ConstraintInfo
 
 
 def _make_monitor(constraints=None):
-    return LiveDiaryMonitor(
+    return GoalAdherenceMonitor(
         subgoal="Approach the tree",
         check_interval=2,
         model="gpt-4o",
@@ -27,7 +27,7 @@ def _make_monitor(constraints=None):
 def test_monitor_empty_or_default_constraints():
     m = _make_monitor()
     assert m._constraints == []
-    m2 = LiveDiaryMonitor(subgoal="Go forward", check_interval=2, model="gpt-4o")
+    m2 = GoalAdherenceMonitor(subgoal="Go forward", check_interval=2, model="gpt-4o")
     assert m2._constraints == []
 
 
@@ -61,9 +61,9 @@ def test_constraints_block_with_constraint_info():
     assert "MAINTAIN: Above 10 meters altitude" in block
 
 
-@patch("rvln.ai.diary_monitor.query_vlm")
-@patch("rvln.ai.diary_monitor.build_frame_grid")
-@patch("rvln.ai.diary_monitor.sample_frames_every_n")
+@patch("rvln.ai.goal_adherence_monitor.query_vlm")
+@patch("rvln.ai.goal_adherence_monitor.build_frame_grid")
+@patch("rvln.ai.goal_adherence_monitor.sample_frames_every_n")
 def test_constraint_violation_force_converges(mock_sample, mock_grid, mock_vlm):
     m = _make_monitor([
         ConstraintInfo(description="stay away from building B", polarity="negative"),
@@ -85,9 +85,9 @@ def test_constraint_violation_force_converges(mock_sample, mock_grid, mock_vlm):
     assert "constraint" in result.reasoning.lower()
 
 
-@patch("rvln.ai.diary_monitor.query_vlm")
-@patch("rvln.ai.diary_monitor.build_frame_grid")
-@patch("rvln.ai.diary_monitor.sample_frames_every_n")
+@patch("rvln.ai.goal_adherence_monitor.query_vlm")
+@patch("rvln.ai.goal_adherence_monitor.build_frame_grid")
+@patch("rvln.ai.goal_adherence_monitor.sample_frames_every_n")
 def test_no_violation_continues(mock_sample, mock_grid, mock_vlm):
     m = _make_monitor([
         ConstraintInfo(description="stay away from building B", polarity="negative"),
@@ -108,9 +108,9 @@ def test_no_violation_continues(mock_sample, mock_grid, mock_vlm):
     assert result.action == "continue"
 
 
-@patch("rvln.ai.diary_monitor.query_vlm")
-@patch("rvln.ai.diary_monitor.build_frame_grid")
-@patch("rvln.ai.diary_monitor.sample_frames_every_n")
+@patch("rvln.ai.goal_adherence_monitor.query_vlm")
+@patch("rvln.ai.goal_adherence_monitor.build_frame_grid")
+@patch("rvln.ai.goal_adherence_monitor.sample_frames_every_n")
 def test_no_violation_field_without_constraints(mock_sample, mock_grid, mock_vlm):
     """Without constraints, missing constraint_violated field is fine."""
     m = _make_monitor()
@@ -129,9 +129,9 @@ def test_no_violation_field_without_constraints(mock_sample, mock_grid, mock_vlm
     assert result.action == "continue"
 
 
-@patch("rvln.ai.diary_monitor.query_vlm")
-@patch("rvln.ai.diary_monitor.build_frame_grid")
-@patch("rvln.ai.diary_monitor.sample_frames_every_n")
+@patch("rvln.ai.goal_adherence_monitor.query_vlm")
+@patch("rvln.ai.goal_adherence_monitor.build_frame_grid")
+@patch("rvln.ai.goal_adherence_monitor.sample_frames_every_n")
 def test_positive_constraint_violation_force_converges(mock_sample, mock_grid, mock_vlm):
     """Positive constraint violation also triggers force_converge."""
     m = _make_monitor([
@@ -192,7 +192,7 @@ def test_end_to_end_constraint_flow():
     assert len(constraints) == 1
     assert constraints[0].description == "Flying over building C"
 
-    monitor = LiveDiaryMonitor(
+    monitor = GoalAdherenceMonitor(
         subgoal=current,
         check_interval=2,
         model="gpt-4o",
@@ -229,7 +229,7 @@ def test_end_to_end_backward_compat():
     current = planner.get_next_predicate()
     assert planner.get_active_constraints() == []
 
-    monitor = LiveDiaryMonitor(
+    monitor = GoalAdherenceMonitor(
         subgoal=current,
         check_interval=2,
         model="gpt-4o",
@@ -308,7 +308,7 @@ def test_end_to_end_positive_constraint_flow():
     assert len(constraints) == 1
     assert constraints[0].polarity == "positive"
 
-    monitor = LiveDiaryMonitor(
+    monitor = GoalAdherenceMonitor(
         subgoal=current,
         check_interval=2,
         model="gpt-4o",
@@ -343,7 +343,7 @@ def test_end_to_end_mixed_constraints():
     constraints = planner.get_active_constraints()
     assert len(constraints) == 2
 
-    monitor = LiveDiaryMonitor(
+    monitor = GoalAdherenceMonitor(
         subgoal=planner.get_next_predicate(),
         check_interval=2,
         model="gpt-4o",

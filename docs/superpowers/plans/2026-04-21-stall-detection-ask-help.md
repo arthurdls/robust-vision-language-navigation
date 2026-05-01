@@ -4,31 +4,31 @@
 
 **Goal:** When checkpoint completion percentage plateaus over several consecutive checkpoints, pause the drone and ask the human operator for a new instruction.
 
-**Architecture:** Track completion percentage history in `LiveDiaryMonitor`. After each checkpoint, check if the last N values are within a small delta (stall). If stalled, return a new `"ask_help"` action. The `run_subgoal` loop in `interface.py` handles this by pausing the drone, printing status, and prompting for human input via stdin.
+**Architecture:** Track completion percentage history in `GoalAdherenceMonitor`. After each checkpoint, check if the last N values are within a small delta (stall). If stalled, return a new `"ask_help"` action. The `run_subgoal` loop in `interface.py` handles this by pausing the drone, printing status, and prompting for human input via stdin.
 
-**Tech Stack:** Python, existing `LiveDiaryMonitor` / `DiaryCheckResult` / `run_subgoal` infrastructure.
+**Tech Stack:** Python, existing `GoalAdherenceMonitor` / `DiaryCheckResult` / `run_subgoal` infrastructure.
 
 ---
 
-### Task 1: Add stall detection to `LiveDiaryMonitor`
+### Task 1: Add stall detection to `GoalAdherenceMonitor`
 
 **Files:**
-- Modify: `src/rvln/ai/diary_monitor.py:48-54` (DiaryCheckResult docstring)
-- Modify: `src/rvln/ai/diary_monitor.py:226-257` (`__init__`)
-- Modify: `src/rvln/ai/diary_monitor.py:587-666` (`_run_checkpoint`)
-- Modify: `src/rvln/ai/diary_monitor.py:668-766` (`_run_checkpoint_async`)
+- Modify: `src/rvln/ai/goal_adherence_monitor.py:48-54` (DiaryCheckResult docstring)
+- Modify: `src/rvln/ai/goal_adherence_monitor.py:226-257` (`__init__`)
+- Modify: `src/rvln/ai/goal_adherence_monitor.py:587-666` (`_run_checkpoint`)
+- Modify: `src/rvln/ai/goal_adherence_monitor.py:668-766` (`_run_checkpoint_async`)
 - Create: `tests/test_stall_detection.py`
 
 - [ ] **Step 1: Write failing test for stall detection helper**
 
 ```python
 # tests/test_stall_detection.py
-from rvln.ai.diary_monitor import LiveDiaryMonitor
+from rvln.ai.goal_adherence_monitor import GoalAdherenceMonitor
 
 
 def test_no_stall_when_not_enough_history():
     """Stall detection needs at least stall_window checkpoints."""
-    m = LiveDiaryMonitor.__new__(LiveDiaryMonitor)
+    m = GoalAdherenceMonitor.__new__(GoalAdherenceMonitor)
     m._completion_history = [0.1, 0.12]
     m._stall_window = 3
     m._stall_threshold = 0.05
@@ -36,7 +36,7 @@ def test_no_stall_when_not_enough_history():
 
 
 def test_stall_detected_when_flat():
-    m = LiveDiaryMonitor.__new__(LiveDiaryMonitor)
+    m = GoalAdherenceMonitor.__new__(GoalAdherenceMonitor)
     m._completion_history = [0.30, 0.31, 0.32]
     m._stall_window = 3
     m._stall_threshold = 0.05
@@ -44,7 +44,7 @@ def test_stall_detected_when_flat():
 
 
 def test_no_stall_when_progressing():
-    m = LiveDiaryMonitor.__new__(LiveDiaryMonitor)
+    m = GoalAdherenceMonitor.__new__(GoalAdherenceMonitor)
     m._completion_history = [0.30, 0.40, 0.50]
     m._stall_window = 3
     m._stall_threshold = 0.05
@@ -53,7 +53,7 @@ def test_no_stall_when_progressing():
 
 def test_no_stall_when_completion_high():
     """Don't ask for help if already nearly done."""
-    m = LiveDiaryMonitor.__new__(LiveDiaryMonitor)
+    m = GoalAdherenceMonitor.__new__(GoalAdherenceMonitor)
     m._completion_history = [0.85, 0.86, 0.86]
     m._stall_window = 3
     m._stall_threshold = 0.05
@@ -63,7 +63,7 @@ def test_no_stall_when_completion_high():
 
 def test_stall_only_looks_at_last_window():
     """Earlier progress doesn't mask a recent plateau."""
-    m = LiveDiaryMonitor.__new__(LiveDiaryMonitor)
+    m = GoalAdherenceMonitor.__new__(GoalAdherenceMonitor)
     m._completion_history = [0.10, 0.20, 0.30, 0.31, 0.32]
     m._stall_window = 3
     m._stall_threshold = 0.05
@@ -77,7 +77,7 @@ Expected: FAIL because `_is_stalled` does not exist yet.
 
 - [ ] **Step 3: Add `_is_stalled()` method and new init parameters**
 
-In `src/rvln/ai/diary_monitor.py`, update the `DiaryCheckResult` docstring (line 49):
+In `src/rvln/ai/goal_adherence_monitor.py`, update the `DiaryCheckResult` docstring (line 49):
 
 ```python
 @dataclass
@@ -126,8 +126,8 @@ Expected: All 5 tests PASS.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add tests/test_stall_detection.py src/rvln/ai/diary_monitor.py
-git commit -m "Add _is_stalled() heuristic to LiveDiaryMonitor"
+git add tests/test_stall_detection.py src/rvln/ai/goal_adherence_monitor.py
+git commit -m "Add _is_stalled() heuristic to GoalAdherenceMonitor"
 ```
 
 ---
@@ -135,8 +135,8 @@ git commit -m "Add _is_stalled() heuristic to LiveDiaryMonitor"
 ### Task 2: Wire stall detection into checkpoint results
 
 **Files:**
-- Modify: `src/rvln/ai/diary_monitor.py:587-666` (`_run_checkpoint`)
-- Modify: `src/rvln/ai/diary_monitor.py:668-766` (`_run_checkpoint_async`)
+- Modify: `src/rvln/ai/goal_adherence_monitor.py:587-666` (`_run_checkpoint`)
+- Modify: `src/rvln/ai/goal_adherence_monitor.py:668-766` (`_run_checkpoint_async`)
 
 - [ ] **Step 1: Write failing test for checkpoint returning ask_help**
 
@@ -148,8 +148,8 @@ from pathlib import Path
 
 
 def _make_monitor_with_history(history, stall_window=3, stall_threshold=0.05):
-    """Build a LiveDiaryMonitor with pre-loaded completion history for testing."""
-    m = LiveDiaryMonitor(
+    """Build a GoalAdherenceMonitor with pre-loaded completion history for testing."""
+    m = GoalAdherenceMonitor(
         subgoal="move forward",
         check_interval=2,
         model="gpt-4o",
@@ -160,9 +160,9 @@ def _make_monitor_with_history(history, stall_window=3, stall_threshold=0.05):
     return m
 
 
-@patch("rvln.ai.diary_monitor.query_vlm")
-@patch("rvln.ai.diary_monitor.build_frame_grid")
-@patch("rvln.ai.diary_monitor.sample_frames_every_n")
+@patch("rvln.ai.goal_adherence_monitor.query_vlm")
+@patch("rvln.ai.goal_adherence_monitor.build_frame_grid")
+@patch("rvln.ai.goal_adherence_monitor.sample_frames_every_n")
 def test_checkpoint_returns_ask_help_on_stall(mock_sample, mock_grid, mock_vlm):
     """When completion has plateaued, _run_checkpoint should return ask_help."""
     m = _make_monitor_with_history([0.30, 0.31])
@@ -185,9 +185,9 @@ def test_checkpoint_returns_ask_help_on_stall(mock_sample, mock_grid, mock_vlm):
     assert "stall" in result.reasoning.lower() or "stall" in result.reasoning.lower()
 
 
-@patch("rvln.ai.diary_monitor.query_vlm")
-@patch("rvln.ai.diary_monitor.build_frame_grid")
-@patch("rvln.ai.diary_monitor.sample_frames_every_n")
+@patch("rvln.ai.goal_adherence_monitor.query_vlm")
+@patch("rvln.ai.goal_adherence_monitor.build_frame_grid")
+@patch("rvln.ai.goal_adherence_monitor.sample_frames_every_n")
 def test_checkpoint_returns_continue_when_not_stalled(mock_sample, mock_grid, mock_vlm):
     """Normal progress should still return continue."""
     m = _make_monitor_with_history([0.10, 0.20])
@@ -274,7 +274,7 @@ Expected: All 7 tests PASS.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/rvln/ai/diary_monitor.py tests/test_stall_detection.py
+git add src/rvln/ai/goal_adherence_monitor.py tests/test_stall_detection.py
 git commit -m "Wire stall detection into checkpoint results as ask_help action"
 ```
 
@@ -286,7 +286,7 @@ git commit -m "Wire stall detection into checkpoint results as ask_help action"
 - Modify: `src/rvln/mininav/interface.py:603-894` (`run_subgoal` function)
 - Modify: `src/rvln/mininav/interface.py:897-973` (`parse_args`)
 
-- [ ] **Step 1: Add `stall_*` parameters to `run_subgoal` signature and pass to `LiveDiaryMonitor`**
+- [ ] **Step 1: Add `stall_*` parameters to `run_subgoal` signature and pass to `GoalAdherenceMonitor`**
 
 In `run_subgoal` (line 603), add three new parameters after `check_interval_s`:
 
@@ -315,10 +315,10 @@ def run_subgoal(
 ) -> Dict[str, Any]:
 ```
 
-Pass them through to `LiveDiaryMonitor` (line 632-639):
+Pass them through to `GoalAdherenceMonitor` (line 632-639):
 
 ```python
-    monitor = LiveDiaryMonitor(
+    monitor = GoalAdherenceMonitor(
         subgoal=subgoal_nl,
         check_interval=check_interval,
         model=monitor_model,
@@ -456,6 +456,6 @@ Expected: All tests PASS.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add src/rvln/ai/diary_monitor.py src/rvln/mininav/interface.py tests/test_stall_detection.py
+git add src/rvln/ai/goal_adherence_monitor.py src/rvln/mininav/interface.py tests/test_stall_detection.py
 git commit -m "Handle ask_help action in run_subgoal with operator prompt and CLI args"
 ```

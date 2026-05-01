@@ -68,9 +68,9 @@ class TestCondition0FullSystem:
         names = _all_names(_parse_tree("run_integration.py"))
         assert "LTLSymbolicPlanner" in names
 
-    def test_uses_diary_monitor(self):
+    def test_uses_goal_adherence_monitor(self):
         names = _all_names(_parse_tree("run_integration.py"))
-        assert "LiveDiaryMonitor" in names
+        assert "GoalAdherenceMonitor" in names
 
     def test_passes_constraints_to_run_subgoal(self):
         source = _read_source("run_integration.py")
@@ -94,9 +94,9 @@ class TestCondition1Naive:
         names = _all_names(_parse_tree("run_condition1_naive.py"))
         assert "LTLSymbolicPlanner" not in names
 
-    def test_no_diary_monitor(self):
+    def test_no_goal_adherence_monitor(self):
         names = _all_names(_parse_tree("run_condition1_naive.py"))
-        assert "LiveDiaryMonitor" not in names
+        assert "GoalAdherenceMonitor" not in names
 
     def test_no_subgoal_converter(self):
         names = _all_names(_parse_tree("run_condition1_naive.py"))
@@ -131,9 +131,9 @@ class TestCondition2LLMPlanner:
         source = _read_source("run_condition2_llm_planner.py")
         assert "import spot" not in source
 
-    def test_uses_diary_monitor(self):
+    def test_uses_goal_adherence_monitor(self):
         names = _all_names(_parse_tree("run_condition2_llm_planner.py"))
-        assert "LiveDiaryMonitor" in names
+        assert "GoalAdherenceMonitor" in names
 
     def test_no_constraint_enforcement(self):
         """C2 should not pass constraints to the monitor."""
@@ -159,10 +159,10 @@ class TestCondition3OpenLoop:
         names = _all_names(_parse_tree("run_condition3_open_loop.py"))
         assert "LTLSymbolicPlanner" in names
 
-    def test_no_diary_monitor(self):
+    def test_no_goal_adherence_monitor(self):
         names = _all_names(_parse_tree("run_condition3_open_loop.py"))
-        assert "LiveDiaryMonitor" not in names
-        assert "TextOnlyDiaryMonitor" not in names
+        assert "GoalAdherenceMonitor" not in names
+        assert "TextOnlyGoalAdherenceMonitor" not in names
 
     def test_no_on_convergence(self):
         source = _read_source("run_condition3_open_loop.py")
@@ -190,9 +190,9 @@ class TestCondition4SingleFrame:
         names = _all_names(_parse_tree("run_condition4_single_frame.py"))
         assert "LTLSymbolicPlanner" in names
 
-    def test_no_diary_monitor(self):
+    def test_no_goal_adherence_monitor(self):
         names = _all_names(_parse_tree("run_condition4_single_frame.py"))
-        assert "LiveDiaryMonitor" not in names
+        assert "GoalAdherenceMonitor" not in names
 
     def test_has_single_frame_prompts(self):
         source = _read_source("run_condition4_single_frame.py")
@@ -229,9 +229,9 @@ class TestCondition5GridOnly:
         names = _all_names(_parse_tree("run_condition5_grid_only.py"))
         assert "LTLSymbolicPlanner" in names
 
-    def test_uses_diary_monitor(self):
+    def test_uses_goal_adherence_monitor(self):
         names = _all_names(_parse_tree("run_condition5_grid_only.py"))
-        assert "LiveDiaryMonitor" in names
+        assert "GoalAdherenceMonitor" in names
 
     def test_grid_only_global_prompt_no_diary_text(self):
         """The patched global prompt must not contain {diary} or {displacement}."""
@@ -288,21 +288,21 @@ class TestCondition6TextOnly:
 
     def test_uses_text_only_monitor(self):
         names = _all_names(_parse_tree("run_condition6_text_only.py"))
-        assert "TextOnlyDiaryMonitor" in names
+        assert "TextOnlyGoalAdherenceMonitor" in names
 
-    def test_does_not_use_live_diary_monitor_for_monitoring(self):
-        """C6 should use TextOnlyDiaryMonitor, not LiveDiaryMonitor, for checkpoint monitoring."""
+    def test_does_not_use_goal_adherence_monitor_for_monitoring(self):
+        """C6 should use TextOnlyGoalAdherenceMonitor, not GoalAdherenceMonitor, for checkpoint monitoring."""
         calls = _all_call_names(_parse_tree("run_condition6_text_only.py"))
-        assert "TextOnlyDiaryMonitor" in calls
-        assert "LiveDiaryMonitor" not in calls
+        assert "TextOnlyGoalAdherenceMonitor" in calls
+        assert "GoalAdherenceMonitor" not in calls
 
     def test_on_convergence_no_vlm(self):
-        """TextOnlyDiaryMonitor.on_convergence should not call query_vlm or build_frame_grid."""
+        """TextOnlyGoalAdherenceMonitor.on_convergence should not call query_vlm or build_frame_grid."""
         source = _read_source("run_condition6_text_only.py")
         tree = ast.parse(source, filename="run_condition6_text_only.py")
 
         for node in ast.walk(tree):
-            if isinstance(node, ast.ClassDef) and node.name == "TextOnlyDiaryMonitor":
+            if isinstance(node, ast.ClassDef) and node.name == "TextOnlyGoalAdherenceMonitor":
                 for item in ast.walk(node):
                     if isinstance(item, ast.FunctionDef) and item.name == "on_convergence":
                         convergence_calls = set()

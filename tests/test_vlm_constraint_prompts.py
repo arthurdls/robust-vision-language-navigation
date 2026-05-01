@@ -1,5 +1,5 @@
 """
-Tier 3 VLM prompt smoke tests for constraint-aware diary monitoring.
+Tier 3 VLM prompt smoke tests for constraint-aware goal adherence monitoring.
 
 These tests make real VLM API calls with synthetic diary context to verify
 the VLM correctly returns constraint_violated in its JSON response.

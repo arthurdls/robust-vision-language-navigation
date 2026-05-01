@@ -4,7 +4,7 @@ Condition 2: LLM Sequential Planner (No LTL).
 
 Uses an LLM to decompose the instruction into a numbered list of subgoals
 (text-to-text, no LTL formula, no Spot automaton). Executes subgoals
-sequentially with full diary monitoring (same as Condition 0). No formal
+sequentially with full goal adherence monitoring (same as Condition 0). No formal
 constraint enforcement.
 
 OpenVLA server must be running: python scripts/start_server.py
@@ -313,8 +313,8 @@ def _run_subgoal(
     drone_cam_id, frames_dir, subgoal_dir, frame_offset, trajectory_log,
     check_interval_s=None, max_seconds=None,
 ):
-    """Run diary-monitored control loop for a single subgoal (same as run_integration._run_subgoal but with no constraints)."""
-    from rvln.ai.diary_monitor import DiaryCheckResult, LiveDiaryMonitor
+    """Run goal-adherence-monitored control loop for a single subgoal (same as run_integration._run_subgoal but with no constraints)."""
+    from rvln.ai.goal_adherence_monitor import DiaryCheckResult, GoalAdherenceMonitor
     from rvln.ai.subgoal_converter import SubgoalConverter
 
     use_async = check_interval_s is not None
@@ -344,7 +344,7 @@ def _run_subgoal(
             "replan_instruction": "",
         }
 
-    monitor = LiveDiaryMonitor(
+    monitor = GoalAdherenceMonitor(
         subgoal=subgoal_nl,
         check_interval=check_interval,
         model=monitor_model,
@@ -433,7 +433,7 @@ def _run_subgoal(
                 )
             converted_instruction = conversion.instruction
             current_instruction = converted_instruction
-            monitor = LiveDiaryMonitor(
+            monitor = GoalAdherenceMonitor(
                 subgoal=subgoal_nl,
                 check_interval=check_interval,
                 model=monitor_model,
@@ -875,7 +875,7 @@ def run_llm_planner_control_loop(
         "models": {
             "llm_decomposition": llm_model,
             "subgoal_converter": monitor_model,
-            "live_diary_monitor": monitor_model,
+            "goal_adherence_monitor": monitor_model,
             "openvla_predict_url": server_url,
         },
         "config": {
@@ -915,7 +915,7 @@ def run_llm_planner_control_loop(
 def main():
     load_env_vars()
     parser = argparse.ArgumentParser(
-        description="Condition 2: LLM sequential planner (no LTL) + full diary monitoring",
+        description="Condition 2: LLM sequential planner (no LTL) + full goal adherence monitoring",
     )
 
     mode = parser.add_mutually_exclusive_group(required=True)

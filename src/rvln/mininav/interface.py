@@ -5,7 +5,7 @@ Single-file real-drone integration runner.
 Pipeline:
 1) Prompt user for an instruction (unless provided via CLI).
 2) LTL decomposition with LLMUserInterface + LTLSymbolicPlanner.
-3) Subgoal conversion + LiveDiaryMonitor supervision.
+3) Subgoal conversion + GoalAdherenceMonitor supervision.
 4) OpenVLA /predict + /reset calls.
 5) Real command streaming to drone server using boieng wire format:
    [frame_count, vx, vy, vz, yaw] as float32 over TCP.
@@ -774,10 +774,10 @@ def run_subgoal(
     stall_threshold: float = 0.05,
     stall_completion_floor: float = 0.8,
 ) -> Dict[str, Any]:
-    """Execute a single subgoal with OpenVLA, diary monitoring, and operator help.
+    """Execute a single subgoal with OpenVLA, goal adherence monitoring, and operator help.
 
     Converts the subgoal to an OpenVLA instruction, then runs a frame loop
-    that calls OpenVLA for actions and the diary monitor for progress checks.
+    that calls OpenVLA for actions and the goal adherence monitor for progress checks.
     The drone pauses and prompts the operator when:
       - Checkpoint stall is detected (completion plateau).
       - The convergence correction budget is exhausted.
@@ -791,7 +791,7 @@ def run_subgoal(
     stop_reason, corrections_used, last_completion_pct, peak_completion,
     vlm_calls, next_origin, replan_instruction.
     """
-    from rvln.ai.diary_monitor import DiaryCheckResult, LiveDiaryMonitor
+    from rvln.ai.goal_adherence_monitor import DiaryCheckResult, GoalAdherenceMonitor
     from rvln.ai.subgoal_converter import SubgoalConverter
 
     converter = SubgoalConverter(model=monitor_model)
@@ -844,7 +844,7 @@ def run_subgoal(
     subgoal_dir = run_dir / f"subgoal_{subgoal_index:02d}_{sanitize_name(subgoal_nl)}"
     diary_artifacts = subgoal_dir / "diary_artifacts"
     diary_artifacts.mkdir(parents=True, exist_ok=True)
-    monitor = LiveDiaryMonitor(
+    monitor = GoalAdherenceMonitor(
         subgoal=subgoal_nl,
         check_interval=check_interval,
         model=monitor_model,
@@ -1592,7 +1592,7 @@ def main() -> None:
                 "models": {
                     "ltl_nl_planning": llm_model,
                     "subgoal_converter": monitor_model,
-                    "live_diary_monitor": monitor_model,
+                    "goal_adherence_monitor": monitor_model,
                     "openvla_predict_url": args.openvla_predict_url,
                 },
                 "ltl_plan": ltl_plan,

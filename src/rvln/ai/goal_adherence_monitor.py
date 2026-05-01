@@ -1,5 +1,5 @@
 """
-Live diary-based subgoal completion monitor with supervisor capabilities.
+Live goal adherence subgoal completion monitor with supervisor capabilities.
 
 Every N steps during normal execution: builds a local 2-frame grid
 (what changed?) and a global sampled grid (is the subgoal complete?
@@ -74,11 +74,11 @@ class DiaryCheckResult:
     constraint_violated: bool = False
 
 # ---------------------------------------------------------------------------
-# LiveDiaryMonitor
+# GoalAdherenceMonitor
 # ---------------------------------------------------------------------------
 
-class LiveDiaryMonitor:
-    """Real-time diary-based subgoal completion monitor with supervisor capabilities.
+class GoalAdherenceMonitor:
+    """Real-time goal adherence subgoal completion monitor with supervisor capabilities.
 
     Designed to monitor a SINGLE subgoal (one predicate from the LTL planner).
     Operates in three modes:

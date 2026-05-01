@@ -1,5 +1,5 @@
 """
-Unit tests for LiveDiaryMonitor core logic: on_convergence, on_frame checkpoint
+Unit tests for GoalAdherenceMonitor core logic: on_convergence, on_frame checkpoint
 triggering, _parse_global_response, _parse_json_response, and _format_displacement.
 
 All VLM/LLM responses are mocked. No API calls, no GPU, no simulator.
@@ -15,7 +15,7 @@ _SRC = Path(__file__).resolve().parent.parent / "src"
 if _SRC.is_dir() and str(_SRC) not in sys.path:
     sys.path.insert(0, str(_SRC))
 
-from rvln.ai.diary_monitor import LiveDiaryMonitor, DiaryCheckResult
+from rvln.ai.goal_adherence_monitor import GoalAdherenceMonitor, DiaryCheckResult
 
 
 def _make_monitor(**kwargs):
@@ -25,7 +25,7 @@ def _make_monitor(**kwargs):
         model="gpt-4o",
     )
     defaults.update(kwargs)
-    return LiveDiaryMonitor(**defaults)
+    return GoalAdherenceMonitor(**defaults)
 
 
 # -------------------------------------------------------------------------
@@ -34,7 +34,7 @@ def _make_monitor(**kwargs):
 
 class TestParseJsonResponse:
     def test_plain_json(self):
-        result = LiveDiaryMonitor._parse_json_response(
+        result = GoalAdherenceMonitor._parse_json_response(
             '{"complete": true, "completion_percentage": 0.95}'
         )
         assert result is not None
@@ -42,43 +42,43 @@ class TestParseJsonResponse:
         assert result["completion_percentage"] == 0.95
 
     def test_markdown_code_fence(self):
-        result = LiveDiaryMonitor._parse_json_response(
+        result = GoalAdherenceMonitor._parse_json_response(
             '```json\n{"complete": false, "on_track": true}\n```'
         )
         assert result is not None
         assert result["complete"] is False
 
     def test_markdown_fence_no_lang(self):
-        result = LiveDiaryMonitor._parse_json_response(
+        result = GoalAdherenceMonitor._parse_json_response(
             '```\n{"complete": true}\n```'
         )
         assert result is not None
         assert result["complete"] is True
 
     def test_json_with_surrounding_text(self):
-        result = LiveDiaryMonitor._parse_json_response(
+        result = GoalAdherenceMonitor._parse_json_response(
             'Here is the assessment: {"complete": false, "completion_percentage": 0.4} end'
         )
         assert result is not None
         assert result["complete"] is False
 
     def test_garbage_returns_none(self):
-        result = LiveDiaryMonitor._parse_json_response("no json here at all")
+        result = GoalAdherenceMonitor._parse_json_response("no json here at all")
         assert result is None
 
     def test_empty_string_returns_none(self):
-        result = LiveDiaryMonitor._parse_json_response("")
+        result = GoalAdherenceMonitor._parse_json_response("")
         assert result is None
 
     def test_nested_json(self):
-        result = LiveDiaryMonitor._parse_json_response(
+        result = GoalAdherenceMonitor._parse_json_response(
             '{"outer": {"inner": 1}, "complete": false}'
         )
         assert result is not None
         assert result["outer"]["inner"] == 1
 
     def test_whitespace_around_json(self):
-        result = LiveDiaryMonitor._parse_json_response(
+        result = GoalAdherenceMonitor._parse_json_response(
             '  \n  {"complete": true}  \n  '
         )
         assert result is not None
@@ -223,9 +223,9 @@ class TestOnConvergence:
         m._last_displacement = [100.0, 0.0, 0.0, 0.0]
         return m
 
-    @patch("rvln.ai.diary_monitor.query_vlm")
-    @patch("rvln.ai.diary_monitor.build_frame_grid")
-    @patch("rvln.ai.diary_monitor.sample_frames_every_n")
+    @patch("rvln.ai.goal_adherence_monitor.query_vlm")
+    @patch("rvln.ai.goal_adherence_monitor.build_frame_grid")
+    @patch("rvln.ai.goal_adherence_monitor.sample_frames_every_n")
     def test_complete_returns_stop(self, mock_sample, mock_grid, mock_vlm):
         m = self._setup_monitor()
         mock_sample.return_value = m._frame_paths[-4:]
@@ -242,9 +242,9 @@ class TestOnConvergence:
         assert result.action == "stop"
         assert result.completion_pct == 0.95
 
-    @patch("rvln.ai.diary_monitor.query_vlm")
-    @patch("rvln.ai.diary_monitor.build_frame_grid")
-    @patch("rvln.ai.diary_monitor.sample_frames_every_n")
+    @patch("rvln.ai.goal_adherence_monitor.query_vlm")
+    @patch("rvln.ai.goal_adherence_monitor.build_frame_grid")
+    @patch("rvln.ai.goal_adherence_monitor.sample_frames_every_n")
     def test_stopped_short_returns_command(self, mock_sample, mock_grid, mock_vlm):
         m = self._setup_monitor()
         mock_sample.return_value = m._frame_paths[-4:]
@@ -262,9 +262,9 @@ class TestOnConvergence:
         assert "forward" in result.new_instruction
         assert m._corrections_used == 1
 
-    @patch("rvln.ai.diary_monitor.query_vlm")
-    @patch("rvln.ai.diary_monitor.build_frame_grid")
-    @patch("rvln.ai.diary_monitor.sample_frames_every_n")
+    @patch("rvln.ai.goal_adherence_monitor.query_vlm")
+    @patch("rvln.ai.goal_adherence_monitor.build_frame_grid")
+    @patch("rvln.ai.goal_adherence_monitor.sample_frames_every_n")
     def test_corrections_counter_increments(self, mock_sample, mock_grid, mock_vlm):
         m = self._setup_monitor()
         mock_sample.return_value = m._frame_paths[-4:]
@@ -292,9 +292,9 @@ class TestOnConvergence:
         assert result.action == "ask_help"
         assert "Max corrections" in result.reasoning
 
-    @patch("rvln.ai.diary_monitor.query_vlm")
-    @patch("rvln.ai.diary_monitor.build_frame_grid")
-    @patch("rvln.ai.diary_monitor.sample_frames_every_n")
+    @patch("rvln.ai.goal_adherence_monitor.query_vlm")
+    @patch("rvln.ai.goal_adherence_monitor.build_frame_grid")
+    @patch("rvln.ai.goal_adherence_monitor.sample_frames_every_n")
     def test_diagnosis_complete_returns_stop(self, mock_sample, mock_grid, mock_vlm):
         """Even if 'complete' is false, diagnosis='complete' should stop."""
         m = self._setup_monitor()
@@ -317,9 +317,9 @@ class TestOnConvergence:
 # -------------------------------------------------------------------------
 
 class TestOnFrameCheckpointTrigger:
-    @patch("rvln.ai.diary_monitor.query_vlm")
-    @patch("rvln.ai.diary_monitor.build_frame_grid")
-    @patch("rvln.ai.diary_monitor.sample_frames_every_n")
+    @patch("rvln.ai.goal_adherence_monitor.query_vlm")
+    @patch("rvln.ai.goal_adherence_monitor.build_frame_grid")
+    @patch("rvln.ai.goal_adherence_monitor.sample_frames_every_n")
     def test_non_checkpoint_returns_continue(self, mock_sample, mock_grid, mock_vlm):
         """Steps before the check_interval should return continue without VLM calls."""
         m = _make_monitor(check_interval=5)
@@ -329,9 +329,9 @@ class TestOnFrameCheckpointTrigger:
             assert result.diary_entry == ""
         assert mock_vlm.call_count == 0
 
-    @patch("rvln.ai.diary_monitor.query_vlm")
-    @patch("rvln.ai.diary_monitor.build_frame_grid")
-    @patch("rvln.ai.diary_monitor.sample_frames_every_n")
+    @patch("rvln.ai.goal_adherence_monitor.query_vlm")
+    @patch("rvln.ai.goal_adherence_monitor.build_frame_grid")
+    @patch("rvln.ai.goal_adherence_monitor.sample_frames_every_n")
     def test_checkpoint_fires_at_interval(self, mock_sample, mock_grid, mock_vlm):
         """At exactly check_interval steps, a checkpoint should fire (VLM called)."""
         m = _make_monitor(check_interval=4)

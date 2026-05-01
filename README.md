@@ -2,7 +2,7 @@
 
 Neuro-symbolic LTL planner with vision-language supervision for UAV control in simulation and on real hardware (MiniNav).
 
-This system decomposes multi-step natural language instructions into an LTL formula, converts each subgoal into short OpenVLA commands, and supervises execution with a diary-based VLM monitor that can issue corrections, detect stalls, and request operator help. It runs in both an Unreal Engine simulation (via UnrealCV) and on real drones (via MiniNav TCP).
+This system decomposes multi-step natural language instructions into an LTL formula, converts each subgoal into short OpenVLA commands, and supervises execution with a goal adherence VLM monitor that can issue corrections, detect stalls, and request operator help. It runs in both an Unreal Engine simulation (via UnrealCV) and on real drones (via MiniNav TCP).
 
 ## Architecture
 
@@ -25,7 +25,7 @@ Unreal Sim / MiniNav Hardware
     ^                       |
     |  periodic frames      |  convergence (drone stops)
     v                       v
-LiveDiaryMonitor -----> Supervisor Mode
+GoalAdherenceMonitor -----> Supervisor Mode
   |  checkpoint every       |  evaluate: complete / stopped short / overshot
   |  N steps (frame-based)  |  issue corrective command to OpenVLA
   |  or N seconds (async)   |  if budget exhausted -> ask_help
@@ -49,19 +49,19 @@ The LTL planner automatically classifies predicates as goals or constraints usin
 - **Negative (avoidance)**: `G(!pi_X)` (never do X) or `!pi_X U pi_Y` (avoid X until Y). The VLM prompt labels these as `AVOID: ...`.
 - **Positive (maintenance)**: `G(pi_X)` (always maintain X) or `pi_X U pi_Y` (maintain X until Y). The VLM prompt labels these as `MAINTAIN: ...`.
 
-Active constraints are passed to the LiveDiaryMonitor, which injects them into VLM prompts. On violation, the monitor triggers `force_converge` and the supervisor issues a corrective command (e.g., "move away from building B" or "ascend to restore altitude"), sharing the same correction budget as normal convergence corrections.
+Active constraints are passed to the GoalAdherenceMonitor, which injects them into VLM prompts. On violation, the monitor triggers `force_converge` and the supervisor issues a corrective command (e.g., "move away from building B" or "ascend to restore altitude"), sharing the same correction budget as normal convergence corrections.
 
 ### Prompt Separation (With vs. Without Constraints)
 
-The diary monitor maintains **separate prompt templates** for subgoals that have active constraints and subgoals that do not (see `src/rvln/ai/prompts.py`). For example, `DIARY_GLOBAL_PROMPT` is used when there are no constraints, while `DIARY_GLOBAL_PROMPT_WITH_CONSTRAINTS` is used when constraints are present. The same pattern applies to the convergence prompts.
+The goal adherence monitor maintains **separate prompt templates** for subgoals that have active constraints and subgoals that do not (see `src/rvln/ai/prompts.py`). For example, `DIARY_GLOBAL_PROMPT` is used when there are no constraints, while `DIARY_GLOBAL_PROMPT_WITH_CONSTRAINTS` is used when constraints are present. The same pattern applies to the convergence prompts.
 
-This separation is intentional: when no constraints are active, the VLM prompt contains no mention of constraints, the `constraint_violated` JSON field, or constraint-related instructions. Including constraint language in a prompt where no constraints exist would pollute the LLM's context with irrelevant concepts, potentially biasing its responses (e.g., hallucinating constraint violations, or spending reasoning capacity on an inapplicable field). The monitor selects the appropriate template at runtime based on whether `self._constraints` is non-empty (see `_format_global_prompt` and `_format_convergence_prompt` in `diary_monitor.py`).
+This separation is intentional: when no constraints are active, the VLM prompt contains no mention of constraints, the `constraint_violated` JSON field, or constraint-related instructions. Including constraint language in a prompt where no constraints exist would pollute the LLM's context with irrelevant concepts, potentially biasing its responses (e.g., hallucinating constraint violations, or spending reasoning capacity on an inapplicable field). The monitor selects the appropriate template at runtime based on whether `self._constraints` is non-empty (see `_format_global_prompt` and `_format_convergence_prompt` in `goal_adherence_monitor.py`).
 
 When adding new prompt variants, follow this pattern: create a constraint-free version and a separate `_WITH_CONSTRAINTS` version rather than conditionally injecting constraint blocks into a single template.
 
 ### Checkpoint Modes
 
-The LiveDiaryMonitor supports two checkpoint modes:
+The GoalAdherenceMonitor supports two checkpoint modes:
 
 - **Frame-based (default)**: `on_frame()` runs a VLM checkpoint every `diary_check_interval` steps. Used by `run_integration.py` (simulation). Synchronous: the control loop blocks during VLM calls.
 - **Time-based (async)**: When `check_interval_s` is set, a background thread runs VLM checkpoints every N seconds. The control loop continues sending commands concurrently. Used by `run_hardware.py` (MiniNav) where blocking on VLM calls would stall the command stream.
@@ -129,7 +129,7 @@ robust-vision-language-navigation/
   src/rvln/               Python package (pip install -e .)
     config.py             Centralized model and numeric defaults
     paths.py              Centralized path constants and env loading
-    ai/                   LTL planner, diary monitor, subgoal converter, LLM providers
+    ai/                   LTL planner, goal adherence monitor, subgoal converter, LLM providers
     sim/                  Unreal sim env setup, pose utilities, scene JSON overlays
     eval/                 Batch evaluation runner, metrics, playback
     server/               OpenVLA inference server
@@ -151,8 +151,8 @@ The Unreal download target is `runtime/unreal/` (matching `rvln.paths.UNREAL_ENV
 | Script | Purpose |
 |--------|---------|
 | `scripts/start_server.py` | Start the OpenVLA inference server (Flask, port 5007) |
-| `scripts/run_integration.py` | Full LTL planner + diary monitor pipeline |
-| `scripts/run_ltl.py` | LTL-only control loop (no diary supervision) |
+| `scripts/run_integration.py` | Full LTL planner + goal adherence monitor pipeline |
+| `scripts/run_ltl.py` | LTL-only control loop (no goal adherence supervision) |
 | `scripts/run_goal_adherence.py` | Single-subgoal goal adherence experiments |
 | `scripts/run_repl.py` | Interactive REPL for drone commands |
 | `scripts/playback.py` | FPV viewer and MP4 encoder for saved runs |
@@ -162,7 +162,7 @@ The Unreal download target is `runtime/unreal/` (matching `rvln.paths.UNREAL_ENV
 
 ## Running on Hardware (MiniNav)
 
-The same planner + diary monitor + OpenVLA stack can drive a real drone via the MiniNav interface in `src/rvln/mininav/`. The drone-facing module streams commands `[frame_count, vx, vy, vz, yaw]` as `float32` over TCP to a control server on the vehicle.
+The same planner + goal adherence monitor + OpenVLA stack can drive a real drone via the MiniNav interface in `src/rvln/mininav/`. The drone-facing module streams commands `[frame_count, vx, vy, vz, yaw]` as `float32` over TCP to a control server on the vehicle.
 
 ### What you need
 
@@ -273,7 +273,7 @@ The system has three main processes that can each run on a different machine:
 
 1. **Unreal Simulator** (renders the environment, listens on UnrealCV port)
 2. **OpenVLA Server** (GPU inference, Flask on port 5007)
-3. **Pipeline Client** (LTL planner, diary monitor, sends commands)
+3. **Pipeline Client** (LTL planner, goal adherence monitor, sends commands)
 
 By default everything runs on `127.0.0.1`. To split across machines, set the networking environment variables in `.env.local` on the **pipeline client** machine (the one running `run_integration.py` or similar):
 
@@ -360,7 +360,7 @@ Tasks live under `tasks/{system,ltl,goal_adherence,uav_flow,uav_flow_instruction
 }
 ```
 
-`initial_pos` is `[x, y, z, pitch, yaw]` in Unreal coordinates. `diary_check_interval` controls how often (in steps) the diary monitor is invoked, and `max_corrections` caps how many corrective commands it may issue per subgoal before asking the operator for help.
+`initial_pos` is `[x, y, z, pitch, yaw]` in Unreal coordinates. `diary_check_interval` controls how often (in steps) the goal adherence monitor is invoked, and `max_corrections` caps how many corrective commands it may issue per subgoal before asking the operator for help.
 
 ## Common Issues
 

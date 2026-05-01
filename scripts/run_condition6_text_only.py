@@ -177,11 +177,11 @@ Respond with EXACTLY ONE JSON object (no markdown fences):
 
 
 # ---------------------------------------------------------------------------
-# TextOnlyDiaryMonitor: subclass that uses VLM for local (2-frame) but
+# TextOnlyGoalAdherenceMonitor: subclass that uses VLM for local (2-frame) but
 # text-only LLM for global and convergence
 # ---------------------------------------------------------------------------
 
-class TextOnlyDiaryMonitor:
+class TextOnlyGoalAdherenceMonitor:
     """Monitor that uses VLM for local diary entries but text-only LLM for
     global assessment and convergence checks (no image grid)."""
 
@@ -320,7 +320,7 @@ class TextOnlyDiaryMonitor:
         return None
 
     def on_frame(self, frame_path, displacement=None):
-        from rvln.ai.diary_monitor import DiaryCheckResult
+        from rvln.ai.goal_adherence_monitor import DiaryCheckResult
         from rvln.ai.utils.vision import build_frame_grid, query_vlm
 
         self._frame_paths.append(Path(frame_path))
@@ -446,7 +446,7 @@ class TextOnlyDiaryMonitor:
         return result
 
     def on_convergence(self, latest_frame, displacement=None):
-        from rvln.ai.diary_monitor import DiaryCheckResult
+        from rvln.ai.goal_adherence_monitor import DiaryCheckResult
 
         if displacement is not None:
             self._last_displacement = list(displacement)
@@ -645,7 +645,7 @@ def _run_subgoal(
     drone_cam_id, frames_dir, subgoal_dir, frame_offset, trajectory_log,
     check_interval_s=None, max_seconds=None, constraints=None,
 ):
-    from rvln.ai.diary_monitor import DiaryCheckResult
+    from rvln.ai.goal_adherence_monitor import DiaryCheckResult
     from rvln.ai.subgoal_converter import SubgoalConverter
 
     subgoal_dir.mkdir(parents=True, exist_ok=True)
@@ -675,7 +675,7 @@ def _run_subgoal(
             "constraint_violation_count": 0,
         }
 
-    monitor = TextOnlyDiaryMonitor(
+    monitor = TextOnlyGoalAdherenceMonitor(
         subgoal=subgoal_nl,
         check_interval=check_interval,
         vlm_model=vlm_model,
@@ -1066,7 +1066,7 @@ def run_text_only_control_loop(
 def main():
     load_env_vars()
     parser = argparse.ArgumentParser(
-        description="Condition 6: Text-only diary monitor (no image grid in global/convergence)",
+        description="Condition 6: Text-only goal adherence monitor (no image grid in global/convergence)",
     )
 
     mode = parser.add_mutually_exclusive_group(required=True)

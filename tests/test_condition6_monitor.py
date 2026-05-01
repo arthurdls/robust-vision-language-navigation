@@ -1,7 +1,7 @@
 """
-Unit tests for TextOnlyDiaryMonitor (Condition 6).
+Unit tests for TextOnlyGoalAdherenceMonitor (Condition 6).
 
-The TextOnlyDiaryMonitor is defined inline in scripts/run_condition6_text_only.py.
+The TextOnlyGoalAdherenceMonitor is defined inline in scripts/run_condition6_text_only.py.
 It uses VLM for local (2-frame) diary entries but text-only LLM for global
 assessment and convergence checks (no image grid).
 
@@ -22,7 +22,7 @@ _SCRIPTS = Path(__file__).resolve().parent.parent / "scripts"
 if _SCRIPTS.is_dir() and str(_SCRIPTS) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS))
 
-from run_condition6_text_only import TextOnlyDiaryMonitor
+from run_condition6_text_only import TextOnlyGoalAdherenceMonitor
 from rvln.ai.ltl_planner import ConstraintInfo
 
 
@@ -30,7 +30,7 @@ def _make_monitor(constraints=None, stall_window=3, stall_threshold=0.05):
     with patch("rvln.ai.utils.llm_providers.LLMFactory") as mock_factory:
         mock_llm = MagicMock()
         mock_factory.create.return_value = mock_llm
-        m = TextOnlyDiaryMonitor(
+        m = TextOnlyGoalAdherenceMonitor(
             subgoal="Approach the tree",
             check_interval=2,
             vlm_model="gpt-4o",
@@ -101,28 +101,28 @@ class TestStallDetection:
 
 class TestJsonParsing:
     def test_plain_json(self):
-        result = TextOnlyDiaryMonitor._parse_json_response(
+        result = TextOnlyGoalAdherenceMonitor._parse_json_response(
             '{"complete": false, "completion_percentage": 0.5}'
         )
         assert result is not None
         assert result["complete"] is False
 
     def test_json_in_markdown_fence(self):
-        result = TextOnlyDiaryMonitor._parse_json_response(
+        result = TextOnlyGoalAdherenceMonitor._parse_json_response(
             '```json\n{"complete": true}\n```'
         )
         assert result is not None
         assert result["complete"] is True
 
     def test_json_with_surrounding_text(self):
-        result = TextOnlyDiaryMonitor._parse_json_response(
+        result = TextOnlyGoalAdherenceMonitor._parse_json_response(
             'Here is the result: {"done": true} end'
         )
         assert result is not None
         assert result["done"] is True
 
     def test_garbage_returns_none(self):
-        result = TextOnlyDiaryMonitor._parse_json_response("no json here")
+        result = TextOnlyGoalAdherenceMonitor._parse_json_response("no json here")
         assert result is None
 
 

@@ -1,5 +1,5 @@
 """
-Goal adherence utilities: offline diary-based completion checking and
+Goal adherence utilities: offline goal adherence completion checking and
 higher-level frame analysis helpers.
 
 Low-level vision primitives (build_frame_grid, query_vlm, etc.) live in
@@ -95,7 +95,7 @@ def check_subtask_complete_diary(
     model: str = DEFAULT_VLM_MODEL,
     **grid_kwargs: Any,
 ) -> dict:
-    """Offline diary-based completion check over a sequence of saved frames."""
+    """Offline goal adherence completion check over a sequence of saved frames."""
     def _frame_source() -> str:
         if isinstance(frame_paths, (Path, str)):
             return str(Path(frame_paths))

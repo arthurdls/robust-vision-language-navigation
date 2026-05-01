@@ -1,21 +1,21 @@
 #!/usr/bin/env python3
 """
-Integrated LTL planner + LiveDiaryMonitor control loop (simulation).
+Integrated LTL planner + GoalAdherenceMonitor control loop (simulation).
 
 Combines the LTL-NL neuro-symbolic planner (multi-step instruction decomposition
-via Spot automaton) with the LiveDiaryMonitor (diary-based subgoal supervision
+via Spot automaton) with the GoalAdherenceMonitor (goal adherence subgoal supervision
 with convergence corrections and stall detection).
 
 For each subgoal produced by the planner:
   1. SubgoalConverter rewrites the NL predicate into a short OpenVLA instruction.
-  2. A fresh LiveDiaryMonitor supervises execution with periodic VLM checkpoints,
+  2. A fresh GoalAdherenceMonitor supervises execution with periodic VLM checkpoints,
      completion tracking (including peak_completion), and corrective commands
      on convergence.
   3. When the monitor confirms completion (or the step budget is exhausted),
      the planner advances to the next subgoal.
 
 This replaces the simple GoalAdherenceMonitor used in scripts/run_ltl.py with
-the full diary-based supervision pipeline from scripts/run_goal_adherence.py.
+the full goal adherence supervision pipeline from scripts/run_goal_adherence.py.
 
 OpenVLA server must be running: python scripts/start_server.py
 
@@ -318,12 +318,12 @@ def _run_subgoal(
     max_seconds: Optional[float] = None,
     constraints: Optional[List] = None,
 ) -> Dict[str, Any]:
-    """Run the diary-monitored control loop for a single subgoal.
+    """Run the goal-adherence-monitored control loop for a single subgoal.
 
     Returns a dict with subgoal-level results and the final world-space origin
     for the next subgoal.
     """
-    from rvln.ai.diary_monitor import DiaryCheckResult, LiveDiaryMonitor
+    from rvln.ai.goal_adherence_monitor import DiaryCheckResult, GoalAdherenceMonitor
     from rvln.ai.subgoal_converter import SubgoalConverter
 
     use_async = check_interval_s is not None
@@ -359,7 +359,7 @@ def _run_subgoal(
             "replan_instruction": "",
         }
 
-    monitor = LiveDiaryMonitor(
+    monitor = GoalAdherenceMonitor(
         subgoal=subgoal_nl,
         check_interval=check_interval,
         model=monitor_model,
@@ -451,7 +451,7 @@ def _run_subgoal(
                 )
             converted_instruction = conversion.instruction
             current_instruction = converted_instruction
-            monitor = LiveDiaryMonitor(
+            monitor = GoalAdherenceMonitor(
                 subgoal=subgoal_nl,
                 check_interval=check_interval,
                 model=monitor_model,
@@ -804,7 +804,7 @@ def run_integrated_control_loop(
     env_id: str = "",
     diary_mode: str = DEFAULT_DIARY_MODE,
 ) -> Dict[str, Any]:
-    """Plan with LTL, then execute each subgoal with diary monitoring.
+    """Plan with LTL, then execute each subgoal with goal adherence monitoring.
 
     Returns the run_info dict written to disk.
     """
@@ -1014,7 +1014,7 @@ def run_integrated_control_loop(
         "models": {
             "ltl_nl_planning": llm_model,
             "subgoal_converter": monitor_model,
-            "live_diary_monitor": monitor_model,
+            "goal_adherence_monitor": monitor_model,
             "openvla_predict_url": server_url,
         },
         "config": {
@@ -1058,7 +1058,7 @@ def run_integrated_control_loop(
 def main():
     load_env_vars()
     parser = argparse.ArgumentParser(
-        description="Integrated LTL planner + diary monitor control loop",
+        description="Integrated LTL planner + goal adherence monitor control loop",
     )
 
     mode = parser.add_mutually_exclusive_group(required=True)
@@ -1112,7 +1112,7 @@ def main():
     parser.add_argument(
         "--monitor_model",
         default=DEFAULT_VLM_MODEL,
-        help=f"VLM for diary monitor and subgoal converter (default: {DEFAULT_VLM_MODEL})",
+        help=f"VLM for goal adherence monitor and subgoal converter (default: {DEFAULT_VLM_MODEL})",
     )
 
     # Diary mode and parameters (override task JSON values)

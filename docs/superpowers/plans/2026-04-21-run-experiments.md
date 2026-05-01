@@ -35,11 +35,11 @@ Task: `tasks/system/first_task.json` (the 6-subgoal mission from SS7.2).
 
 **Purpose:** Isolate the DiaryMonitor's contribution at the subgoal level, independent of LTL planning.
 
-Two conditions (baseline vs. diary-monitored), 5 runs each, 6 existing tasks = 60 runs.
+Two conditions (baseline vs. goal-adherence-monitored), 5 runs each, 6 existing tasks = 60 runs.
 
 Tasks: All 6 files in `tasks/goal_adherence/`.
 
-**Why this matters:** Cleanly separates the diary monitor's value from the LTL planner's value. Reviewers will want both experiments (1 for the integrated system, 2 for the monitor in isolation).
+**Why this matters:** Cleanly separates the goal adherence monitor's value from the LTL planner's value. Reviewers will want both experiments (1 for the integrated system, 2 for the monitor in isolation).
 
 ### Experiment 3: VLM Model Sensitivity Sweep
 
@@ -103,7 +103,7 @@ Full system on 4 new missions x 3 runs each = 12 runs. New missions vary in:
 | `scripts/run_goal_adherence.py` | Reuse `_run_single_ga`, `_run_task_experiments`, `_load_ga_task` |
 | `src/rvln/paths.py` | Path constants, defaults |
 | `src/rvln/sim/env_setup.py` | Sim setup functions |
-| `src/rvln/ai/diary_monitor.py` | DiaryMonitor (used as-is) |
+| `src/rvln/ai/goal_adherence_monitor.py` | DiaryMonitor (used as-is) |
 | `src/rvln/ai/ltl_planner.py` | LTL planner (used as-is) |
 | `src/rvln/ai/subgoal_converter.py` | SubgoalConverter (used as-is) |
 
@@ -257,7 +257,7 @@ Each condition dict contains:
   
   For integration experiments:
   - use_ltl: bool (whether to use LTL planner for decomposition)
-  - use_diary: bool (whether to use LiveDiaryMonitor)
+  - use_diary: bool (whether to use GoalAdherenceMonitor)
   - use_converter: bool (whether to use SubgoalConverter)
   - llm_model: str (model for LTL planner + SubgoalConverter)
   - monitor_model: str (model for DiaryMonitor VLM queries)
@@ -377,8 +377,8 @@ _GA_TASK_FILES = [
 EXPERIMENT_2_GOAL_ADHERENCE: Dict[str, Any] = {
     "name": "experiment_2_goal_adherence",
     "description": (
-        "Single-subgoal diary monitor ablation. "
-        "Baseline (raw subgoal to OpenVLA) vs diary-monitored, "
+        "Single-subgoal goal adherence monitor ablation. "
+        "Baseline (raw subgoal to OpenVLA) vs goal-adherence-monitored, "
         "5 runs each on all 6 goal-adherence tasks. "
         "Isolates the DiaryMonitor's contribution independent of LTL planning."
     ),
@@ -513,7 +513,7 @@ This is the main entry point. It:
 5. Skips runs whose `run_info.json` already exists (resumable)
 6. Logs progress and saves per-run results in the structured directory tree
 
-The key design challenge is handling the ablation conditions. For the `no_diary` and `raw_baseline` conditions, we need to run the integration loop or a simplified version that skips the diary monitor. Rather than duplicating the control loop, we modify the call parameters:
+The key design challenge is handling the ablation conditions. For the `no_diary` and `raw_baseline` conditions, we need to run the integration loop or a simplified version that skips the goal adherence monitor. Rather than duplicating the control loop, we modify the call parameters:
 
 - **`full_system`**: Calls `run_integrated_control_loop` as-is.
 - **`no_diary`**: Calls a modified version that replaces `_run_subgoal` with a diary-free version that only uses native convergence.
@@ -657,7 +657,7 @@ def _run_integration_full_system(
     condition: Dict[str, Any],
     drone_cam_id: int,
 ) -> Dict[str, Any]:
-    """Run the full integrated pipeline (LTL + converter + diary monitor).
+    """Run the full integrated pipeline (LTL + converter + goal adherence monitor).
 
     Delegates to run_integrated_control_loop from run_integration.py.
     """
@@ -689,7 +689,7 @@ def _run_integration_no_diary(
     condition: Dict[str, Any],
     drone_cam_id: int,
 ) -> Dict[str, Any]:
-    """Run LTL decomposition + SubgoalConverter but no diary monitor.
+    """Run LTL decomposition + SubgoalConverter but no goal adherence monitor.
 
     Uses native convergence detection only. Each subgoal runs until
     the drone converges (small-change detection) or max_steps is reached,
@@ -1779,7 +1779,7 @@ git commit -m "Fix issues found during dry-run validation"
 | Experiment | Paper section | Reviewer question it answers |
 |-----------|--------------|------------------------------|
 | 1. Component ablation | SS7.5 (baselines 1-3 + full system) | "Have you isolated each component's contribution?" |
-| 2. Goal adherence ablation | SS7.5 (diary monitor in isolation) | "Does the diary monitor help at the single-subgoal level?" |
+| 2. Goal adherence ablation | SS7.5 (goal adherence monitor in isolation) | "Does the goal adherence monitor help at the single-subgoal level?" |
 | 3. VLM sensitivity | SS9.2 item 4 | "What if I can't afford gpt-4o?" |
 | 4. Mission diversity | SS9.2 item 3 | "Does this generalize beyond one mission?" |
 | 5. Diary parameter sensitivity | SS9.2 item 9 | "How sensitive is performance to check_interval?" |

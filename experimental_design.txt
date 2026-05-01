@@ -1,5 +1,5 @@
 EXPERIMENTAL DESIGN: LTL-Guided Neuro-Symbolic UAV Control with
-Diary-Based Goal Adherence Monitoring
+Goal Adherence Monitoring
 ======================================================================
 
 1. SYSTEM OVERVIEW (FULL PROPOSED METHOD)
@@ -7,7 +7,7 @@ Diary-Based Goal Adherence Monitoring
 
 Pipeline: NL --> LTL-NL (via LLM + Spot automaton) --> Subgoal sequence
           --> SubgoalConverter --> OpenVLA control loop
-          + LiveDiaryMonitor (local + global prompts, 3x3 image grid,
+          + GoalAdherenceMonitor (local + global prompts, 3x3 image grid,
             text diary, displacement tracking)
           + Convergence detection + Post-Convergence Supervisor Mode
             (corrective commands up to budget)
@@ -21,7 +21,7 @@ Key components:
     instructions. Strips visual detection conditions ("until you see X"),
     converts spatial proximity ("until near X") to approach commands,
     flags out-of-distribution instructions.
-  - LiveDiaryMonitor: Periodic VLM checkpoints during execution.
+  - GoalAdherenceMonitor: Periodic VLM checkpoints during execution.
     Local prompt: 2-frame comparison ("what changed?").
     Global prompt: sampled 3x3 grid + text diary + displacement +
     completion history ("how complete?").
@@ -33,7 +33,7 @@ Key components:
 
 Default parameters (from config.py):
   - LLM model: gpt-4o (planning, subgoal conversion)
-  - VLM model: gpt-5.4 (diary monitoring)
+  - VLM model: gpt-5.4 (goal adherence monitoring)
   - Max steps per subgoal: 300
   - Diary check interval: every 20 frames
   - Max corrections per subgoal: 15
@@ -53,7 +53,7 @@ streetlights, pergolas, sculptures, people, dogs, traffic lights).
 CONDITION 0: FULL SYSTEM (Proposed Method)
 ------------------------------------------
 Pipeline: NL --> LTL-NL --> Subgoal --> SubgoalConverter --> OpenVLA
-          + LiveDiaryMonitor (local + global with 3x3 grid + text diary
+          + GoalAdherenceMonitor (local + global with 3x3 grid + text diary
             + displacement) + Convergence corrections + Stall detection
 Script: run_integration.py
 Why: This is the proposed method. All other conditions ablate or
@@ -66,7 +66,7 @@ Pipeline: Full NL instruction --> OpenVLA
 Script: Modified run_ltl.py (skip planner, feed raw instruction)
 Implementation: Pass the entire long-horizon instruction directly to
   OpenVLA as a single instruction string. No LTL decomposition, no
-  diary monitoring, no convergence corrections. Run the basic control
+  goal adherence monitoring, no convergence corrections. Run the basic control
   loop with convergence detection only (stop when drone stops moving).
 Why: Proves the base OpenVLA model cannot handle long-horizon,
   multi-step instructions. Establishes that task decomposition is
@@ -78,12 +78,12 @@ CONDITION 2: LLM SEQUENTIAL PLANNER (No LTL)
 ---------------------------------------------
 Pipeline: NL --> LLM text-to-text decomposition --> Sequential subgoals
           --> SubgoalConverter --> OpenVLA
-          + LiveDiaryMonitor (full, same as Condition 0)
+          + GoalAdherenceMonitor (full, same as Condition 0)
 Script: Modified run_integration.py (replace LTL planner with simple
   LLM decomposition, no Spot automaton, no formal state machine)
 Implementation: Use the same LLM (gpt-4o) to break the instruction
   into a numbered list of subgoals (text-to-text, no LTL formula).
-  Execute subgoals sequentially with the same diary monitoring as the
+  Execute subgoals sequentially with the same goal adherence monitoring as the
   full system. Advance to the next subgoal when the monitor confirms
   completion. No automaton state tracking, no formal constraint
   enforcement.
@@ -102,7 +102,7 @@ Expected outcome: Performs reasonably on simple sequential tasks but
 CONDITION 3: OPEN-LOOP LTL (No Monitor, No Corrections)
 --------------------------------------------------------
 Pipeline: NL --> LTL-NL --> Subgoal --> SubgoalConverter --> OpenVLA
-          (NO diary monitoring, NO convergence corrections)
+          (NO goal adherence monitoring, NO convergence corrections)
           Advance to next subgoal on convergence (drone stops = done).
 Script: run_ltl.py (existing script, already implements this)
 Implementation: Use the full LTL planner and SubgoalConverter, but
@@ -114,7 +114,7 @@ Why: THE MOST IMPORTANT BASELINE. Directly attacks the assumption in
   prior LTL + low-level-policy literature that low-level controllers
   execute perfectly. By showing how often OpenVLA stops prematurely
   (false convergence) and ruins the downstream LTL sequence, we
-  justify the entire diary monitoring and supervisor architecture.
+  justify the entire goal adherence monitoring and supervisor architecture.
 Expected outcome: Moderate planning accuracy (LTL decomposition works)
   but frequent execution failures. The drone will stop short, think
   it is done, and blindly advance, causing cascading failures in
@@ -125,7 +125,7 @@ CONDITION 4: FRAME-BY-FRAME MONITOR (No Temporal Context)
 Pipeline: NL --> LTL-NL --> Subgoal --> SubgoalConverter --> OpenVLA
           + Single-frame VLM check (current frame + subgoal only)
           + Convergence corrections (using single-frame assessment)
-Script: Modified run_integration.py (replace LiveDiaryMonitor with
+Script: Modified run_integration.py (replace GoalAdherenceMonitor with
   a single-frame VLM query at each checkpoint)
 Implementation: At each checkpoint interval, send ONLY the current
   camera frame and the subgoal text to the VLM. Ask: "Is the drone
@@ -149,7 +149,7 @@ Expected outcome: Higher false positive rate (premature completion
 CONDITION 5: IMAGE-GRID ONLY MONITOR (No Text Diary)
 -----------------------------------------------------
 Pipeline: NL --> LTL-NL --> Subgoal --> SubgoalConverter --> OpenVLA
-          + LiveDiaryMonitor with 3x3 image grid but NO text diary
+          + GoalAdherenceMonitor with 3x3 image grid but NO text diary
             and NO displacement data
           + Convergence corrections (using grid only)
 Script: Modified run_integration.py (remove diary text and displacement
@@ -172,7 +172,7 @@ Expected outcome: VLM can detect gross completion (target clearly
 CONDITION 6: TEXT-ONLY DIARY (No Image Grid, "Blind LLM")
 ----------------------------------------------------------
 Pipeline: NL --> LTL-NL --> Subgoal --> SubgoalConverter --> OpenVLA
-          + LiveDiaryMonitor with text diary + displacement but NO
+          + GoalAdherenceMonitor with text diary + displacement but NO
             3x3 image grid (use standard LLM, not VLM)
           + Convergence corrections (using text + displacement only)
 Script: Modified run_integration.py (remove image grid from global/
@@ -299,7 +299,7 @@ represent, with no regex parsing of the LTL formula string.
 
 3c. GOAL ADHERENCE MONITOR CONSTRAINT HANDLING
 -----------------------------------------------
-The LiveDiaryMonitor accepts a constraints parameter containing
+The GoalAdherenceMonitor accepts a constraints parameter containing
 ConstraintInfo objects (with description and polarity). When
 constraints are present:
 
@@ -316,7 +316,7 @@ constraints are present:
     corrections.
 
 The SubgoalConverter is NOT modified. Constraints are handled entirely
-by the diary monitor, since OpenVLA cannot process compound constraint
+by the goal adherence monitor, since OpenVLA cannot process compound constraint
 instructions.
 
 3d. RUNNER INTEGRATION
@@ -324,7 +324,7 @@ instructions.
 Before each subgoal, run_integration.py calls
 planner.get_active_constraints() to extract ConstraintInfo objects
 for constraints active at the current automaton state. These are
-passed to the LiveDiaryMonitor via _run_subgoal. Constraint status
+passed to the GoalAdherenceMonitor via _run_subgoal. Constraint status
 (including polarity) is logged per subgoal in the result dict.
 
 
@@ -446,7 +446,7 @@ M2. Constraint Adherence Rate
   - Definition: Of all episodes (successful or not), what fraction
     maintained all temporal constraints (both avoidance and
     maintenance) throughout execution?
-  - Measurement: Binary per episode. Checked via diary monitor
+  - Measurement: Binary per episode. Checked via goal adherence monitor
     constraint_violated flag (Conditions 0, 2, 4, 5, 6) or post-hoc
     trajectory analysis (Conditions 1, 3 which have no monitor).
   - Report: Mean +/- 95% Wilson CI per condition.
@@ -521,7 +521,7 @@ M8. Average Episode Length
 4. Execute the pipeline for the active condition:
    - Condition 0: run_integration.py (full pipeline)
    - Condition 1: Single OpenVLA pass with raw instruction
-   - Condition 2: LLM decomposition + diary monitoring
+   - Condition 2: LLM decomposition + goal adherence monitoring
    - Condition 3: run_ltl.py (LTL + blind execution)
    - Condition 4: Single-frame monitor variant
    - Condition 5: Grid-only monitor variant
@@ -595,7 +595,7 @@ Total for 7 conditions:
   - Net estimate: ~$800-$1,100
 
 NOTE: Condition 1 (naive) and Condition 3 (open-loop) do not use the
-diary monitor at all, saving significant cost. Condition 6 uses an
+goal adherence monitor at all, saving significant cost. Condition 6 uses an
 LLM (not VLM) for global checks, which is cheaper but still requires
 VLM for local diary entries.
 
@@ -682,7 +682,7 @@ A3. OpenVLA as the fixed low-level policy.
     not the specific VLA model.
 
 A4. VLM accuracy for constraint monitoring.
-    The diary monitor relies on VLM visual understanding to detect
+    The goal adherence monitor relies on VLM visual understanding to detect
     constraint violations. VLM errors (failing to notice the drone
     is near a forbidden landmark) will propagate as undetected
     violations. Quantify this in M5.
@@ -716,7 +716,7 @@ Before running the full experiment suite:
     (b) Planner classifies constraints with correct polarity
         (negative for avoidance, positive for maintenance).
     (c) Runner extracts active constraints per subgoal and passes
-        them to the diary monitor with polarity labels.
+        them to the goal adherence monitor with polarity labels.
     (d) Diary monitor detects violations and issues corrective commands.
 
 [ ] TASK SCOUTING: Use scripts/scout_locations.py to identify the 3

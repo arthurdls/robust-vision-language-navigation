@@ -4,7 +4,7 @@
 
 **Goal:** Add negative constraint support to the LTL-guided UAV system so the drone enforces avoidance constraints during subgoal execution, using the Spot automaton's edge structure as the single source of truth for constraint classification.
 
-**Architecture:** After the planner builds the Spot automaton, each predicate is classified as goal or constraint by checking whether it ever produces a forward-progressing edge. Active constraints at each state are detected by checking whether the predicate has any valid edge at all. Constraints are injected into the diary monitor's VLM prompts, and violations trigger force-converge followed by the existing convergence correction flow (shared budget).
+**Architecture:** After the planner builds the Spot automaton, each predicate is classified as goal or constraint by checking whether it ever produces a forward-progressing edge. Active constraints at each state are detected by checking whether the predicate has any valid edge at all. Constraints are injected into the goal adherence monitor's VLM prompts, and violations trigger force-converge followed by the existing convergence correction flow (shared budget).
 
 **Tech Stack:** Python, Spot (LTL automaton via conda-forge), pytest, OpenAI API (for Tier 2/3 smoke tests)
 
@@ -16,7 +16,7 @@
 |------|--------|----------------|
 | `src/rvln/ai/ltl_planner.py` | Modify | Add `_classify_predicates()` and `get_active_constraints()` using automaton BDD queries |
 | `src/rvln/ai/prompts.py` | Modify | Add constraint predicate docs + examples to LTL prompts; add `{constraints_block}` and `constraint_violated` to diary global/convergence prompts |
-| `src/rvln/ai/diary_monitor.py` | Modify | Accept `negative_constraints` parameter; build constraints block; handle `constraint_violated` in `_parse_global_response` |
+| `src/rvln/ai/goal_adherence_monitor.py` | Modify | Accept `negative_constraints` parameter; build constraints block; handle `constraint_violated` in `_parse_global_response` |
 | `src/rvln/ai/utils/parsing.py` | Modify | Add `G` (Globally) operator support to `parse_ltl_nl` |
 | `scripts/run_integration.py` | Modify | Extract constraints from planner per subgoal; pass to `_run_subgoal`; log violations |
 | `tests/test_ltl_planner.py` | Modify | Add constraint classification and active constraint tests |
@@ -572,7 +572,7 @@ git commit -m "feat: add G (globally) operator support to LTL-NL parser"
 ### Task 4: Update Diary Monitor to Accept and Handle Negative Constraints
 
 **Files:**
-- Modify: `src/rvln/ai/diary_monitor.py:128-179, 520-609, 611-721, 723-838, 886-923`
+- Modify: `src/rvln/ai/goal_adherence_monitor.py:128-179, 520-609, 611-721, 723-838, 886-923`
 - Modify: `src/rvln/ai/prompts.py:64-151`
 - Create: `tests/test_negative_constraints.py` (Tier 1)
 
@@ -584,7 +584,7 @@ Create `tests/test_negative_constraints.py`:
 
 ```python
 """
-Tier 1 tests for negative constraint support in LiveDiaryMonitor.
+Tier 1 tests for negative constraint support in GoalAdherenceMonitor.
 
 No API calls, no GPU, no simulator. All LLM responses are mocked.
 
@@ -598,12 +598,12 @@ _SRC = Path(__file__).resolve().parent.parent / "src"
 if _SRC.is_dir() and str(_SRC) not in sys.path:
     sys.path.insert(0, str(_SRC))
 
-from rvln.ai.diary_monitor import LiveDiaryMonitor, DiaryCheckResult
+from rvln.ai.goal_adherence_monitor import GoalAdherenceMonitor, DiaryCheckResult
 
 
 def _make_monitor(constraints=None):
     """Build a monitor with optional negative constraints."""
-    return LiveDiaryMonitor(
+    return GoalAdherenceMonitor(
         subgoal="Approach the tree",
         check_interval=2,
         model="gpt-4o",
@@ -624,7 +624,7 @@ def test_monitor_accepts_constraints():
 
 def test_monitor_default_no_constraints():
     """Existing code that omits negative_constraints still works."""
-    m = LiveDiaryMonitor(
+    m = GoalAdherenceMonitor(
         subgoal="Go forward",
         check_interval=2,
         model="gpt-4o",
@@ -645,9 +645,9 @@ def test_constraints_block_renders_correctly():
     assert "do not fly over zone C" in block
 
 
-@patch("rvln.ai.diary_monitor.query_vlm")
-@patch("rvln.ai.diary_monitor.build_frame_grid")
-@patch("rvln.ai.diary_monitor.sample_frames_every_n")
+@patch("rvln.ai.goal_adherence_monitor.query_vlm")
+@patch("rvln.ai.goal_adherence_monitor.build_frame_grid")
+@patch("rvln.ai.goal_adherence_monitor.sample_frames_every_n")
 def test_constraint_violation_force_converges(mock_sample, mock_grid, mock_vlm):
     """When VLM reports constraint_violated, checkpoint returns force_converge."""
     m = _make_monitor(["stay away from building B"])
@@ -668,9 +668,9 @@ def test_constraint_violation_force_converges(mock_sample, mock_grid, mock_vlm):
     assert "constraint" in result.reasoning.lower()
 
 
-@patch("rvln.ai.diary_monitor.query_vlm")
-@patch("rvln.ai.diary_monitor.build_frame_grid")
-@patch("rvln.ai.diary_monitor.sample_frames_every_n")
+@patch("rvln.ai.goal_adherence_monitor.query_vlm")
+@patch("rvln.ai.goal_adherence_monitor.build_frame_grid")
+@patch("rvln.ai.goal_adherence_monitor.sample_frames_every_n")
 def test_no_violation_continues(mock_sample, mock_grid, mock_vlm):
     """When VLM reports no violation, checkpoint returns continue."""
     m = _make_monitor(["stay away from building B"])
@@ -690,9 +690,9 @@ def test_no_violation_continues(mock_sample, mock_grid, mock_vlm):
     assert result.action == "continue"
 
 
-@patch("rvln.ai.diary_monitor.query_vlm")
-@patch("rvln.ai.diary_monitor.build_frame_grid")
-@patch("rvln.ai.diary_monitor.sample_frames_every_n")
+@patch("rvln.ai.goal_adherence_monitor.query_vlm")
+@patch("rvln.ai.goal_adherence_monitor.build_frame_grid")
+@patch("rvln.ai.goal_adherence_monitor.sample_frames_every_n")
 def test_no_violation_field_without_constraints(mock_sample, mock_grid, mock_vlm):
     """Without constraints, missing constraint_violated field is fine."""
     m = _make_monitor()  # no constraints
@@ -714,11 +714,11 @@ def test_no_violation_field_without_constraints(mock_sample, mock_grid, mock_vlm
 - [ ] **Step 2: Run tests to verify they fail**
 
 Run: `cd /home/arthurdls/SuperUROP/rvln-adls && conda run -n rvln-sim pytest tests/test_negative_constraints.py -v`
-Expected: FAIL with `TypeError: LiveDiaryMonitor.__init__() got an unexpected keyword argument 'negative_constraints'`
+Expected: FAIL with `TypeError: GoalAdherenceMonitor.__init__() got an unexpected keyword argument 'negative_constraints'`
 
-- [ ] **Step 3: Add `negative_constraints` parameter to `LiveDiaryMonitor.__init__`**
+- [ ] **Step 3: Add `negative_constraints` parameter to `GoalAdherenceMonitor.__init__`**
 
-In `src/rvln/ai/diary_monitor.py`, modify the constructor signature at line 128 to add the parameter after `stall_completion_floor`:
+In `src/rvln/ai/goal_adherence_monitor.py`, modify the constructor signature at line 128 to add the parameter after `stall_completion_floor`:
 
 ```python
     def __init__(
@@ -744,7 +744,7 @@ Add after line 165 (`self._completion_history: List[float] = []`):
 
 - [ ] **Step 4: Add `_constraints_block` helper method**
 
-Add to the `LiveDiaryMonitor` class (after `_format_displacement` at line 495):
+Add to the `GoalAdherenceMonitor` class (after `_format_displacement` at line 495):
 
 ```python
     def _constraints_block(self) -> str:
@@ -875,7 +875,7 @@ Respond with EXACTLY ONE JSON object (no markdown fences):
 
 - [ ] **Step 7: Update all `GLOBAL_PROMPT_TEMPLATE.format()` calls to pass `constraints_block`**
 
-In `src/rvln/ai/diary_monitor.py`, there are 3 places where `GLOBAL_PROMPT_TEMPLATE.format()` is called. Update each:
+In `src/rvln/ai/goal_adherence_monitor.py`, there are 3 places where `GLOBAL_PROMPT_TEMPLATE.format()` is called. Update each:
 
 **`_run_checkpoint` (line 553):**
 ```python
@@ -927,7 +927,7 @@ There are 3 places where `CONVERGENCE_PROMPT_TEMPLATE.format()` is called. Updat
 
 - [ ] **Step 9: Add constraint violation handling to `_parse_global_response`**
 
-In `src/rvln/ai/diary_monitor.py`, in `_parse_global_response` (line 886), add this check immediately after the `pct` calculation (after line 897) and before the `complete` check (line 899):
+In `src/rvln/ai/goal_adherence_monitor.py`, in `_parse_global_response` (line 886), add this check immediately after the `pct` calculation (after line 897) and before the `complete` check (line 899):
 
 ```python
         if self._negative_constraints and parsed.get("constraint_violated", False):
@@ -953,8 +953,8 @@ Expected: All PASS. Existing stall detection tests use `_make_monitor_with_histo
 - [ ] **Step 12: Commit**
 
 ```bash
-git add src/rvln/ai/diary_monitor.py src/rvln/ai/prompts.py tests/test_negative_constraints.py
-git commit -m "feat: add negative constraint injection and violation handling to diary monitor"
+git add src/rvln/ai/goal_adherence_monitor.py src/rvln/ai/prompts.py tests/test_negative_constraints.py
+git commit -m "feat: add negative constraint injection and violation handling to goal adherence monitor"
 ```
 
 ---
@@ -972,12 +972,12 @@ In `scripts/run_integration.py`, add `negative_constraints: Optional[List[str]] 
     negative_constraints: Optional[List[str]] = None,
 ```
 
-- [ ] **Step 2: Pass constraints to `LiveDiaryMonitor` constructor**
+- [ ] **Step 2: Pass constraints to `GoalAdherenceMonitor` constructor**
 
-In `_run_subgoal`, modify the `LiveDiaryMonitor` constructor call (line 250):
+In `_run_subgoal`, modify the `GoalAdherenceMonitor` constructor call (line 250):
 
 ```python
-    monitor = LiveDiaryMonitor(
+    monitor = GoalAdherenceMonitor(
         subgoal=subgoal_nl,
         check_interval=check_interval,
         model=monitor_model,
@@ -1131,7 +1131,7 @@ Create `tests/test_vlm_constraint_prompts.py`:
 
 ```python
 """
-Tier 3 VLM prompt smoke tests for constraint-aware diary monitoring.
+Tier 3 VLM prompt smoke tests for constraint-aware goal adherence monitoring.
 
 These tests make real VLM API calls with synthetic diary context to verify
 the VLM correctly returns constraint_violated in its JSON response.
@@ -1311,7 +1311,7 @@ def test_end_to_end_constraint_flow():
     assert constraints == ["Flying over building C"]
 
     # Monitor receives constraints
-    monitor = LiveDiaryMonitor(
+    monitor = GoalAdherenceMonitor(
         subgoal=current,
         check_interval=2,
         model="gpt-4o",
@@ -1356,7 +1356,7 @@ def test_end_to_end_backward_compat():
     current = planner.get_next_predicate()
     assert planner.get_active_constraints() == []
 
-    monitor = LiveDiaryMonitor(
+    monitor = GoalAdherenceMonitor(
         subgoal=current,
         check_interval=2,
         model="gpt-4o",
