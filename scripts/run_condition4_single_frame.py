@@ -287,7 +287,7 @@ def _sanitize_name(text: str, max_len: int = 40) -> str:
 # ---------------------------------------------------------------------------
 
 def _run_subgoal(
-    env, batch, server_url, subgoal_nl, monitor_model, check_interval,
+    env, batch, server_url, subgoal_nl, monitor_model, llm_model, check_interval,
     max_steps, max_corrections, origin_x, origin_y, origin_z, origin_yaw,
     drone_cam_id, frames_dir, subgoal_dir, frame_offset, trajectory_log,
 ):
@@ -296,7 +296,7 @@ def _run_subgoal(
 
     subgoal_dir.mkdir(parents=True, exist_ok=True)
 
-    converter = SubgoalConverter(model=monitor_model)
+    converter = SubgoalConverter(model=llm_model)
     conversion = converter.convert(subgoal_nl)
     converted_instruction = conversion.instruction
     current_instruction = converted_instruction
@@ -585,7 +585,7 @@ def run_single_frame_control_loop(
 
         subgoal_result = _run_subgoal(
             env=env, batch=batch, server_url=server_url,
-            subgoal_nl=current_subgoal, monitor_model=monitor_model,
+            subgoal_nl=current_subgoal, monitor_model=monitor_model, llm_model=llm_model,
             check_interval=check_interval, max_steps=max_steps_per_subgoal,
             max_corrections=max_corrections,
             origin_x=origin_x, origin_y=origin_y,
@@ -641,7 +641,7 @@ def run_single_frame_control_loop(
         "monitor_model": monitor_model,
         "models": {
             "ltl_nl_planning": llm_model,
-            "subgoal_converter": monitor_model,
+            "subgoal_converter": llm_model,
             "single_frame_vlm": monitor_model,
             "openvla_predict_url": server_url,
         },

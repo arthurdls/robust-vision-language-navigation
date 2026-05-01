@@ -761,6 +761,7 @@ def run_subgoal(
     control: DroneControlClient,
     pose_manager: PoseManager,
     monitor_model: str,
+    llm_model: str,
     check_interval: int,
     max_steps: int,
     max_corrections: int,
@@ -794,7 +795,7 @@ def run_subgoal(
     from rvln.ai.goal_adherence_monitor import DiaryCheckResult, GoalAdherenceMonitor
     from rvln.ai.subgoal_converter import SubgoalConverter
 
-    converter = SubgoalConverter(model=monitor_model)
+    converter = SubgoalConverter(model=llm_model)
     conversion = converter.convert(subgoal_nl)
     converted_instruction = conversion.instruction
     current_instruction = converted_instruction
@@ -833,7 +834,7 @@ def run_subgoal(
         if help_result.new_subgoal:
             subgoal_nl = help_result.new_subgoal
             logger.info("OOD subgoal overridden to: '%s'. Re-converting...", subgoal_nl)
-            converter = SubgoalConverter(model=monitor_model)
+            converter = SubgoalConverter(model=llm_model)
             conversion = converter.convert(subgoal_nl)
             converted_instruction = conversion.instruction
             current_instruction = converted_instruction
@@ -1523,6 +1524,7 @@ def main() -> None:
                 control=control,
                 pose_manager=pose_manager,
                 monitor_model=monitor_model,
+                llm_model=llm_model,
                 check_interval=args.diary_check_interval,
                 max_steps=args.max_steps_per_subgoal,
                 max_corrections=args.max_corrections,
@@ -1591,7 +1593,7 @@ def main() -> None:
                 "monitor_model": monitor_model,
                 "models": {
                     "ltl_nl_planning": llm_model,
-                    "subgoal_converter": monitor_model,
+                    "subgoal_converter": llm_model,
                     "goal_adherence_monitor": monitor_model,
                     "openvla_predict_url": args.openvla_predict_url,
                 },

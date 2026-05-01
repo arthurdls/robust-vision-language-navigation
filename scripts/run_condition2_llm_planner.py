@@ -308,7 +308,7 @@ def _ask_user_for_help(
 
 
 def _run_subgoal(
-    env, batch, server_url, subgoal_nl, monitor_model, check_interval,
+    env, batch, server_url, subgoal_nl, monitor_model, llm_model, check_interval,
     max_steps, max_corrections, origin_x, origin_y, origin_z, origin_yaw,
     drone_cam_id, frames_dir, subgoal_dir, frame_offset, trajectory_log,
     check_interval_s=None, max_seconds=None,
@@ -322,7 +322,7 @@ def _run_subgoal(
     diary_artifacts = subgoal_dir / "diary_artifacts"
     diary_artifacts.mkdir(parents=True, exist_ok=True)
 
-    converter = SubgoalConverter(model=monitor_model)
+    converter = SubgoalConverter(model=llm_model)
     conversion = converter.convert(subgoal_nl)
     converted_instruction = conversion.instruction
     current_instruction = converted_instruction
@@ -424,7 +424,7 @@ def _run_subgoal(
                 "User overriding subgoal: '%s' -> '%s'. Running SubgoalConverter...",
                 old_subgoal, value,
             )
-            converter = SubgoalConverter(model=monitor_model)
+            converter = SubgoalConverter(model=llm_model)
             conversion = converter.convert(subgoal_nl)
             if conversion.outside_of_distribution:
                 logger.warning(
@@ -779,7 +779,7 @@ def run_llm_planner_control_loop(
 
             subgoal_result = _run_subgoal(
                 env=env, batch=batch, server_url=server_url,
-                subgoal_nl=subgoal_nl, monitor_model=monitor_model,
+                subgoal_nl=subgoal_nl, monitor_model=monitor_model, llm_model=llm_model,
                 check_interval=check_interval, max_steps=max_steps_per_subgoal,
                 max_corrections=max_corrections,
                 origin_x=origin_x, origin_y=origin_y,
@@ -874,7 +874,7 @@ def run_llm_planner_control_loop(
         "monitor_model": monitor_model,
         "models": {
             "llm_decomposition": llm_model,
-            "subgoal_converter": monitor_model,
+            "subgoal_converter": llm_model,
             "goal_adherence_monitor": monitor_model,
             "openvla_predict_url": server_url,
         },

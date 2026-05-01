@@ -652,7 +652,7 @@ def _run_subgoal(
     diary_artifacts = subgoal_dir / "diary_artifacts"
     diary_artifacts.mkdir(parents=True, exist_ok=True)
 
-    converter = SubgoalConverter(model=vlm_model)
+    converter = SubgoalConverter(model=llm_model)
     conversion = converter.convert(subgoal_nl)
     converted_instruction = conversion.instruction
     current_instruction = converted_instruction
@@ -1023,7 +1023,7 @@ def run_text_only_control_loop(
         "vlm_model": vlm_model,
         "models": {
             "ltl_nl_planning": llm_model,
-            "subgoal_converter": vlm_model,
+            "subgoal_converter": llm_model,
             "local_diary_vlm": vlm_model,
             "text_only_global_llm": llm_model,
             "openvla_predict_url": server_url,

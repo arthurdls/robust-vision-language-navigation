@@ -302,6 +302,7 @@ def _run_subgoal(
     server_url: str,
     subgoal_nl: str,
     monitor_model: str,
+    llm_model: str,
     check_interval: int,
     max_steps: int,
     max_corrections: int,
@@ -332,7 +333,7 @@ def _run_subgoal(
     diary_artifacts = subgoal_dir / "diary_artifacts"
     diary_artifacts.mkdir(parents=True, exist_ok=True)
 
-    converter = SubgoalConverter(model=monitor_model)
+    converter = SubgoalConverter(model=llm_model)
     conversion = converter.convert(subgoal_nl)
     converted_instruction = conversion.instruction
     current_instruction = converted_instruction
@@ -442,7 +443,7 @@ def _run_subgoal(
                 "User overriding subgoal: '%s' -> '%s'. Running SubgoalConverter...",
                 old_subgoal, value,
             )
-            converter = SubgoalConverter(model=monitor_model)
+            converter = SubgoalConverter(model=llm_model)
             conversion = converter.convert(subgoal_nl)
             if conversion.outside_of_distribution:
                 logger.warning(
@@ -893,6 +894,7 @@ def run_integrated_control_loop(
                     server_url=server_url,
                     subgoal_nl=current_subgoal,
                     monitor_model=monitor_model,
+                    llm_model=llm_model,
                     check_interval=check_interval,
                     max_steps=max_steps_per_subgoal,
                     max_corrections=max_corrections,
@@ -1013,7 +1015,7 @@ def run_integrated_control_loop(
         "monitor_model": monitor_model,
         "models": {
             "ltl_nl_planning": llm_model,
-            "subgoal_converter": monitor_model,
+            "subgoal_converter": llm_model,
             "goal_adherence_monitor": monitor_model,
             "openvla_predict_url": server_url,
         },
