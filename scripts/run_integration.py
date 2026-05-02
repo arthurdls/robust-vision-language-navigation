@@ -841,214 +841,216 @@ def run_integrated_control_loop(
     origin_x, origin_y, origin_z = initial_pos[0], initial_pos[1], initial_pos[2]
     origin_yaw = initial_pos[4]
 
-    while True:
-        # --- LTL planning phase ---
-        logger.info(
-            "%sPlanning instruction: '%s'",
-            f"[REPLAN #{replan_count}] " if replan_count > 0 else "",
-            instruction,
-        )
-        llm_interface = LLMUserInterface(model=llm_model)
-        planner = LTLSymbolicPlanner(llm_interface)
-        planner.plan_from_natural_language(instruction)
-
-        ltl_plan = {
-            "ltl_nl_formula": llm_interface.ltl_nl_formula.get("ltl_nl_formula", ""),
-            "pi_predicates": dict(planner.pi_map),
-            "replan_index": replan_count,
-            "instruction": instruction,
-        }
-        ltl_plans.append(ltl_plan)
-        logger.info("LTL plan: %s", json.dumps(ltl_plan, indent=2))
-
-        current_subgoal = planner.get_next_predicate()
-        if current_subgoal is None:
-            logger.error("LTL planning produced no subgoals for instruction: '%s'", instruction)
-            if replan_count > 0:
-                logger.warning("Replan produced no subgoals, ending run.")
-                break
-            raise RuntimeError("LTL planning produced no subgoals.")
-
-        replan_requested = False
-
-        while current_subgoal is not None:
-            subgoal_index += 1
-            safe_name = _sanitize_name(current_subgoal)
-            subgoal_dir = run_dir / f"subgoal_{subgoal_index:02d}_{safe_name}"
-
-            active_constraints = planner.get_active_constraints()
-            if active_constraints:
-                logger.info(
-                    "Active constraints for subgoal %d: %s",
-                    subgoal_index, active_constraints,
-                )
-
+    try:
+        while True:
+            # --- LTL planning phase ---
             logger.info(
-                "--- Subgoal %d: '%s' ---", subgoal_index, current_subgoal,
+                "%sPlanning instruction: '%s'",
+                f"[REPLAN #{replan_count}] " if replan_count > 0 else "",
+                instruction,
             )
+            llm_interface = LLMUserInterface(model=llm_model)
+            planner = LTLSymbolicPlanner(llm_interface)
+            planner.plan_from_natural_language(instruction)
 
-            try:
-                subgoal_result = _run_subgoal(
-                    env=env,
-                    batch=batch,
-                    server_url=server_url,
-                    subgoal_nl=current_subgoal,
-                    monitor_model=monitor_model,
-                    llm_model=llm_model,
-                    check_interval=check_interval,
-                    max_steps=max_steps_per_subgoal,
-                    max_corrections=max_corrections,
-                    origin_x=origin_x,
-                    origin_y=origin_y,
-                    origin_z=origin_z,
-                    origin_yaw=origin_yaw,
-                    drone_cam_id=drone_cam_id,
-                    frames_dir=frames_dir,
-                    subgoal_dir=subgoal_dir,
-                    frame_offset=total_frame_count,
-                    trajectory_log=trajectory_log,
-                    check_interval_s=check_interval_s,
-                    max_seconds=max_seconds,
-                    constraints=active_constraints,
-                )
-            except CUDAOutOfMemoryError as e:
-                logger.error(
-                    "Aborting run: OpenVLA server ran out of GPU memory. %s", e,
-                )
-                raise
-
-            total_frame_count += subgoal_result["total_steps"]
-            subgoal_summaries.append(subgoal_result)
-
-            sr = subgoal_result["stop_reason"]
-            logger.info(
-                "Subgoal %d finished: stop_reason=%s, steps=%d, completion=%.2f",
-                subgoal_index, sr,
-                subgoal_result["total_steps"],
-                subgoal_result.get("last_completion_pct", 0.0),
-            )
-
-            # Update world-space origin from wherever the drone ended up
-            next_origin = subgoal_result["next_origin"]
-            origin_x, origin_y, origin_z, origin_yaw = (
-                next_origin[0], next_origin[1], next_origin[2], next_origin[3],
-            )
-
-            if sr == "abort":
-                logger.info("Mission aborted by user.")
-                aborted = True
-                break
-
-            if sr == "replan":
-                new_instr = subgoal_result["replan_instruction"]
-                replan_count += 1
-                logger.info(
-                    "Full replan requested (replan #%d). "
-                    "Old instruction: '%s'. New instruction: '%s'. "
-                    "Drone origin for replan: [%.1f, %.1f, %.1f, %.1f]",
-                    replan_count, instruction, new_instr,
-                    origin_x, origin_y, origin_z, origin_yaw,
-                )
-                instruction = new_instr
-                replan_requested = True
-                break
-
-            if sr == "skipped":
-                logger.info("Subgoal '%s' skipped by user, advancing planner.", current_subgoal)
-
-            # Advance planner state (for all non-abort/non-replan outcomes)
-            planner.advance_state(current_subgoal)
+            ltl_plan = {
+                "ltl_nl_formula": llm_interface.ltl_nl_formula.get("ltl_nl_formula", ""),
+                "pi_predicates": dict(planner.pi_map),
+                "replan_index": replan_count,
+                "instruction": instruction,
+            }
+            ltl_plans.append(ltl_plan)
+            logger.info("LTL plan: %s", json.dumps(ltl_plan, indent=2))
 
             current_subgoal = planner.get_next_predicate()
-            if current_subgoal is not None:
-                logger.info("Advancing to next subgoal: '%s'", current_subgoal)
+            if current_subgoal is None:
+                logger.error("LTL planning produced no subgoals for instruction: '%s'", instruction)
+                if replan_count > 0:
+                    logger.warning("Replan produced no subgoals, ending run.")
+                    break
+                raise RuntimeError("LTL planning produced no subgoals.")
 
-        if aborted or not replan_requested:
-            break
+            replan_requested = False
 
-    logger.info(
-        "Run finished: %d subgoals processed, %d replan(s), aborted=%s.",
-        subgoal_index, replan_count, aborted,
-    )
+            while current_subgoal is not None:
+                subgoal_index += 1
+                safe_name = _sanitize_name(current_subgoal)
+                subgoal_dir = run_dir / f"subgoal_{subgoal_index:02d}_{safe_name}"
 
-    end_ts = datetime.now().isoformat()
+                active_constraints = planner.get_active_constraints()
+                if active_constraints:
+                    logger.info(
+                        "Active constraints for subgoal %d: %s",
+                        subgoal_index, active_constraints,
+                    )
 
-    # --- Save trajectory log ---
-    with open(run_dir / "trajectory_log.json", "w") as f:
-        json.dump(trajectory_log, f, indent=2)
+                logger.info(
+                    "--- Subgoal %d: '%s' ---", subgoal_index, current_subgoal,
+                )
 
-    # --- Optional playback mp4 ---
-    playback_mp4: Optional[Path] = None
-    if save_mp4:
-        try:
-            from rvln.eval.playback import save_run_directory_mp4
-            playback_mp4 = save_run_directory_mp4(run_dir, fps=mp4_fps)
-        except Exception as e:
-            logger.warning("Could not write playback.mp4: %s", e)
+                try:
+                    subgoal_result = _run_subgoal(
+                        env=env,
+                        batch=batch,
+                        server_url=server_url,
+                        subgoal_nl=current_subgoal,
+                        monitor_model=monitor_model,
+                        llm_model=llm_model,
+                        check_interval=check_interval,
+                        max_steps=max_steps_per_subgoal,
+                        max_corrections=max_corrections,
+                        origin_x=origin_x,
+                        origin_y=origin_y,
+                        origin_z=origin_z,
+                        origin_yaw=origin_yaw,
+                        drone_cam_id=drone_cam_id,
+                        frames_dir=frames_dir,
+                        subgoal_dir=subgoal_dir,
+                        frame_offset=total_frame_count,
+                        trajectory_log=trajectory_log,
+                        check_interval_s=check_interval_s,
+                        max_seconds=max_seconds,
+                        constraints=active_constraints,
+                    )
+                except CUDAOutOfMemoryError as e:
+                    logger.error(
+                        "Aborting run: OpenVLA server ran out of GPU memory. %s", e,
+                    )
+                    raise
 
-    # --- Save run info ---
-    total_steps_all = sum(s["total_steps"] for s in subgoal_summaries)
-    total_vlm_calls = sum(s.get("vlm_call_count", 0) for s in subgoal_summaries)
-    total_corrections = sum(s.get("corrections_used", 0) for s in subgoal_summaries)
-    all_vlm_records = []
-    for s in subgoal_summaries:
-        all_vlm_records.extend(s.get("vlm_call_records", []))
-    total_input_tokens = sum(r.get("input_tokens", 0) for r in all_vlm_records)
-    total_output_tokens = sum(r.get("output_tokens", 0) for r in all_vlm_records)
-    any_constraint_violated = any(
-        s.get("constraint_violation_count", 0) > 0 for s in subgoal_summaries
-    )
-    end_dt = datetime.fromisoformat(end_ts)
-    start_dt = datetime.fromisoformat(start_ts)
-    wall_clock_seconds = (end_dt - start_dt).total_seconds()
+                total_frame_count += subgoal_result["total_steps"]
+                subgoal_summaries.append(subgoal_result)
 
-    run_info: Dict[str, Any] = {
-        "condition": "condition0_full_system",
-        "task": task,
-        "seed": seed,
-        "time_dilation": time_dilation,
-        "env_id": env_id,
-        "server_url": server_url,
-        "drone_cam_id": drone_cam_id,
-        "diary_mode": diary_mode,
-        "llm_model": llm_model,
-        "monitor_model": monitor_model,
-        "models": {
-            "ltl_nl_planning": llm_model,
-            "subgoal_converter": llm_model,
-            "goal_adherence_monitor": monitor_model,
-            "openvla_predict_url": server_url,
-        },
-        "config": {
-            "max_steps_per_subgoal": task["max_steps_per_subgoal"],
-            "diary_check_interval": task["diary_check_interval"],
-            "max_corrections": task["max_corrections"],
-            "convergence_thresholds": {
-                "position_delta": ACTION_SMALL_DELTA_POS,
-                "yaw_delta": ACTION_SMALL_DELTA_YAW,
-                "consecutive_steps": batch.ACTION_SMALL_STEPS,
+                sr = subgoal_result["stop_reason"]
+                logger.info(
+                    "Subgoal %d finished: stop_reason=%s, steps=%d, completion=%.2f",
+                    subgoal_index, sr,
+                    subgoal_result["total_steps"],
+                    subgoal_result.get("last_completion_pct", 0.0),
+                )
+
+                # Update world-space origin from wherever the drone ended up
+                next_origin = subgoal_result["next_origin"]
+                origin_x, origin_y, origin_z, origin_yaw = (
+                    next_origin[0], next_origin[1], next_origin[2], next_origin[3],
+                )
+
+                if sr == "abort":
+                    logger.info("Mission aborted by user.")
+                    aborted = True
+                    break
+
+                if sr == "replan":
+                    new_instr = subgoal_result["replan_instruction"]
+                    replan_count += 1
+                    logger.info(
+                        "Full replan requested (replan #%d). "
+                        "Old instruction: '%s'. New instruction: '%s'. "
+                        "Drone origin for replan: [%.1f, %.1f, %.1f, %.1f]",
+                        replan_count, instruction, new_instr,
+                        origin_x, origin_y, origin_z, origin_yaw,
+                    )
+                    instruction = new_instr
+                    replan_requested = True
+                    break
+
+                if sr == "skipped":
+                    logger.info("Subgoal '%s' skipped by user, advancing planner.", current_subgoal)
+
+                # Advance planner state (for all non-abort/non-replan outcomes)
+                planner.advance_state(current_subgoal)
+
+                current_subgoal = planner.get_next_predicate()
+                if current_subgoal is not None:
+                    logger.info("Advancing to next subgoal: '%s'", current_subgoal)
+
+            if aborted or not replan_requested:
+                break
+
+    finally:
+        logger.info(
+            "Run finished: %d subgoals processed, %d replan(s), aborted=%s.",
+            subgoal_index, replan_count, aborted,
+        )
+
+        end_ts = datetime.now().isoformat()
+
+        # --- Save trajectory log ---
+        with open(run_dir / "trajectory_log.json", "w") as f:
+            json.dump(trajectory_log, f, indent=2)
+
+        # --- Optional playback mp4 ---
+        playback_mp4: Optional[Path] = None
+        if save_mp4:
+            try:
+                from rvln.eval.playback import save_run_directory_mp4
+                playback_mp4 = save_run_directory_mp4(run_dir, fps=mp4_fps)
+            except Exception as e:
+                logger.warning("Could not write playback.mp4: %s", e)
+
+        # --- Save run info ---
+        total_steps_all = sum(s["total_steps"] for s in subgoal_summaries)
+        total_vlm_calls = sum(s.get("vlm_call_count", 0) for s in subgoal_summaries)
+        total_corrections = sum(s.get("corrections_used", 0) for s in subgoal_summaries)
+        all_vlm_records = []
+        for s in subgoal_summaries:
+            all_vlm_records.extend(s.get("vlm_call_records", []))
+        total_input_tokens = sum(r.get("input_tokens", 0) for r in all_vlm_records)
+        total_output_tokens = sum(r.get("output_tokens", 0) for r in all_vlm_records)
+        any_constraint_violated = any(
+            s.get("constraint_violation_count", 0) > 0 for s in subgoal_summaries
+        )
+        end_dt = datetime.fromisoformat(end_ts)
+        start_dt = datetime.fromisoformat(start_ts)
+        wall_clock_seconds = (end_dt - start_dt).total_seconds()
+
+        run_info: Dict[str, Any] = {
+            "condition": "condition0_full_system",
+            "task": task,
+            "seed": seed,
+            "time_dilation": time_dilation,
+            "env_id": env_id,
+            "server_url": server_url,
+            "drone_cam_id": drone_cam_id,
+            "diary_mode": diary_mode,
+            "llm_model": llm_model,
+            "monitor_model": monitor_model,
+            "models": {
+                "ltl_nl_planning": llm_model,
+                "subgoal_converter": llm_model,
+                "goal_adherence_monitor": monitor_model,
+                "openvla_predict_url": server_url,
             },
-        },
-        "ltl_plan": ltl_plans[0] if ltl_plans else {},
-        "ltl_plans": ltl_plans,
-        "replan_count": replan_count,
-        "aborted": aborted,
-        "subgoal_count": subgoal_index,
-        "subgoal_summaries": subgoal_summaries,
-        "total_steps": total_steps_all,
-        "total_vlm_calls": total_vlm_calls,
-        "total_corrections": total_corrections,
-        "total_input_tokens": total_input_tokens,
-        "total_output_tokens": total_output_tokens,
-        "vlm_call_records": all_vlm_records,
-        "any_constraint_violated": any_constraint_violated,
-        "playback_mp4": str(playback_mp4) if playback_mp4 else None,
-        "start_time": start_ts,
-        "end_time": end_ts,
-        "wall_clock_seconds": round(wall_clock_seconds, 2),
-    }
-    with open(run_dir / "run_info.json", "w") as f:
-        json.dump(run_info, f, indent=2, cls=_SafeEncoder)
+            "config": {
+                "max_steps_per_subgoal": task["max_steps_per_subgoal"],
+                "diary_check_interval": task["diary_check_interval"],
+                "max_corrections": task["max_corrections"],
+                "convergence_thresholds": {
+                    "position_delta": ACTION_SMALL_DELTA_POS,
+                    "yaw_delta": ACTION_SMALL_DELTA_YAW,
+                    "consecutive_steps": batch.ACTION_SMALL_STEPS,
+                },
+            },
+            "ltl_plan": ltl_plans[0] if ltl_plans else {},
+            "ltl_plans": ltl_plans,
+            "replan_count": replan_count,
+            "aborted": aborted,
+            "subgoal_count": subgoal_index,
+            "subgoal_summaries": subgoal_summaries,
+            "total_steps": total_steps_all,
+            "total_vlm_calls": total_vlm_calls,
+            "total_corrections": total_corrections,
+            "total_input_tokens": total_input_tokens,
+            "total_output_tokens": total_output_tokens,
+            "vlm_call_records": all_vlm_records,
+            "any_constraint_violated": any_constraint_violated,
+            "playback_mp4": str(playback_mp4) if playback_mp4 else None,
+            "start_time": start_ts,
+            "end_time": end_ts,
+            "wall_clock_seconds": round(wall_clock_seconds, 2),
+        }
+        with open(run_dir / "run_info.json", "w") as f:
+            json.dump(run_info, f, indent=2, cls=_SafeEncoder)
 
     return run_info
 
