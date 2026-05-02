@@ -130,8 +130,8 @@ def main():
             print(f"Error: not a directory: {root}", file=sys.stderr)
             sys.exit(1)
         run_dirs = sorted(
-            d for d in root.rglob("run_*")
-            if d.is_dir() and iter_run_frame_paths(d)
+            d.parent for d in root.rglob("frames")
+            if d.is_dir() and iter_run_frame_paths(d.parent)
         )
         if not run_dirs:
             print(f"No run directories with frames found under {root}", file=sys.stderr)
