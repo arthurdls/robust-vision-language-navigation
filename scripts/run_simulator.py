@@ -29,7 +29,8 @@ if _SRC.is_dir() and str(_SRC) not in sys.path:
     sys.path.insert(0, str(_SRC))
 
 from rvln.config import DEFAULT_SIM_API_PORT, DEFAULT_SIM_PORT
-from rvln.paths import DOWNTOWN_OVERLAY_JSON, UNREAL_ENV_ROOT, load_env_vars
+from rvln.maps import resolve_map
+from rvln.paths import UNREAL_ENV_ROOT, load_env_vars
 
 
 def get_local_ip() -> str:
@@ -43,12 +44,9 @@ def get_local_ip() -> str:
         sock.close()
 
 
-def resolve_binary(scene: str, unreal_root: Path) -> tuple[Path, Path]:
+def resolve_binary(overlay_json: Path, unreal_root: Path) -> tuple[Path, Path]:
     """Return (binary_path, unrealcv_ini_path) for the given scene."""
-    scene_json = DOWNTOWN_OVERLAY_JSON
-    if scene != "DowntownWest":
-        from gym_unrealcv.envs.utils.misc import get_settingpath
-        scene_json = Path(get_settingpath(f"Track/{scene}.json"))
+    scene_json = overlay_json
 
     with open(scene_json) as f:
         setting = json.load(f)
@@ -212,8 +210,8 @@ def main():
     parser = argparse.ArgumentParser(description="Launch the Unreal simulator")
     parser.add_argument("--port", type=int, default=DEFAULT_SIM_PORT,
                         help=f"UnrealCV listen port (default: {DEFAULT_SIM_PORT})")
-    parser.add_argument("--scene", type=str, default="DowntownWest",
-                        help="Scene name from scene JSON (default: DowntownWest)")
+    parser.add_argument("--scene", type=str, default=None,
+                        help="Map name (interactive picker if omitted)")
     parser.add_argument("--offscreen", action=argparse.BooleanOptionalAction, default=True,
                         help="Headless rendering (default: on)")
     parser.add_argument("--gpu-id", type=int, default=None,
@@ -228,7 +226,8 @@ def main():
 
     width, height = (int(x) for x in args.resolution.split("x"))
 
-    binary, ini_path = resolve_binary(args.scene, args.unreal_root)
+    map_info = resolve_map(args.scene)
+    binary, ini_path = resolve_binary(map_info.overlay_json, args.unreal_root)
 
     kill_existing_simulator(args.port, binary)
 
