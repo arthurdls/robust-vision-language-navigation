@@ -37,6 +37,14 @@ DURING NORMAL FLIGHT -- your primary job is to detect completion and problems:
   overshooting), set "should_stop" to true so it can be corrected.
 - Otherwise, let the drone execute its instruction without interference.
 
+OBSTACLE AWARENESS -- proactive collision prevention:
+- If the drone appears to be on a collision course with any physical obstruction
+  (building, wall, tree, pole, vehicle, terrain, or any solid object filling a
+  large and growing portion of the frame), set "should_stop" to true immediately.
+- An approaching obstacle is indicated by a large object rapidly growing in the
+  frame with no sign of the drone turning or climbing to avoid it.
+- Do NOT wait until contact -- intervene as soon as a collision looks likely.
+
 ORIENTATION TOLERANCE -- avoid oscillating corrections:
 - When the subgoal involves turning toward or facing an object, the target does
   NOT need to be at the exact center of the frame. If the target is visible
@@ -178,8 +186,16 @@ Respond with EXACTLY ONE JSON object (no markdown fences):
       is off-screen or partially visible.
     * "Move forward <N> meters" / "Move closer to <landmark>" -- close a gap.
     * "Ascend/Descend <N> meters" -- altitude correction.
+    * "Ascend <N> meters" -- rise above an obstacle blocking the path.
+    * "Turn right/left <N> degrees" -- reorient to route around an obstacle.
+    * "Move back from <obstacle>" -- retreat from an obstruction that is too
+      close to maneuver around safely.
   Prefer a turn command when the target is not visible in the latest frame;
   the underlying policy needs to see the target to navigate toward it.
+  When an obstacle blocks the direct path to the subgoal, prefer ascending
+  or routing around over retreating, unless the drone is already very close.
+  After clearing the obstacle, subsequent corrections will resume progress
+  toward the subgoal.
 
   IMPORTANT -- orientation tolerance: if the subgoal is about turning toward or
   facing a target and the target is already visible in the frame (even if
@@ -241,8 +257,16 @@ Respond with EXACTLY ONE JSON object (no markdown fences):
     * "Move forward <N> meters" / "Move closer to <landmark>" -- close a gap.
     * "Ascend/Descend <N> meters" -- altitude correction.
     * "Move away from <landmark>" -- retreat from a constraint violation.
+    * "Ascend <N> meters" -- rise above an obstacle blocking the path.
+    * "Turn right/left <N> degrees" -- reorient to route around an obstacle.
+    * "Move back from <obstacle>" -- retreat from an obstruction that is too
+      close to maneuver around safely.
   Prefer a turn command when the target is not visible in the latest frame;
   the underlying policy needs to see the target to navigate toward it.
+  When an obstacle blocks the direct path to the subgoal, prefer ascending
+  or routing around over retreating, unless the drone is already very close.
+  After clearing the obstacle, subsequent corrections will resume progress
+  toward the subgoal.
 
   IMPORTANT -- orientation tolerance: if the subgoal is about turning toward or
   facing a target and the target is already visible in the frame (even if

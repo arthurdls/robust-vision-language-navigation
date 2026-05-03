@@ -70,6 +70,7 @@ RVLN operates as a five-stage pipeline at two timescales:
 4. **GoalAdherenceMonitor**: At each checkpoint, two VLM queries run:
    - *Local query*: a two-frame grid (previous + current) for change detection.
    - *Global query*: a nine-frame grid across the trajectory, combined with the running text diary and displacement vector, for completion assessment.
+   - *Obstacle awareness*: the monitor proactively stops the drone when a collision with any physical obstruction appears imminent, then issues corrective commands to ascend above, route around, or retreat from the obstacle.
 
 5. **Supervisor Mode**: On convergence or forced convergence, the VLM evaluates completion. If incomplete, a single-action corrective imperative is issued back to the VLA. Stall detection escalates to the operator when progress plateaus.
 
