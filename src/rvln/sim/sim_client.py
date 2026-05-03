@@ -26,17 +26,25 @@ class SimClient:
         self.drone_cam_id: int = 0
         self.cam_count: int = 0
 
+    @staticmethod
+    def _check_response(resp: requests.Response) -> dict:
+        if resp.ok:
+            return resp.json()
+        try:
+            detail = resp.json().get("error", resp.text)
+        except Exception:
+            detail = resp.text
+        raise RuntimeError(f"Sim API {resp.request.method} {resp.url} failed ({resp.status_code}): {detail}")
+
     def _post(self, endpoint: str, data: Optional[dict] = None) -> dict:
         url = f"{self.server_url}{endpoint}"
         resp = requests.post(url, json=data or {}, timeout=self.timeout)
-        resp.raise_for_status()
-        return resp.json()
+        return self._check_response(resp)
 
     def _get(self, endpoint: str) -> dict:
         url = f"{self.server_url}{endpoint}"
         resp = requests.get(url, timeout=self.timeout)
-        resp.raise_for_status()
-        return resp.json()
+        return self._check_response(resp)
 
     @staticmethod
     def _decode_image(b64: Optional[str]) -> Optional[np.ndarray]:
