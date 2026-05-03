@@ -233,19 +233,6 @@ def run_open_loop_control_loop(
         logger.info("--- Subgoal %d: '%s' -> '%s' ---",
                      subgoal_index, current_subgoal, converted_instruction)
 
-        if conversion.outside_of_distribution:
-            logger.warning("Subgoal '%s' flagged as OOD, skipping.", current_subgoal)
-            subgoal_summaries.append({
-                "subgoal": current_subgoal,
-                "converted_instruction": converted_instruction,
-                "total_steps": 0,
-                "stop_reason": "ood",
-                "next_origin": [origin_x, origin_y, origin_z, origin_yaw],
-            })
-            planner.advance_state(current_subgoal)
-            current_subgoal = planner.get_next_predicate()
-            continue
-
         batch.reset_model(server_url)
         current_pose = [0.0, 0.0, 0.0, 0.0]
         last_pose = None

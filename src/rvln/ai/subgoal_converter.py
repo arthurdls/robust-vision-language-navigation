@@ -4,9 +4,7 @@ imperative OpenVLA-compatible instructions.
 
 OpenVLA was trained on short drone commands.  This layer strips stopping
 conditions and extracts the core physical action so the model receives
-an instruction it can actually execute.  It also flags instructions that
-fall outside OpenVLA's training distribution so the system can request
-operator help instead of feeding the model a command it cannot handle.
+an instruction it can actually execute.
 
 Called once per task at the start of a run (not every step).
 """
@@ -28,15 +26,13 @@ logger = logging.getLogger(__name__)
 class ConversionResult:
     """Structured output from the subgoal converter."""
     instruction: str
-    outside_of_distribution: bool
 
 
 class SubgoalConverter:
     """Converts a natural language subgoal into an OpenVLA-compatible instruction.
 
     OpenVLA was trained on short imperative drone commands.  This layer strips
-    stopping conditions, extracts the core physical action, and flags inputs
-    that are outside the model's training distribution.
+    stopping conditions and extracts the core physical action.
     """
 
     def __init__(self, model: str = DEFAULT_VLM_MODEL):
@@ -45,7 +41,7 @@ class SubgoalConverter:
         self.llm_call_records: List[Dict[str, Any]] = []
 
     def convert(self, subgoal: str) -> ConversionResult:
-        """Convert *subgoal* to a ConversionResult with the instruction and OOD flag."""
+        """Convert *subgoal* to a ConversionResult with the translated instruction."""
         messages = [
             {"role": "system", "content": CONVERSION_SYSTEM_PROMPT},
             {"role": "user", "content": subgoal},
@@ -65,8 +61,8 @@ class SubgoalConverter:
 
         result = self._parse_response(response, subgoal)
         logger.info(
-            "SubgoalConverter: '%s' -> '%s' (ood=%s)",
-            subgoal, result.instruction, result.outside_of_distribution,
+            "SubgoalConverter: '%s' -> '%s'",
+            subgoal, result.instruction,
         )
         return result
 
@@ -79,7 +75,6 @@ class SubgoalConverter:
                 raise TypeError(f"Expected JSON object, got {type(parsed).__name__}")
             return ConversionResult(
                 instruction=str(parsed.get("sub_goal", original_subgoal)).strip(),
-                outside_of_distribution=bool(parsed.get("outside_of_distribution", False)),
             )
         except (json.JSONDecodeError, TypeError, ValueError, AttributeError):
             logger.warning(
@@ -87,10 +82,7 @@ class SubgoalConverter:
                 text,
             )
             instruction = text.strip('"').strip("'")
-            return ConversionResult(
-                instruction=instruction,
-                outside_of_distribution=False,
-            )
+            return ConversionResult(instruction=instruction)
 
     @staticmethod
     def _make_llm(model: str) -> BaseLLM:

@@ -257,30 +257,11 @@ Respond with EXACTLY ONE JSON object (no markdown fences):
 
 SUBGOAL_CONVERSION_PROMPT = """\
 You convert natural language drone subgoals into short, imperative instructions
-that a vision-language-action model (OpenVLA) can execute. You also assess whether
-the instruction is outside OpenVLA's training distribution.
+that a vision-language-action model (OpenVLA) can execute.
 
-OpenVLA was fine-tuned exclusively on the following categories of first-person
-drone commands in outdoor/suburban environments. An instruction is IN-distribution
-only if it can be mapped to one of these categories:
-
-  Movement: advance, cross, proceed, progress, move (with distances/angles),
-    navigate, orbit, circle, pass
-  Altitude: ascend, climb, descend, lower, take off
-  Landing: land at/to/on/toward various sides of objects
-  Orientation: face/turn toward an object, turn left/right by degrees, rotate
-  Approach/retreat: get closer, move closer/away/back, back off, withdraw
-  Composed: turn and move forward, navigate to a point X meters from an object
-
-An instruction is OUTSIDE the distribution when it cannot be mapped to any of
-the categories above. Common examples of OOD instructions:
-- Indoor manipulation (pick up, grasp, open drawer, push button).
-- Non-drone locomotion (walk, drive, swim).
-- Objects or environments absent from typical outdoor drone footage (kitchen
-  appliances, office furniture, underwater features).
-- Non-navigation commands (answer a question, write code, take a photo,
-  describe the scene).
-- Too abstract or vague to map to any concrete drone movement.
+OpenVLA was fine-tuned on first-person drone commands in outdoor/suburban
+environments covering: movement, altitude, landing, orientation,
+approach/retreat, and composed actions (e.g., turn and move forward).
 
 Conversion rules:
 - If the clause after "until" describes a VISUAL DETECTION condition (seeing,
@@ -292,37 +273,26 @@ Conversion rules:
   be preserved so the drone steers toward it.
 - Keep spatial references that help the model navigate (e.g., "between X and Y",
   "from the left side", "ahead").
-- If the instruction is outside the distribution, still provide the best-effort
-  converted sub_goal (or repeat the input if no conversion makes sense).
 
 Output EXACTLY ONE JSON object (no markdown fences):
 
-{"outside_of_distribution": true/false, "sub_goal": "..."}
+{"sub_goal": "..."}
 
 Examples:
   "Turn right until you see the red car"
-  {"outside_of_distribution": false, "sub_goal": "turn right"}
+  {"sub_goal": "turn right"}
 
   "Move forward until you spot the building"
-  {"outside_of_distribution": false, "sub_goal": "move forward"}
+  {"sub_goal": "move forward"}
 
   "Continue forward until close to the person ahead"
-  {"outside_of_distribution": false, "sub_goal": "get closer to the person ahead"}
+  {"sub_goal": "get closer to the person ahead"}
 
   "Move toward the tree until you are near it"
-  {"outside_of_distribution": false, "sub_goal": "approach the tree"}
+  {"sub_goal": "approach the tree"}
 
   "Go between the tree and the streetlight"
-  {"outside_of_distribution": false, "sub_goal": "go between the tree and the streetlight"}
-
-  "Pick up the red cup from the table"
-  {"outside_of_distribution": true, "sub_goal": "pick up the red cup from the table"}
-
-  "Drive the car to the gas station"
-  {"outside_of_distribution": true, "sub_goal": "drive the car to the gas station"}
-
-  "Describe what you see"
-  {"outside_of_distribution": true, "sub_goal": "describe what you see"}\
+  {"sub_goal": "go between the tree and the streetlight"}\
 """
 
 

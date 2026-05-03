@@ -800,48 +800,6 @@ def run_subgoal(
     converted_instruction = conversion.instruction
     current_instruction = converted_instruction
 
-    if conversion.outside_of_distribution:
-        logger.warning(
-            "Subgoal '%s' flagged as outside OpenVLA distribution. Asking operator for help.",
-            subgoal_nl,
-        )
-        control.send_command(
-            frame_offset,
-            np.array([0.0, 0.0, 0.0, 0.0], dtype=np.float32),
-        )
-        help_result = _handle_ask_help(
-            control, frame_offset, 0, subgoal_nl,
-            "OUT OF DISTRIBUTION", 0.0,
-            current_instruction,
-            reasoning=f"Converted instruction '{converted_instruction}' is outside OpenVLA's training distribution.",
-        )
-        if help_result.stop_reason:
-            origin_world = pose_manager.get_world_pose()
-            return {
-                "subgoal": subgoal_nl,
-                "converted_instruction": converted_instruction,
-                "total_steps": 0,
-                "stop_reason": help_result.stop_reason,
-                "corrections_used": 0,
-                "last_completion_pct": 0.0,
-                "peak_completion": 0.0,
-                "vlm_calls": converter.llm_call_records,
-                "next_origin": list(origin_world),
-                "replan_instruction": help_result.replan_instruction,
-                "new_subgoal_override": help_result.new_subgoal or "",
-                "override_history": [{"step": 0, "type": "ood_help", "reasoning": help_result.reasoning}],
-            }
-        if help_result.new_subgoal:
-            subgoal_nl = help_result.new_subgoal
-            logger.info("OOD subgoal overridden to: '%s'. Re-converting...", subgoal_nl)
-            converter = SubgoalConverter(model=llm_model)
-            conversion = converter.convert(subgoal_nl)
-            converted_instruction = conversion.instruction
-            current_instruction = converted_instruction
-        else:
-            current_instruction = help_result.new_instruction
-        converted_instruction = current_instruction
-
     subgoal_dir = run_dir / f"subgoal_{subgoal_index:02d}_{sanitize_name(subgoal_nl)}"
     diary_artifacts = subgoal_dir / "diary_artifacts"
     diary_artifacts.mkdir(parents=True, exist_ok=True)

@@ -337,28 +337,6 @@ def _run_subgoal(
     converted_instruction = conversion.instruction
     current_instruction = converted_instruction
 
-    if conversion.outside_of_distribution:
-        logger.warning(
-            "Subgoal '%s' flagged as outside OpenVLA distribution (sim mode, no interactive prompt).",
-            subgoal_nl,
-        )
-        return {
-            "subgoal": subgoal_nl,
-            "converted_instruction": converted_instruction,
-            "total_steps": 0,
-            "stop_reason": "ood",
-            "corrections_used": 0,
-            "last_completion_pct": 0.0,
-            "peak_completion": 0.0,
-            "vlm_call_count": 0,
-            "vlm_call_records": list(converter.llm_call_records),
-            "next_origin": [origin_x, origin_y, origin_z, origin_yaw],
-            "constraints": _serialize_constraints(constraints),
-            "constraint_violation_count": 0,
-            "parse_failures": 0,
-            "replan_instruction": "",
-        }
-
     monitor = GoalAdherenceMonitor(
         subgoal=subgoal_nl,
         check_interval=check_interval,
@@ -444,11 +422,6 @@ def _run_subgoal(
             )
             converter = SubgoalConverter(model=llm_model)
             conversion = converter.convert(subgoal_nl)
-            if conversion.outside_of_distribution:
-                logger.warning(
-                    "New subgoal '%s' flagged as OOD by SubgoalConverter, proceeding anyway.",
-                    subgoal_nl,
-                )
             converted_instruction = conversion.instruction
             current_instruction = converted_instruction
             monitor = GoalAdherenceMonitor(
