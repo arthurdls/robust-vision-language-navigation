@@ -43,7 +43,6 @@ from rvln.config import (
     DEFAULT_DIARY_CHECK_INTERVAL,
     DEFAULT_DIARY_CHECK_INTERVAL_S,
     DEFAULT_DIARY_MODE,
-    DEFAULT_INITIAL_POSITION,
     DEFAULT_LLM_MODEL,
     DEFAULT_MAX_CORRECTIONS,
     DEFAULT_MAX_SECONDS_PER_SUBGOAL,
@@ -59,10 +58,10 @@ from rvln.config import (
 )
 from rvln.paths import (
     BATCH_SCRIPT,
-    DOWNTOWN_ENV_ID,
     REPO_ROOT,
     UAV_FLOW_EVAL,
 )
+from rvln.maps import resolve_map
 from rvln.sim.env_setup import (
     apply_action_poses,
     import_batch_module,
@@ -572,7 +571,7 @@ def _load_task(path: Path) -> Dict[str, Any]:
     return result
 
 
-def _resolve_tasks(args: argparse.Namespace) -> List[Dict[str, Any]]:
+def _resolve_tasks(args: argparse.Namespace, map_info) -> List[Dict[str, Any]]:
     cmd = getattr(args, "command", None)
     task_file = getattr(args, "task", None)
     run_all = getattr(args, "run_all_tasks", False)
@@ -589,7 +588,7 @@ def _resolve_tasks(args: argparse.Namespace) -> List[Dict[str, Any]]:
         raise SystemExit("At most one of -c/--command, --task, or --run_all_tasks is allowed.")
 
     if cmd is not None:
-        initial_pos_str = getattr(args, "initial_position", None) or DEFAULT_INITIAL_POSITION
+        initial_pos_str = getattr(args, "initial_position", None) or map_info.default_position
         return [{
             "instruction": cmd.strip(),
             "initial_pos": parse_position(initial_pos_str),
@@ -1055,8 +1054,8 @@ def main():
     mode.add_argument("--task", type=str, default=None, metavar="TASK.json")
     mode.add_argument("--run_all_tasks", action="store_true")
 
-    parser.add_argument("--initial-position", type=str, default=DEFAULT_INITIAL_POSITION, metavar="x,y,z,yaw")
-    parser.add_argument("-e", "--env_id", default=DOWNTOWN_ENV_ID)
+    parser.add_argument("--initial-position", type=str, default=None, metavar="x,y,z,yaw")
+    parser.add_argument("--scene", type=str, default=None, help="Map name (interactive picker if omitted)")
     parser.add_argument("-t", "--time_dilation", type=int, default=DEFAULT_TIME_DILATION)
     parser.add_argument("-s", "--seed", type=int, default=DEFAULT_SEED)
     parser.add_argument("-p", "--server_port", type=int, default=DEFAULT_SERVER_PORT)
@@ -1082,7 +1081,8 @@ def main():
         format="[%(levelname)s] %(asctime)s - %(name)s - %(message)s",
     )
 
-    tasks = _resolve_tasks(args)
+    map_info = resolve_map(args.scene)
+    tasks = _resolve_tasks(args, map_info)
 
     if not BATCH_SCRIPT.exists():
         logger.error("batch_run_act_all.py not found at %s", BATCH_SCRIPT)
@@ -1095,7 +1095,7 @@ def main():
     results_base = Path(args.results_dir)
     results_base.mkdir(parents=True, exist_ok=True)
 
-    env = setup_sim_env(args.env_id, int(args.time_dilation), int(args.seed), batch,
+    env = setup_sim_env(map_info.env_id, int(args.time_dilation), int(args.seed), batch,
                         sim_host=args.sim_host, sim_api_port=args.sim_api_port)
 
     try:
@@ -1103,7 +1103,7 @@ def main():
         if args.select_cam:
             initial_pos_for_cam = (
                 tasks[0]["initial_pos"] if tasks
-                else normalize_initial_pos(parse_position(DEFAULT_INITIAL_POSITION))
+                else normalize_initial_pos(parse_position(map_info.default_position))
             )
             drone_cam_id = interactive_camera_select(env, initial_pos_for_cam, batch)
 
