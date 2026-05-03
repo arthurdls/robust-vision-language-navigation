@@ -68,7 +68,6 @@ from rvln.config import (
     DEFAULT_SIM_PORT,
     DEFAULT_TIME_DILATION,
     DEFAULT_VLM_MODEL,
-    DRONE_CAM_ID,
 )
 from rvln.paths import (
     BATCH_SCRIPT,
@@ -1176,9 +1175,9 @@ def main():
 
     # Camera / logging
     parser.add_argument(
-        "--use-default-cam",
+        "--select-cam",
         action="store_true",
-        help=f"Use default drone camera (ID {DRONE_CAM_ID}), skip interactive selection",
+        help="Interactively pick the drone camera instead of auto-detecting",
     )
     parser.add_argument(
         "--log_level",
@@ -1210,8 +1209,8 @@ def main():
                         sim_host=args.sim_host, sim_api_port=args.sim_api_port)
 
     try:
-        drone_cam_id = DRONE_CAM_ID
-        if not args.use_default_cam:
+        drone_cam_id = env.drone_cam_id
+        if args.select_cam:
             logger.info("Camera selection: pick the camera for OpenVLA.")
             initial_pos_for_cam = (
                 tasks[0]["initial_pos"] if tasks

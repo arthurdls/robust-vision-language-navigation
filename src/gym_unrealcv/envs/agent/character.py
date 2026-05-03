@@ -27,7 +27,7 @@ class Character_API(UnrealCv_API):
 
     def init_mask_color(self, targets=None):
         if targets == 'all':
-            self.targets = self.get_objects()
+            self.targets = sorted(self.get_objects())
             self.color_dict = self.build_color_dict(self.targets)
         elif targets is not None:
             self.targets = targets

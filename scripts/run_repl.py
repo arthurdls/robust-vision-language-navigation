@@ -24,7 +24,7 @@ OpenVLA server must be running: python scripts/start_server.py
 Usage (from repo root):
   python scripts/run_repl.py
   python scripts/run_repl.py -p 5007
-  python scripts/run_repl.py --use-default-cam   # skip camera selection
+  python scripts/run_repl.py --select-cam         # interactively pick drone camera
 """
 
 import argparse
@@ -55,7 +55,6 @@ from rvln.paths import (
     DEFAULT_SEED,
     DEFAULT_TIME_DILATION,
     DOWNTOWN_ENV_ID,
-    DRONE_CAM_ID,
     REPO_ROOT,
 )
 from rvln.sim.env_setup import (
@@ -306,9 +305,9 @@ def main() -> None:
         help="Logging level",
     )
     parser.add_argument(
-        "--use-default-cam",
+        "--select-cam",
         action="store_true",
-        help="Use the default drone camera (ID %d) and skip interactive camera selection." % DRONE_CAM_ID,
+        help="Interactively pick the drone camera instead of auto-detecting.",
     )
     args = parser.parse_args()
 
@@ -358,9 +357,8 @@ def main() -> None:
     env.teleport(pos[0:3], pos[3])
     time.sleep(batch.SLEEP_AFTER_RESET_S)
 
-    if args.use_default_cam:
-        drone_cam_id = DRONE_CAM_ID
-    else:
+    drone_cam_id = env.drone_cam_id
+    if args.select_cam:
         logger.info("Camera selection: use the window to pick the camera for OpenVLA.")
         drone_cam_id = interactive_camera_select(env, pos, batch)
 

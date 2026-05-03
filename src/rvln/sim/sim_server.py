@@ -33,16 +33,21 @@ app = Flask(__name__)
 
 _env: Optional[Any] = None
 _drone_name: Optional[str] = None
+_drone_cam_id: int = 0
 _initialized = False
 
 
-def _sync_cam(cam_id: int = 0) -> None:
+def _sync_cam(cam_id: Optional[int] = None) -> None:
+    if cam_id is None:
+        cam_id = _drone_cam_id
     x, y, z = _env.unwrapped.unrealcv.get_obj_location(_drone_name)
     roll, yaw, pitch = _env.unwrapped.unrealcv.get_obj_rotation(_drone_name)
     _env.unwrapped.unrealcv.set_cam(cam_id, [x, y, z], [roll, pitch, yaw])
 
 
-def _capture_image(cam_id: int = 0) -> Optional[np.ndarray]:
+def _capture_image(cam_id: Optional[int] = None) -> Optional[np.ndarray]:
+    if cam_id is None:
+        cam_id = _drone_cam_id
     _sync_cam(cam_id)
     for attempt in range(2):
         try:
@@ -66,10 +71,11 @@ def _get_pose() -> tuple:
 
 @app.route("/init", methods=["POST"])
 def handle_init():
-    global _env, _drone_name, _initialized
+    global _env, _drone_name, _drone_cam_id, _initialized
 
     if _initialized:
         return jsonify({"status": "already_initialized", "drone_name": _drone_name,
+                        "drone_cam_id": _drone_cam_id,
                         "cam_count": _env.unwrapped.unrealcv.get_camera_num() if _env else 0})
 
     data = request.get_json(force=True)
@@ -98,6 +104,7 @@ def handle_init():
     env.reset(seed=seed)
 
     drone_name = env.unwrapped.player_list[0]
+    drone_cam_id = env.unwrapped.agents[drone_name]['cam_id']
     env.unwrapped.unrealcv.set_viewport(drone_name)
     env.unwrapped.unrealcv.set_phy(drone_name, 0)
 
@@ -114,12 +121,15 @@ def handle_init():
 
     _env = env
     _drone_name = drone_name
+    _drone_cam_id = drone_cam_id
     _initialized = True
 
     cam_count = _env.unwrapped.unrealcv.get_camera_num()
-    logger.info("Sim env initialized: drone=%s, cameras=%d", _drone_name, cam_count)
+    logger.info("Sim env initialized: drone=%s, drone_cam=%d, cameras=%d",
+                _drone_name, _drone_cam_id, cam_count)
 
-    return jsonify({"status": "ready", "drone_name": _drone_name, "cam_count": cam_count})
+    return jsonify({"status": "ready", "drone_name": _drone_name,
+                    "drone_cam_id": _drone_cam_id, "cam_count": cam_count})
 
 
 @app.route("/teleport", methods=["POST"])

@@ -25,7 +25,6 @@ from rvln.paths import (
     DEFAULT_TIME_DILATION,
     DEFAULT_SEED,
     DEFAULT_INITIAL_POSITION,
-    DRONE_CAM_ID,
     PROPRIO_LEN,
     load_env_vars,
 )
@@ -198,11 +197,11 @@ def set_drone_cam_and_get_image(env: Any, cam_id: Optional[int] = None) -> Optio
     """
     from rvln.sim.sim_client import SimClient
 
-    cam = cam_id if cam_id is not None else DRONE_CAM_ID
     if isinstance(env, SimClient):
-        image, _pos, _rot = env.get_frame(cam)
+        image, _pos, _rot = env.get_frame(cam_id)
         return image
     # Fallback for direct gym env (scout_locations)
+    cam = cam_id if cam_id is not None else env.unwrapped.agents[env.unwrapped.player_list[0]]['cam_id']
     x, y, z = env.unwrapped.unrealcv.get_obj_location(env.unwrapped.player_list[0])
     roll, yaw, pitch = env.unwrapped.unrealcv.get_obj_rotation(env.unwrapped.player_list[0])
     env.unwrapped.unrealcv.set_cam(cam, [x, y, z], [roll, pitch, yaw])
@@ -357,8 +356,7 @@ def apply_action_poses(
     steps = len(world_positions)
 
     if isinstance(env, SimClient):
-        cam = drone_cam_id if drone_cam_id is not None else DRONE_CAM_ID
-        image, _pos, _rot, _steps = env.step(world_positions, cam, sleep_s)
+        image, _pos, _rot, _steps = env.step(world_positions, drone_cam_id, sleep_s)
     else:
         for i, abs_pos in enumerate(world_positions):
             env.unwrapped.unrealcv.set_obj_location(

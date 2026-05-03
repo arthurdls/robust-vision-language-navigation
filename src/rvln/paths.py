@@ -56,7 +56,6 @@ from rvln.config import (  # noqa: E402
     DEFAULT_SIM_HOST,
     DEFAULT_SIM_PORT,
     DEFAULT_TIME_DILATION,
-    DRONE_CAM_ID,
     PROPRIO_LEN,
 )
 

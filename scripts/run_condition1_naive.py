@@ -46,7 +46,6 @@ from rvln.config import (
     DEFAULT_SIM_HOST,
     DEFAULT_SIM_PORT,
     DEFAULT_TIME_DILATION,
-    DRONE_CAM_ID,
 )
 from rvln.paths import (
     BATCH_SCRIPT,
@@ -353,7 +352,8 @@ def main():
     parser.add_argument("-o", "--results_dir", default=str(CONDITION1_RESULTS_DIR))
     parser.add_argument("--save-mp4", action="store_true")
     parser.add_argument("--mp4-fps", type=float, default=10.0)
-    parser.add_argument("--use-default-cam", action="store_true")
+    parser.add_argument("--select-cam", action="store_true",
+                        help="Interactively pick the drone camera instead of auto-detecting")
     parser.add_argument("--log_level", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"])
 
     args = parser.parse_args()
@@ -379,8 +379,8 @@ def main():
                         sim_host=args.sim_host, sim_api_port=args.sim_api_port)
 
     try:
-        drone_cam_id = DRONE_CAM_ID
-        if not args.use_default_cam:
+        drone_cam_id = env.drone_cam_id
+        if args.select_cam:
             initial_pos_for_cam = (
                 tasks[0]["initial_pos"] if tasks
                 else normalize_initial_pos(parse_position(DEFAULT_INITIAL_POSITION))

@@ -91,7 +91,7 @@ class UnrealCv_base(gym.Env):
         self.protagonist_id = 0
 
         # init agents
-        self.player_list = list(self.agents.keys())
+        self.player_list = sorted(self.agents.keys())
         self.cam_list = [self.agents[player]['cam_id'] for player in self.player_list]
 
         # define action space
@@ -766,7 +766,6 @@ class UnrealCv_base(gym.Env):
         # 获取所有相机位置
         cam_locs = []
         for cam_id in range(0,self.unrealcv.get_camera_num()):
-            print(cam_id)
             cam_loc = self.unrealcv.get_cam_location(cam_id)
             cam_locs.append(cam_loc)
 

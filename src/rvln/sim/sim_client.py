@@ -23,6 +23,7 @@ class SimClient:
         self.server_url = server_url.rstrip("/")
         self.timeout = timeout
         self.drone_name: Optional[str] = None
+        self.drone_cam_id: int = 0
         self.cam_count: int = 0
 
     def _post(self, endpoint: str, data: Optional[dict] = None) -> dict:
@@ -46,8 +47,10 @@ class SimClient:
             "seed": seed,
         })
         self.drone_name = resp.get("drone_name")
+        self.drone_cam_id = resp.get("drone_cam_id", 0)
         self.cam_count = resp.get("cam_count", 0)
-        logger.info("SimClient connected: drone=%s, cameras=%d", self.drone_name, self.cam_count)
+        logger.info("SimClient connected: drone=%s, drone_cam=%d, cameras=%d",
+                    self.drone_name, self.drone_cam_id, self.cam_count)
         return resp
 
     def teleport(self, position: list, yaw: float) -> None:
@@ -56,7 +59,7 @@ class SimClient:
     def step(
         self,
         positions: list,
-        cam_id: int = 0,
+        cam_id: Optional[int] = None,
         sleep_s: float = 0.1,
     ) -> tuple:
         """Apply positions and return (image, world_position, world_rotation, steps_applied).
@@ -66,7 +69,7 @@ class SimClient:
         """
         resp = self._post("/step", {
             "positions": [[float(v) for v in p] for p in positions],
-            "cam_id": cam_id,
+            "cam_id": cam_id if cam_id is not None else self.drone_cam_id,
             "sleep_s": sleep_s,
         })
         image = self._decode_image(resp.get("image"))
@@ -77,9 +80,9 @@ class SimClient:
             resp.get("steps_applied", len(positions)),
         )
 
-    def get_frame(self, cam_id: int = 0) -> tuple:
+    def get_frame(self, cam_id: Optional[int] = None) -> tuple:
         """Capture current frame. Returns (image, position, rotation)."""
-        resp = self._post("/get_frame", {"cam_id": cam_id})
+        resp = self._post("/get_frame", {"cam_id": cam_id if cam_id is not None else self.drone_cam_id})
         image = self._decode_image(resp.get("image"))
         return image, resp["position"], resp["rotation"]
 

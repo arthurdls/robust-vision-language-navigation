@@ -51,7 +51,6 @@ DEFAULT_SIM_API_PORT = int(os.environ.get("SIM_API_PORT", "9001"))
 DEFAULT_TIME_DILATION = 10
 DEFAULT_SEED = 0
 DEFAULT_INITIAL_POSITION = "-600,-1270,128,61"
-DRONE_CAM_ID = 5
 PROPRIO_LEN = 4
 
 # ---------------------------------------------------------------------------

@@ -65,7 +65,7 @@ class Track(UnrealCv_base):
         self.unrealcv.nav_to_goal(self.player_list[self.target_id], target_pos)
         time.sleep(1)
         super(Track, self).random_app()
-        object_list = self.unrealcv.get_objects()
+        object_list = sorted(self.unrealcv.get_objects())
         ############
         for obj in object_list: #binary mask configure
             if obj == self.player_list[self.target_id]:
