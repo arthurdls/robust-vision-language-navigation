@@ -166,7 +166,7 @@ def _run_condition_tasks(
     args,
 ):
     control_loop = _import_control_loop(condition)
-    results_dir = Path(args.results_dir) / f"condition{condition}"
+    results_dir = Path(args.results_dir) / f"condition{condition}" / map_info.task_dir_name
     results_dir.mkdir(parents=True, exist_ok=True)
     prefix = CONDITION_PREFIXES[condition]
     drone_cam_id = env.drone_cam_id
