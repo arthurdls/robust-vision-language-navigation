@@ -8,6 +8,10 @@
     396,
     -177
   ],
+  "expected_subgoal_count": 5,
+  "max_steps_per_subgoal": 500,
+  "max_corrections": 20,
+  "diary_check_interval": 20,
   "difficulty": "medium",
   "region": "region_1",
   "notes": "Sequential navigation with implicit ordering constraints. Based on validated system/first_task sequence."

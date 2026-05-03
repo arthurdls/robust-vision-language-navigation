@@ -41,6 +41,7 @@ RESULTS_DIR = REPO_ROOT / "results"
 
 # Task directories
 TASKS_DIR = REPO_ROOT / "tasks"
+SHARED_TASKS_DIR = TASKS_DIR  # tasks/<map_name>/<task>.json
 SYSTEM_TASKS_DIR = TASKS_DIR / "system"
 LTL_TASKS_DIR = TASKS_DIR / "ltl"
 GOAL_ADHERENCE_TASKS_DIR = TASKS_DIR / "goal_adherence"
