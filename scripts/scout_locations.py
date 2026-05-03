@@ -24,7 +24,8 @@ _SRC = Path(__file__).resolve().parent.parent / "src"
 if _SRC.is_dir() and str(_SRC) not in sys.path:
     sys.path.insert(0, str(_SRC))
 
-from rvln.paths import DOWNTOWN_ENV_ID, DEFAULT_TIME_DILATION, DEFAULT_SEED
+from rvln.maps import resolve_map
+from rvln.config import DEFAULT_TIME_DILATION, DEFAULT_SEED
 from rvln.sim.env_setup import load_env_vars, setup_env_and_imports, import_batch_module
 
 import gym_unrealcv.envs.base_env as _base_env
@@ -55,9 +56,10 @@ def main():
         description="Scout map locations: teleport drone to x,y,z,yaw to observe the view"
     )
     parser.add_argument(
-        "-e", "--env_id",
-        default=DOWNTOWN_ENV_ID,
-        help="Environment ID",
+        "--scene",
+        type=str,
+        default=None,
+        help="Map name (interactive picker if omitted)",
     )
     parser.add_argument(
         "-t", "--time_dilation",
@@ -73,6 +75,7 @@ def main():
     )
     args = parser.parse_args()
 
+    map_info = resolve_map(args.scene)
     setup_env_and_imports()
     _patch_remove_agent_skip_destroy()
     import_batch_module()
@@ -81,8 +84,8 @@ def main():
     import gym_unrealcv
     from gym_unrealcv.envs.wrappers import time_dilation, configUE, augmentation
 
-    gym_unrealcv.register_env(args.env_id)
-    env = gym.make(args.env_id)
+    gym_unrealcv.register_env(map_info.env_id)
+    env = gym.make(map_info.env_id)
     if int(args.time_dilation) > 0:
         env = time_dilation.TimeDilationWrapper(env, int(args.time_dilation))
     env.unwrapped.agents_category = ["drone"]
