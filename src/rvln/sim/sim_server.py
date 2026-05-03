@@ -79,7 +79,9 @@ def handle_init():
                         "cam_count": _env.unwrapped.unrealcv.get_camera_num() if _env else 0})
 
     data = request.get_json(force=True)
-    env_id = data.get("env_id", "DowntownWest-Track-v0")
+    env_id = data.get("env_id")
+    if not env_id:
+        return jsonify({"error": "env_id is required in /init payload"}), 400
     time_dilation_val = int(data.get("time_dilation", 10))
     seed = int(data.get("seed", 0))
 
