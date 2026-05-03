@@ -22,8 +22,7 @@ ENV_FILE = REPO_ROOT / ".env"
 ENV_FILE_LOCAL = REPO_ROOT / ".env.local"
 
 # Unreal scene JSON overlays for gym_unrealcv (Linux env_bin paths, etc.)
-DOWNTOWN_OVERLAY_JSON = _RVLN_PKG / "sim" / "scenes" / "Track" / "DowntownWest.json"
-DOWNTOWN_ENV_ID = "UnrealTrack-DowntownWest-ContinuousColor-v0"
+SCENES_DIR = _RVLN_PKG / "sim" / "scenes"
 
 # Downloaded Unreal binaries root (gitignored; tools/download_simulator.py)
 UNREAL_ENV_ROOT = REPO_ROOT / "runtime" / "unreal"
@@ -49,7 +48,6 @@ UAV_FLOW_TASKS_DIR = TASKS_DIR / "uav_flow"
 
 # Sim / server defaults moved to config.py
 from rvln.config import (  # noqa: E402
-    DEFAULT_INITIAL_POSITION,
     DEFAULT_SEED,
     DEFAULT_SERVER_HOST,
     DEFAULT_SERVER_PORT,
