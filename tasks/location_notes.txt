@@ -1,0 +1,49 @@
+Downtown West
+* [-12000, -1450, 360, 30]
+Get close to the person ahead. Then turn right until you see the black car, and then go to the black car. Then turn left until you see the red car and go to the red car. Then go to the first traffic light ahead. Land near it. 
+
+* [-9840, 476, 310, -5]
+Go past the streetlamp, then stop at the bridge. Turn left until the bridge is infront of you, then cross the bridge. Then turn left until you see the tree and go to the tree. Finally, land near the tree.
+
+* [11025, -1170, 1170, 178]
+Go past all of the pergolas ahead, maintain an altitude below the pergolas.
+
+* [11025, -1170, 230, 178]
+Go past all of the pergolas ahead, maintain an altitude above the pergolas.
+
+* [-16781, 5744, 422, -179]
+Never go on the road. Go forward until the end of the sidewalk, then turn right 90 degrees. Then go forward until you see the red cross walk on the left near the streetlamps. Then turn left 90 degrees. Then cross the street. Then land near the streetlamp.  
+
+Greek Island
+* [-12421, 13374, 4444, -45]
+Go forward until you go past the palm trees ahead. Make sure to stay near the ground.
+
+* [-12867, -538, 420, -116]
+Go past the tree ahead. Then go above the water ahead. Stay above the water and go along the shore until you see a red banner. Then go to the red banner. Then ascend 100 meters. Turn right until you see the greek statue.
+
+* [24827, -2822, 350, 55]
+Always stay above the clear trail. Go forward until you see the greek statue. 
+
+* [28000, 10000, 1522, -65]
+Go forward until you reach the beach, while staying above the clear trail. Then turn left 90 degrees. Then approach the rock ahead. Then ascend until you are above the rocks. Go forward and land near the tree.
+
+* [9878, 23312, 1821, -113]
+Go forward along the trail until you reach the bridge. Then cross the bridge. Then turn right until you see the house. Then go to the house. Then land.
+
+Suburb Neighborhood Day
+* [-9933, -3188, 290, -1]
+Go forward until the end of the road. Then turn right 90 degrees. Go forward until you get to the white house ahead. Then go around the house. As you go around the house, maintain a view of the house the whole time. Stop once you get to the front of the house again. 
+
+* [3147, -999, 263, 0]
+Go forwad to the end of the room. Then turn right until you see the hallway. Then go forward until the end of the hallway. Then turn right 90 degrees. Go forward. Turn right to face the door. Then go to the door. Exit the building.
+
+* [-1869, -372, 300, 4]
+Go forward until you reach the black car. Then turn right 180 degrees. Then go toward the white car. Then turn left 180 degrees. Then turn toward the red car on the right. Then go to the red car. Then turn toward the black car on the left. Then go to the black car. Then land.
+
+* [-5282, 1811, 262, -86]
+Pass by the red car while maintaining site of it. 
+
+* [6352, 534, 500, 178]
+Go over the house ahead, go past it, and then land.
+
+
