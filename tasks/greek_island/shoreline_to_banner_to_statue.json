@@ -1,0 +1,9 @@
+{
+  "task_id": "shoreline_to_banner_to_statue",
+  "instruction": "Go past the tree ahead. Then go above the water ahead. Stay above the water and go along the shore until you see a red banner. Then go to the red banner. Then ascend 100 meters. Turn right until you see the greek statue.",
+  "initial_pos": [-12867, -538, 420, -116],
+  "expected_subgoal_count": 5,
+  "max_steps_per_subgoal": 500,
+  "max_corrections": 20,
+  "diary_check_interval": 20
+}

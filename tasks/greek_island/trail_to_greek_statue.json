@@ -1,0 +1,9 @@
+{
+  "task_id": "trail_to_greek_statue",
+  "instruction": "Always stay above the clear trail. Go forward until you see the greek statue.",
+  "initial_pos": [24827, -2822, 350, 55],
+  "expected_subgoal_count": 2,
+  "max_steps_per_subgoal": 500,
+  "max_corrections": 20,
+  "diary_check_interval": 20
+}

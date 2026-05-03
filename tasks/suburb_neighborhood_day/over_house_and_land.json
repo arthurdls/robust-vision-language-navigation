@@ -1,0 +1,9 @@
+{
+  "task_id": "over_house_and_land",
+  "instruction": "Go over the house ahead, go past it, and then land.",
+  "initial_pos": [6352, 534, 500, 178],
+  "expected_subgoal_count": 3,
+  "max_steps_per_subgoal": 500,
+  "max_corrections": 20,
+  "diary_check_interval": 20
+}

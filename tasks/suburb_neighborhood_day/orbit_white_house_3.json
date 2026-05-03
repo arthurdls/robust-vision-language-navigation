@@ -1,0 +1,14 @@
+{
+  "task_id": "orbit_white_house_3",
+  "instruction": "Go forward until the end of the road. Then turn right 90 degrees. Go forward until you get to the white house ahead. Then go around the house. As you go around the house, maintain a view of the house the whole time. Stop once you get to the front of the house again.",
+  "initial_pos": [
+    -9975,
+    -3280,
+    280,
+    0
+  ],
+  "expected_subgoal_count": 5,
+  "max_steps_per_subgoal": 500,
+  "max_corrections": 20,
+  "diary_check_interval": 20
+}

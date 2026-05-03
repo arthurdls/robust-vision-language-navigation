@@ -1,0 +1,14 @@
+{
+  "task_id": "bridge_crossing_to_tree_3",
+  "instruction": "Go past the streetlamp, then stop at the bridge. Turn left until the bridge is infront of you, then cross the bridge. Then turn left until you see the tree and go to the tree. Finally, land near the tree.",
+  "initial_pos": [
+    -9786,
+    382,
+    331,
+    -7
+  ],
+  "expected_subgoal_count": 5,
+  "max_steps_per_subgoal": 500,
+  "max_corrections": 20,
+  "diary_check_interval": 20
+}

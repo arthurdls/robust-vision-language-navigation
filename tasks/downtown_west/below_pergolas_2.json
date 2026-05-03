@@ -1,0 +1,14 @@
+{
+  "task_id": "below_pergolas_2",
+  "instruction": "Go past all of the pergolas ahead, maintain an altitude below the pergolas.",
+  "initial_pos": [
+    11098,
+    -1081,
+    1189,
+    174
+  ],
+  "expected_subgoal_count": 2,
+  "max_steps_per_subgoal": 500,
+  "max_corrections": 20,
+  "diary_check_interval": 20
+}
