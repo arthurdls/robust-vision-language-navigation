@@ -70,7 +70,7 @@ from rvln.sim.env_setup import (
     state_for_openvla,
 )
 
-CONDITION4_TASKS_DIR = REPO_ROOT / "tasks" / "condition4"
+SHARED_TASKS_DIR = REPO_ROOT / "tasks"
 CONDITION4_RESULTS_DIR = REPO_ROOT / "results" / "condition4"
 
 logger = logging.getLogger(__name__)
@@ -108,7 +108,7 @@ Assess whether the subgoal is complete based on this one frame alone."""
 
 SINGLE_FRAME_CHECK_PROMPT = """\
 Subgoal: {subgoal}
-
+{constraints_block}
 Look at this single frame from the drone's first-person camera.
 Is the drone currently at the goal described by the subgoal?
 
@@ -117,19 +117,22 @@ Respond with EXACTLY ONE JSON object (no markdown fences):
 {{
   "complete": true/false,
   "completion_percentage": 0.0 to 1.0,
-  "should_stop": true/false
+  "should_stop": true/false,
+  "constraint_violated": true/false
 }}
 
 - "complete": true ONLY if the subgoal has been fully accomplished based on
   this single frame.
 - "completion_percentage": your best estimate of progress (0.0 to 1.0).
   NEVER set 1.0 unless highly confident. Cap at 0.95 when unsure.
-- "should_stop": true only if the drone appears to be making things worse
-  (e.g., facing completely away from an expected target)."""
+- "should_stop": true if the drone appears off-track or heading toward a
+  collision. The drone will be stopped and a corrective instruction issued.
+- "constraint_violated": true if any active constraint listed above appears
+  violated in this frame. false if no constraints are listed or none violated."""
 
 SINGLE_FRAME_CONVERGENCE_PROMPT = """\
 Subgoal: {subgoal}
-
+{constraints_block}
 The drone has stopped moving. Look at this single frame from the drone's camera.
 Is the subgoal complete? If not, what single corrective command should be issued?
 
@@ -138,15 +141,17 @@ Respond with EXACTLY ONE JSON object (no markdown fences):
 {{
   "complete": true/false,
   "completion_percentage": 0.0 to 1.0,
-  "diagnosis": "stopped_short" or "overshot" or "complete",
-  "corrective_instruction": "..." or null
+  "diagnosis": "stopped_short" or "overshot" or "complete" or "constraint_violated",
+  "corrective_instruction": "..." or null,
+  "constraint_violated": true/false
 }}
 
 - "complete": true ONLY if you are highly confident the subgoal is done.
 - "diagnosis": "complete" if done, "stopped_short" if the drone needs to
   keep going, "overshot" if the drone went past the goal.
 - "corrective_instruction": REQUIRED if not complete. A single-action drone
-  command to fix the biggest gap. null only if complete."""
+  command to fix the biggest gap. null only if complete.
+- "constraint_violated": true if any active constraint appears violated."""
 
 
 # ---------------------------------------------------------------------------
@@ -170,6 +175,20 @@ def _parse_json_response(response: str) -> Optional[dict]:
             except json.JSONDecodeError:
                 pass
     return None
+
+
+def _format_constraints_block(constraints) -> str:
+    if not constraints:
+        return ""
+    lines = ["Active constraints (must be maintained throughout):"]
+    for c in constraints:
+        if hasattr(c, "polarity"):
+            label = "AVOID" if c.polarity == "negative" else "MAINTAIN"
+            lines.append(f"  - {label}: {c.description}")
+        else:
+            lines.append(f"  - {c}")
+    lines.append("")
+    return "\n".join(lines)
 
 
 def _query_single_frame(frame_path: Path, prompt: str, llm, label: str = "single_frame_check"):
@@ -245,14 +264,14 @@ def _resolve_tasks(args: argparse.Namespace, map_info) -> List[Dict[str, Any]]:
             "max_corrections": args.max_corrections,
         }]
 
-    tasks_dir = CONDITION4_TASKS_DIR / map_info.task_dir_name
+    tasks_dir = SHARED_TASKS_DIR / map_info.task_dir_name
 
     if task_file is not None:
         validate_task_map(task_file, map_info)
         path = Path(task_file)
         if not path.is_absolute():
             if len(path.parts) > 1:
-                path = CONDITION4_TASKS_DIR / path
+                path = SHARED_TASKS_DIR / path
             else:
                 path = tasks_dir / path.name
         if not path.exists():
@@ -294,6 +313,7 @@ def _run_subgoal(
     env, batch, server_url, subgoal_nl, monitor_model, llm_model, check_interval,
     max_steps, max_corrections, origin_x, origin_y, origin_z, origin_yaw,
     drone_cam_id, frames_dir, subgoal_dir, frame_offset, trajectory_log,
+    constraints=None,
 ):
     from rvln.ai.subgoal_converter import SubgoalConverter
     from rvln.ai.utils.llm_providers import LLMFactory
@@ -314,6 +334,7 @@ def _run_subgoal(
     openvla_pose_origin = [0.0, 0.0, 0.0, 0.0]
     last_pose = None
     small_count = 0
+    constraints_block = _format_constraints_block(constraints)
     override_history = []
     corrections_used = 0
     vlm_calls = 0
@@ -321,6 +342,7 @@ def _run_subgoal(
     last_correction_step = -check_interval
     stop_reason = "max_steps"
     total_steps = 0
+    constraint_violation_count = 0
 
     batch.reset_model(server_url)
     step = 0
@@ -342,7 +364,9 @@ def _run_subgoal(
 
         # Single-frame VLM check at checkpoint intervals
         if step > 0 and step % check_interval == 0:
-            prompt = SINGLE_FRAME_CHECK_PROMPT.format(subgoal=subgoal_nl)
+            prompt = SINGLE_FRAME_CHECK_PROMPT.format(
+                subgoal=subgoal_nl, constraints_block=constraints_block,
+            )
             try:
                 response_text, call_rec = _query_single_frame(
                     frame_path, prompt, llm, label="single_frame_check",
@@ -352,6 +376,13 @@ def _run_subgoal(
                 vlm_calls += 1
                 parsed = _parse_json_response(response_text)
                 if parsed is not None:
+                    if parsed.get("constraint_violated", False):
+                        constraint_violation_count += 1
+                        override_history.append({
+                            "step": step,
+                            "type": "constraint_violation",
+                            "constraint_violated": True,
+                        })
                     if parsed.get("complete", False):
                         logger.info("Single-frame check: complete at step %d", step)
                         stop_reason = "monitor_complete"
@@ -439,7 +470,9 @@ def _run_subgoal(
                 stop_reason = "max_corrections"
                 break
 
-            prompt = SINGLE_FRAME_CONVERGENCE_PROMPT.format(subgoal=subgoal_nl)
+            prompt = SINGLE_FRAME_CONVERGENCE_PROMPT.format(
+                subgoal=subgoal_nl, constraints_block=constraints_block,
+            )
             try:
                 response_text, call_rec = _query_single_frame(
                     conv_path, prompt, llm, label="single_frame_convergence",
@@ -457,6 +490,14 @@ def _run_subgoal(
                 logger.warning("Unparseable convergence response, stopping.")
                 stop_reason = "parse_error"
                 break
+
+            if parsed.get("constraint_violated", False):
+                constraint_violation_count += 1
+                override_history.append({
+                    "step": step,
+                    "type": "constraint_violation",
+                    "constraint_violated": True,
+                })
 
             if parsed.get("complete", False) or parsed.get("diagnosis") == "complete":
                 logger.info("Single-frame convergence: complete at step %d", step)
@@ -497,6 +538,7 @@ def _run_subgoal(
         "vlm_call_records": vlm_call_records,
         "stop_reason": stop_reason,
         "total_steps": total_steps,
+        "constraint_violation_count": constraint_violation_count,
     }
     with open(subgoal_dir / "subgoal_summary.json", "w") as f:
         json.dump(subgoal_summary, f, indent=2)
@@ -513,6 +555,7 @@ def _run_subgoal(
         "corrections_used": corrections_used,
         "vlm_call_count": vlm_calls,
         "vlm_call_records": vlm_call_records,
+        "constraint_violation_count": constraint_violation_count,
         "next_origin": [next_origin_x, next_origin_y, next_origin_z, next_origin_yaw],
     }
 
@@ -572,6 +615,8 @@ def run_single_frame_control_loop(
         safe_name = _sanitize_name(current_subgoal)
         subgoal_dir = run_dir / f"subgoal_{subgoal_index:02d}_{safe_name}"
 
+        active_constraints = planner.get_active_constraints()
+
         logger.info("--- Subgoal %d: '%s' ---", subgoal_index, current_subgoal)
 
         subgoal_result = _run_subgoal(
@@ -584,6 +629,7 @@ def run_single_frame_control_loop(
             drone_cam_id=drone_cam_id, frames_dir=frames_dir,
             subgoal_dir=subgoal_dir, frame_offset=total_frame_count,
             trajectory_log=trajectory_log,
+            constraints=active_constraints,
         )
 
         total_frame_count += subgoal_result["total_steps"]
@@ -616,6 +662,9 @@ def run_single_frame_control_loop(
         all_vlm_records.extend(s.get("vlm_call_records", []))
     total_input_tokens = sum(r.get("input_tokens", 0) for r in all_vlm_records)
     total_output_tokens = sum(r.get("output_tokens", 0) for r in all_vlm_records)
+    any_constraint_violated = any(
+        s.get("constraint_violation_count", 0) > 0 for s in subgoal_summaries
+    )
     end_dt = datetime.fromisoformat(end_ts)
     start_dt = datetime.fromisoformat(start_ts)
     wall_clock_seconds = (end_dt - start_dt).total_seconds()
@@ -655,6 +704,7 @@ def run_single_frame_control_loop(
         "total_input_tokens": total_input_tokens,
         "total_output_tokens": total_output_tokens,
         "vlm_call_records": all_vlm_records,
+        "any_constraint_violated": any_constraint_violated,
         "playback_mp4": str(playback_mp4) if playback_mp4 else None,
         "start_time": start_ts,
         "end_time": end_ts,
@@ -715,12 +765,12 @@ def main():
     os.chdir(str(UAV_FLOW_EVAL))
 
     server_url = f"http://{args.server_host}:{args.server_port}/predict"
-    results_base = Path(args.results_dir)
-    results_base.mkdir(parents=True, exist_ok=True)
 
     env = setup_sim_env(int(args.time_dilation), int(args.seed), batch,
                         sim_host=args.sim_host, sim_api_port=args.sim_api_port)
     map_info = env.get_map_info()
+    results_base = Path(args.results_dir) / map_info.task_dir_name
+    results_base.mkdir(parents=True, exist_ok=True)
     tasks = _resolve_tasks(args, map_info)
 
     try:
@@ -763,6 +813,8 @@ def main():
             except Exception as e:
                 logger.error("Task failed: %s", e, exc_info=True)
             logger.info("===== Task %d finished =====\n", idx + 1)
+    except KeyboardInterrupt:
+        logger.info("Interrupted. Exiting.")
 
 
 if __name__ == "__main__":

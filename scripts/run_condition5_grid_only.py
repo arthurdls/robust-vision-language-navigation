@@ -75,7 +75,7 @@ from rvln.sim.env_setup import (
     state_for_openvla,
 )
 
-CONDITION5_TASKS_DIR = REPO_ROOT / "tasks" / "condition5"
+SHARED_TASKS_DIR = REPO_ROOT / "tasks"
 CONDITION5_RESULTS_DIR = REPO_ROOT / "results" / "condition5"
 
 logger = logging.getLogger(__name__)
@@ -120,7 +120,6 @@ EXACTLY ONE JSON object (no markdown fences):
 {{
   "complete": true/false,
   "completion_percentage": 0.0 to 1.0,
-  "on_track": true/false,
   "should_stop": true/false,
   "constraint_violated": true/false
 }}
@@ -130,8 +129,9 @@ EXACTLY ONE JSON object (no markdown fences):
 - "completion_percentage": your best estimate of how close the subgoal is to
   completion (0.0 = not started, 1.0 = fully done). NEVER set 1.0 unless you
   are highly confident. Cap at 0.95 when unsure.
-- "on_track": true if the drone is making any progress toward the subgoal.
-- "should_stop": true only if the drone is actively making things worse.
+- "should_stop": true if the drone appears off-track or heading toward a
+  collision. The drone will be stopped and a corrective instruction issued.
+  Do NOT set true for slow progress.
 - "constraint_violated": true if any active constraint listed above has been
   violated. false if no constraints are listed or none have been violated."""
 
@@ -173,7 +173,9 @@ def _patch_prompts():
     """Replace global and convergence prompt templates in goal_adherence_monitor module."""
     import rvln.ai.goal_adherence_monitor as gam_module
     gam_module.GLOBAL_PROMPT_TEMPLATE = GRID_ONLY_GLOBAL_PROMPT
+    gam_module.GLOBAL_PROMPT_TEMPLATE_CONSTRAINTS = GRID_ONLY_GLOBAL_PROMPT
     gam_module.CONVERGENCE_PROMPT_TEMPLATE = GRID_ONLY_CONVERGENCE_PROMPT
+    gam_module.CONVERGENCE_PROMPT_TEMPLATE_CONSTRAINTS = GRID_ONLY_CONVERGENCE_PROMPT
 
 
 # ---------------------------------------------------------------------------
@@ -230,14 +232,14 @@ def _resolve_tasks(args: argparse.Namespace, map_info) -> List[Dict[str, Any]]:
             "max_corrections": args.max_corrections,
         }]
 
-    tasks_dir = CONDITION5_TASKS_DIR / map_info.task_dir_name
+    tasks_dir = SHARED_TASKS_DIR / map_info.task_dir_name
 
     if task_file is not None:
         validate_task_map(task_file, map_info)
         path = Path(task_file)
         if not path.is_absolute():
             if len(path.parts) > 1:
-                path = CONDITION5_TASKS_DIR / path
+                path = SHARED_TASKS_DIR / path
             else:
                 path = tasks_dir / path.name
         if not path.exists():
@@ -776,12 +778,12 @@ def main():
     os.chdir(str(UAV_FLOW_EVAL))
 
     server_url = f"http://{args.server_host}:{args.server_port}/predict"
-    results_base = Path(args.results_dir)
-    results_base.mkdir(parents=True, exist_ok=True)
 
     env = setup_sim_env(int(args.time_dilation), int(args.seed), batch,
                         sim_host=args.sim_host, sim_api_port=args.sim_api_port)
     map_info = env.get_map_info()
+    results_base = Path(args.results_dir) / map_info.task_dir_name
+    results_base.mkdir(parents=True, exist_ok=True)
     tasks = _resolve_tasks(args, map_info)
 
     try:
@@ -827,6 +829,8 @@ def main():
             except Exception as e:
                 logger.error("Task failed: %s", e, exc_info=True)
             logger.info("===== Task %d finished =====\n", idx + 1)
+    except KeyboardInterrupt:
+        logger.info("Interrupted. Exiting.")
 
 
 if __name__ == "__main__":

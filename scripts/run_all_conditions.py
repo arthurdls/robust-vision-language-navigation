@@ -2,9 +2,8 @@
 """
 Run all conditions back-to-back on a single map with a persistent simulator.
 
-For each condition (0-6), discovers task files in tasks/conditionN/<map_dir>/,
-runs them using the condition's control loop, and saves results to
-results/conditionN/. Skips already-completed tasks.
+Tasks are loaded from a SHARED directory: tasks/<map_dir>/
+Results go to: results/condition<N>/<map_dir>/<run_name>/
 
 The simulator (run_simulator.py) must already be running with the matching map.
 
@@ -121,17 +120,20 @@ def _load_task_full(path: Path) -> Dict[str, Any]:
         "max_steps_per_subgoal": int(data.get("max_steps_per_subgoal", DEFAULT_MAX_STEPS_PER_SUBGOAL)),
         "diary_check_interval": int(data.get("diary_check_interval", DEFAULT_DIARY_CHECK_INTERVAL)),
         "max_corrections": int(data.get("max_corrections", DEFAULT_MAX_CORRECTIONS)),
+        "expected_subgoal_count": int(data.get("expected_subgoal_count", 3)),
     }
-    for passthrough_key in ("task_id", "category", "difficulty", "region", "notes"):
+    for passthrough_key in ("task_id", "category", "difficulty", "region", "notes",
+                            "constraints_expected"):
         if passthrough_key in data:
             result[passthrough_key] = data[passthrough_key]
     return result
 
 
-def _discover_tasks(condition: int, task_dir_name: str) -> List[Dict[str, Any]]:
-    tasks_dir = REPO_ROOT / "tasks" / f"condition{condition}" / task_dir_name
+def _discover_tasks(task_dir_name: str) -> List[Dict[str, Any]]:
+    """Discover tasks from the shared tasks/<map_dir>/ directory."""
+    tasks_dir = REPO_ROOT / "tasks" / task_dir_name
     if not tasks_dir.is_dir():
-        logger.warning("No task directory for condition %d: %s", condition, tasks_dir)
+        logger.warning("No shared task directory: %s", tasks_dir)
         return []
     json_files = sorted(glob.glob(str(tasks_dir / "*.json")))
     tasks = []
@@ -332,15 +334,16 @@ def main():
     logger.info("Connected to simulator: map=%s", map_info.name)
     logger.info("Conditions to run: %s", conditions)
 
+    # All conditions use the SAME shared tasks
+    tasks = _discover_tasks(map_task_dir)
+    if not tasks:
+        raise SystemExit(f"No tasks found in tasks/{map_task_dir}/")
+    logger.info("Found %d shared task(s) for map '%s'", len(tasks), map_task_dir)
+
     try:
         for cond in conditions:
             if cond not in CONDITION_MODULES:
                 logger.warning("Unknown condition %d, skipping", cond)
-                continue
-
-            tasks = _discover_tasks(cond, map_task_dir)
-            if not tasks:
-                logger.info("\n===== Condition %d: no tasks found, skipping =====", cond)
                 continue
 
             logger.info(

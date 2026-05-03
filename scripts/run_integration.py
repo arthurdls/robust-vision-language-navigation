@@ -87,7 +87,7 @@ from rvln.sim.env_setup import (
     state_for_openvla,
 )
 
-CONDITION0_TASKS_DIR = REPO_ROOT / "tasks" / "condition0"
+SHARED_TASKS_DIR = REPO_ROOT / "tasks"
 CONDITION0_RESULTS_DIR = REPO_ROOT / "results" / "condition0"
 
 logger = logging.getLogger(__name__)
@@ -194,14 +194,14 @@ def _resolve_tasks(args: argparse.Namespace, map_info) -> List[Dict[str, Any]]:
             "max_corrections": args.max_corrections,
         }]
 
-    tasks_dir = CONDITION0_TASKS_DIR / map_info.task_dir_name
+    tasks_dir = SHARED_TASKS_DIR / map_info.task_dir_name
 
     if task_file is not None:
         validate_task_map(task_file, map_info)
         path = Path(task_file)
         if not path.is_absolute():
             if len(path.parts) > 1:
-                path = CONDITION0_TASKS_DIR / path
+                path = SHARED_TASKS_DIR / path
             else:
                 path = tasks_dir / path.name
         if not path.exists():
@@ -1177,12 +1177,12 @@ def main():
     os.chdir(str(UAV_FLOW_EVAL))
 
     server_url = f"http://{args.server_host}:{args.server_port}/predict"
-    results_base = Path(args.results_dir)
-    results_base.mkdir(parents=True, exist_ok=True)
 
     env = setup_sim_env(int(args.time_dilation), int(args.seed), batch,
                         sim_host=args.sim_host, sim_api_port=args.sim_api_port)
     map_info = env.get_map_info()
+    results_base = Path(args.results_dir) / map_info.task_dir_name
+    results_base.mkdir(parents=True, exist_ok=True)
     tasks = _resolve_tasks(args, map_info)
 
     try:
@@ -1242,6 +1242,8 @@ def main():
             except Exception as e:
                 logger.error("Task failed: %s", e, exc_info=True)
             logger.info("===== Task %d finished =====\n", idx + 1)
+    except KeyboardInterrupt:
+        logger.info("Interrupted. Exiting.")
 
 
 if __name__ == "__main__":
