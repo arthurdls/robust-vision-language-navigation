@@ -18,13 +18,11 @@ import numpy as np
 
 from rvln.paths import (
     REPO_ROOT,
-    DOWNTOWN_OVERLAY_JSON,
-    DOWNTOWN_ENV_ID,
+    SCENES_DIR,
     ENVS_DIR,
     DEFAULT_SERVER_PORT,
     DEFAULT_TIME_DILATION,
     DEFAULT_SEED,
-    DEFAULT_INITIAL_POSITION,
     PROPRIO_LEN,
     load_env_vars,
 )
@@ -91,8 +89,9 @@ def setup_env_and_imports() -> None:
     _original_get_settingpath = _misc.get_settingpath
 
     def _get_settingpath(filename):
-        if filename == "Track/DowntownWest.json" and DOWNTOWN_OVERLAY_JSON.exists():
-            return str(DOWNTOWN_OVERLAY_JSON)
+        overlay = SCENES_DIR / filename
+        if overlay.exists():
+            return str(overlay)
         return _original_get_settingpath(filename)
 
     _misc.get_settingpath = _get_settingpath
