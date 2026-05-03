@@ -167,7 +167,7 @@ def _load_task(path: Path) -> Dict[str, Any]:
     return result
 
 
-def _resolve_tasks(args: argparse.Namespace, map_info=None) -> List[Dict[str, Any]]:
+def _resolve_tasks(args: argparse.Namespace, map_info) -> List[Dict[str, Any]]:
     """Build task list from CLI arguments."""
     cmd = getattr(args, "command", None)
     task_file = getattr(args, "task", None)
@@ -194,7 +194,7 @@ def _resolve_tasks(args: argparse.Namespace, map_info=None) -> List[Dict[str, An
             "max_corrections": args.max_corrections,
         }]
 
-    tasks_dir = CONDITION0_TASKS_DIR / map_info.task_dir_name if map_info else CONDITION0_TASKS_DIR
+    tasks_dir = CONDITION0_TASKS_DIR / map_info.task_dir_name
 
     if task_file is not None:
         validate_task_map(task_file, map_info)

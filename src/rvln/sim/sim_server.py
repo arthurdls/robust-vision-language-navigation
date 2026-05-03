@@ -5,6 +5,7 @@ Started by run_simulator.py after the Unreal binary is ready. Client scripts
 talk to this server instead of connecting to UnrealCV directly.
 
 Endpoints:
+    GET  /map_info   - return the active map metadata (name, env_id, etc.)
     POST /init       - create gym env, reset, spawn NPCs
     POST /teleport   - move drone to absolute position
     POST /step       - apply a sequence of positions, return final frame

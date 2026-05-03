@@ -1,8 +1,9 @@
 """
 Centralized registry of supported simulation maps.
 
-All scripts use resolve_map() to get the active MapInfo, either from
-a --scene CLI flag or via interactive prompt.
+run_simulator uses resolve_map() to select the map. Client scripts
+query the running simulator via SimClient.get_map_info() instead.
+validate_task_map() checks that a task path matches the active map.
 """
 
 from dataclasses import dataclass
