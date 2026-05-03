@@ -827,8 +827,6 @@ def main():
             except Exception as e:
                 logger.error("Task failed: %s", e, exc_info=True)
             logger.info("===== Task %d finished =====\n", idx + 1)
-    finally:
-        env.close()
 
 
 if __name__ == "__main__":
