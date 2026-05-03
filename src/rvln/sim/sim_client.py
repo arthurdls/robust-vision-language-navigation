@@ -83,6 +83,11 @@ class SimClient:
     def teleport(self, position: list, yaw: float) -> None:
         self._post("/teleport", {"position": list(position), "yaw": float(yaw)})
 
+    def reset(self, position: list, yaw: float) -> None:
+        """Reset drone position for a new task."""
+        resp = self._post("/reset", {"position": list(position), "yaw": float(yaw)})
+        self.drone_cam_id = resp.get("drone_cam_id", self.drone_cam_id)
+
     def step(
         self,
         positions: list,

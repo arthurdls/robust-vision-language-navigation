@@ -8,6 +8,7 @@ Endpoints:
     GET  /map_info   - return the active map metadata (name, env_id, etc.)
     POST /init       - create gym env, reset, spawn NPCs
     POST /teleport   - move drone to absolute position
+    POST /reset      - reposition drone for a new task, returns drone metadata
     POST /step       - apply a sequence of positions, return final frame
     POST /get_frame  - capture current frame
     POST /get_pose   - query current drone position/rotation
@@ -176,6 +177,23 @@ def handle_teleport():
     _sync_cam()
 
     return jsonify({"status": "ok"})
+
+
+@app.route("/reset", methods=["POST"])
+def handle_reset():
+    """Reset drone to a given position for a new task. Env must be initialized."""
+    if not _initialized:
+        return jsonify({"error": "not initialized"}), 400
+
+    data = request.get_json(force=True)
+    position = data["position"]
+    yaw = float(data["yaw"])
+
+    _env.unwrapped.unrealcv.set_obj_location(_drone_name, position[:3])
+    _env.unwrapped.unrealcv.set_rotation(_drone_name, yaw - 180)
+    _sync_cam()
+
+    return jsonify({"status": "ok", "drone_cam_id": _drone_cam_id})
 
 
 @app.route("/step", methods=["POST"])
