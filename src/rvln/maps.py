@@ -77,3 +77,33 @@ def resolve_map(scene_arg: str | None) -> MapInfo:
     if scene_arg is not None:
         return get_map(scene_arg)
     return prompt_map_selection()
+
+
+KNOWN_TASK_DIR_NAMES: set[str] = {m.task_dir_name for m in SUPPORTED_MAPS.values()}
+
+
+def validate_task_map(task_path: str, map_info: MapInfo) -> None:
+    """Raise SystemExit if the task path implies a map that differs from the simulator's.
+
+    Task paths are structured as <map_task_dir>/<task>.json (e.g.
+    greek_island/first_task.json). If the first path component is a known map
+    directory and it does not match map_info.task_dir_name, the script exits
+    with a helpful error telling the user which --scene to start the simulator
+    with.
+    """
+    path = Path(task_path)
+    if path.is_absolute() or path.parent == Path("."):
+        return
+    task_map_dir = path.parts[0]
+    if task_map_dir not in KNOWN_TASK_DIR_NAMES:
+        return
+    if task_map_dir != map_info.task_dir_name:
+        expected_scene = next(
+            (m.name for m in SUPPORTED_MAPS.values() if m.task_dir_name == task_map_dir),
+            task_map_dir,
+        )
+        raise SystemExit(
+            f"Map mismatch: task '{task_path}' is for map '{expected_scene}', "
+            f"but the simulator is running '{map_info.name}'.\n"
+            f"Restart the simulator with:  python scripts/run_simulator.py --scene {expected_scene}"
+        )

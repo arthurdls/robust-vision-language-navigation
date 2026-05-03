@@ -147,7 +147,6 @@ def import_batch_module() -> Any:
 # ─── SimClient-based environment setup ──────────────────────────────────────
 
 def setup_sim_env(
-    env_id: str,
     time_dilation_val: int,
     seed: int,
     batch: Any,
@@ -160,6 +159,8 @@ def setup_sim_env(
     """Connect to the sim API server and initialize the environment.
 
     Returns a SimClient. The server (run_simulator.py) must already be running.
+    The server determines which map to use; clients query it via
+    client.get_map_info() after connecting.
 
     The server's /init endpoint is idempotent: if the first request times out
     while the server is still initializing, retries will either trigger the
@@ -173,7 +174,7 @@ def setup_sim_env(
     client = SimClient(f"http://{sim_host}:{sim_api_port}")
     for attempt in range(1, init_retries + 1):
         try:
-            client.init_env(env_id, time_dilation_val, seed)
+            client.init_env(time_dilation_val, seed)
             break
         except (ReadTimeout, ConnectionError) as exc:
             if attempt == init_retries:

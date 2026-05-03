@@ -35,6 +35,13 @@ _env: Optional[Any] = None
 _drone_name: Optional[str] = None
 _drone_cam_id: int = 0
 _initialized = False
+_map_info: Optional[dict] = None
+
+
+def set_map_info(info: dict) -> None:
+    """Store map metadata so the server can expose it to clients via /map_info."""
+    global _map_info
+    _map_info = info
 
 
 def _sync_cam(cam_id: Optional[int] = None) -> None:
@@ -69,6 +76,13 @@ def _get_pose() -> tuple:
     return [float(v) for v in pos], [float(v) for v in rot]
 
 
+@app.route("/map_info", methods=["GET"])
+def handle_map_info():
+    if _map_info is None:
+        return jsonify({"error": "map info not configured (is run_simulator.py running?)"}), 500
+    return jsonify(_map_info)
+
+
 @app.route("/init", methods=["POST"])
 def handle_init():
     global _env, _drone_name, _drone_cam_id, _initialized
@@ -78,10 +92,10 @@ def handle_init():
                         "drone_cam_id": _drone_cam_id,
                         "cam_count": _env.unwrapped.unrealcv.get_camera_num() if _env else 0})
 
+    if _map_info is None:
+        return jsonify({"error": "map info not configured (is run_simulator.py running?)"}), 500
+    env_id = _map_info["env_id"]
     data = request.get_json(force=True)
-    env_id = data.get("env_id")
-    if not env_id:
-        return jsonify({"error": "env_id is required in /init payload"}), 400
     time_dilation_val = int(data.get("time_dilation", 10))
     seed = int(data.get("seed", 0))
 

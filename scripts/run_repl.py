@@ -55,7 +55,6 @@ from rvln.paths import (
     DEFAULT_TIME_DILATION,
     REPO_ROOT,
 )
-from rvln.maps import resolve_map
 from rvln.sim.env_setup import (
     apply_action_poses,
     import_batch_module,
@@ -277,7 +276,6 @@ def main() -> None:
                         help=f"Simulator UnrealCV port (default: {DEFAULT_SIM_PORT})")
     parser.add_argument("--sim_api_port", type=int, default=DEFAULT_SIM_API_PORT,
                         help=f"Sim API server port (default: {DEFAULT_SIM_API_PORT})")
-    parser.add_argument("--scene", type=str, default=None, help="Map name (interactive picker if omitted)")
     parser.add_argument(
         "-t",
         "--time_dilation",
@@ -310,8 +308,6 @@ def main() -> None:
         format="[%(levelname)s] %(asctime)s - %(name)s - %(message)s",
     )
 
-    map_info = resolve_map(args.scene)
-
     if not BATCH_SCRIPT.exists():
         logger.error("batch_run_act_all.py not found at %s", BATCH_SCRIPT)
         sys.exit(1)
@@ -331,10 +327,11 @@ def main() -> None:
 
     server_url = f"http://{args.server_host}:{args.server_port}/predict"
 
-    env = setup_sim_env(map_info.env_id, int(args.time_dilation), int(args.seed), batch,
+    env = setup_sim_env(int(args.time_dilation), int(args.seed), batch,
                         sim_host=args.sim_host, sim_api_port=args.sim_api_port)
+    map_info = env.get_map_info()
 
-    logger.info("Simulator ready.")
+    logger.info("Simulator ready (map: %s).", map_info.name)
     _load_repl_history()
     try:
         line = input("\nEnter initial drone position (x,y,z,yaw) [default: {}]: ".format(map_info.default_position))

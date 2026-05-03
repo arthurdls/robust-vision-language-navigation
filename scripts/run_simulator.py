@@ -31,6 +31,7 @@ if _SRC.is_dir() and str(_SRC) not in sys.path:
 from rvln.config import DEFAULT_SIM_API_PORT, DEFAULT_SIM_PORT
 from rvln.maps import resolve_map
 from rvln.paths import UNREAL_ENV_ROOT, load_env_vars
+from rvln.sim.sim_server import set_map_info
 
 
 def get_local_ip() -> str:
@@ -259,6 +260,14 @@ def main():
     if wait_for_port("127.0.0.1", args.port):
         local_ip = get_local_ip()
         print(f"\nSimulator ready on port {args.port}.")
+
+        set_map_info({
+            "name": map_info.name,
+            "env_id": map_info.env_id,
+            "overlay_json": str(map_info.overlay_json),
+            "default_position": map_info.default_position,
+            "task_dir_name": map_info.task_dir_name,
+        })
 
         from rvln.sim.sim_server import run_server
         api_thread = threading.Thread(

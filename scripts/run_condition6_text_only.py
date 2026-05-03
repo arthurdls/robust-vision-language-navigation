@@ -61,7 +61,7 @@ from rvln.paths import (
     REPO_ROOT,
     UAV_FLOW_EVAL,
 )
-from rvln.maps import resolve_map
+from rvln.maps import validate_task_map
 from rvln.sim.env_setup import (
     apply_action_poses,
     import_batch_module,
@@ -597,10 +597,16 @@ def _resolve_tasks(args: argparse.Namespace, map_info) -> List[Dict[str, Any]]:
             "max_corrections": args.max_corrections,
         }]
 
+    tasks_dir = CONDITION6_TASKS_DIR / map_info.task_dir_name
+
     if task_file is not None:
+        validate_task_map(task_file, map_info)
         path = Path(task_file)
         if not path.is_absolute():
-            path = CONDITION6_TASKS_DIR / path.name
+            if len(path.parts) > 1:
+                path = CONDITION6_TASKS_DIR / path
+            else:
+                path = tasks_dir / path.name
         if not path.exists():
             raise SystemExit(f"Task file not found: {path}")
         task = _load_task(path)
@@ -609,10 +615,10 @@ def _resolve_tasks(args: argparse.Namespace, map_info) -> List[Dict[str, Any]]:
         task["max_corrections"] = args.max_corrections or task["max_corrections"]
         return [task]
 
-    CONDITION6_TASKS_DIR.mkdir(parents=True, exist_ok=True)
-    json_files = sorted(glob.glob(str(CONDITION6_TASKS_DIR / "*.json")))
+    tasks_dir.mkdir(parents=True, exist_ok=True)
+    json_files = sorted(glob.glob(str(tasks_dir / "*.json")))
     if not json_files:
-        raise SystemExit(f"No JSON files found in {CONDITION6_TASKS_DIR}")
+        raise SystemExit(f"No JSON files found in {tasks_dir}")
     tasks = []
     for jf in json_files:
         try:
@@ -1055,7 +1061,6 @@ def main():
     mode.add_argument("--run_all_tasks", action="store_true")
 
     parser.add_argument("--initial-position", type=str, default=None, metavar="x,y,z,yaw")
-    parser.add_argument("--scene", type=str, default=None, help="Map name (interactive picker if omitted)")
     parser.add_argument("-t", "--time_dilation", type=int, default=DEFAULT_TIME_DILATION)
     parser.add_argument("-s", "--seed", type=int, default=DEFAULT_SEED)
     parser.add_argument("-p", "--server_port", type=int, default=DEFAULT_SERVER_PORT)
@@ -1081,9 +1086,6 @@ def main():
         format="[%(levelname)s] %(asctime)s - %(name)s - %(message)s",
     )
 
-    map_info = resolve_map(args.scene)
-    tasks = _resolve_tasks(args, map_info)
-
     if not BATCH_SCRIPT.exists():
         logger.error("batch_run_act_all.py not found at %s", BATCH_SCRIPT)
         sys.exit(1)
@@ -1095,8 +1097,10 @@ def main():
     results_base = Path(args.results_dir)
     results_base.mkdir(parents=True, exist_ok=True)
 
-    env = setup_sim_env(map_info.env_id, int(args.time_dilation), int(args.seed), batch,
+    env = setup_sim_env(int(args.time_dilation), int(args.seed), batch,
                         sim_host=args.sim_host, sim_api_port=args.sim_api_port)
+    map_info = env.get_map_info()
+    tasks = _resolve_tasks(args, map_info)
 
     try:
         drone_cam_id = env.drone_cam_id
@@ -1128,7 +1132,7 @@ def main():
                     vlm_model=args.vlm_model,
                     drone_cam_id=drone_cam_id, save_mp4=args.save_mp4, mp4_fps=args.mp4_fps,
                     seed=args.seed, time_dilation=args.time_dilation,
-                    env_id=args.env_id,
+                    env_id=map_info.env_id,
                 )
                 logger.info("Run saved to %s (%d subgoals, %d total steps)",
                             run_dir, run_info["subgoal_count"], run_info["total_steps"])

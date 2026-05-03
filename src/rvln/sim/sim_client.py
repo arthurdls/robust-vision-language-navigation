@@ -32,6 +32,12 @@ class SimClient:
         resp.raise_for_status()
         return resp.json()
 
+    def _get(self, endpoint: str) -> dict:
+        url = f"{self.server_url}{endpoint}"
+        resp = requests.get(url, timeout=self.timeout)
+        resp.raise_for_status()
+        return resp.json()
+
     @staticmethod
     def _decode_image(b64: Optional[str]) -> Optional[np.ndarray]:
         if b64 is None:
@@ -40,9 +46,22 @@ class SimClient:
         arr = np.frombuffer(raw, dtype=np.uint8)
         return cv2.imdecode(arr, cv2.IMREAD_COLOR)
 
-    def init_env(self, env_id: str, time_dilation: int, seed: int) -> dict:
+    def get_map_info(self):
+        """Query the simulator for its active map. Returns a MapInfo object."""
+        from rvln.maps import MapInfo
+        from pathlib import Path
+
+        data = self._get("/map_info")
+        return MapInfo(
+            name=data["name"],
+            env_id=data["env_id"],
+            overlay_json=Path(data["overlay_json"]),
+            default_position=data["default_position"],
+            task_dir_name=data["task_dir_name"],
+        )
+
+    def init_env(self, time_dilation: int, seed: int) -> dict:
         resp = self._post("/init", {
-            "env_id": env_id,
             "time_dilation": time_dilation,
             "seed": seed,
         })
