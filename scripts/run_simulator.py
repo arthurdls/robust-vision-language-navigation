@@ -28,7 +28,7 @@ _SRC = Path(__file__).resolve().parent.parent / "src"
 if _SRC.is_dir() and str(_SRC) not in sys.path:
     sys.path.insert(0, str(_SRC))
 
-from rvln.config import DEFAULT_SIM_API_PORT, DEFAULT_SIM_PORT
+from rvln.config import DEFAULT_SIM_API_PORT, DEFAULT_SIM_PORT, DEFAULT_SEED, DEFAULT_TIME_DILATION
 from rvln.maps import resolve_map
 from rvln.paths import UNREAL_ENV_ROOT, load_env_vars
 from rvln.sim.sim_server import set_map_info
@@ -223,6 +223,10 @@ def main():
                         help=f"Unreal binaries root (default: {UNREAL_ENV_ROOT})")
     parser.add_argument("--api-port", type=int, default=DEFAULT_SIM_API_PORT,
                         help=f"Sim API server port (default: {DEFAULT_SIM_API_PORT})")
+    parser.add_argument("-t", "--time_dilation", type=int, default=DEFAULT_TIME_DILATION,
+                        help=f"Time dilation value (default: {DEFAULT_TIME_DILATION})")
+    parser.add_argument("-s", "--seed", type=int, default=DEFAULT_SEED,
+                        help=f"Random seed (default: {DEFAULT_SEED})")
     args = parser.parse_args()
 
     width, height = (int(x) for x in args.resolution.split("x"))
@@ -268,6 +272,15 @@ def main():
             "default_position": map_info.default_position,
             "task_dir_name": map_info.task_dir_name,
         })
+
+        from rvln.sim.sim_server import init_env
+        print("Auto-initializing gym environment...")
+        init_result = init_env(
+            env_id=map_info.env_id,
+            time_dilation=args.time_dilation,
+            seed=args.seed,
+        )
+        print(f"Gym env ready: {init_result['status']}, drone_cam={init_result['drone_cam_id']}")
 
         from rvln.sim.sim_server import run_server
         api_thread = threading.Thread(

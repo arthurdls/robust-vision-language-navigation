@@ -84,21 +84,20 @@ def handle_map_info():
     return jsonify(_map_info)
 
 
-@app.route("/init", methods=["POST"])
-def handle_init():
+def init_env(env_id: str, time_dilation: int = 10, seed: int = 0) -> dict:
+    """Initialize the gym env, spawn NPCs, and set module globals.
+
+    Safe to call multiple times: returns immediately if already initialized.
+    """
     global _env, _drone_name, _drone_cam_id, _initialized
 
     if _initialized:
-        return jsonify({"status": "already_initialized", "drone_name": _drone_name,
-                        "drone_cam_id": _drone_cam_id,
-                        "cam_count": _env.unwrapped.unrealcv.get_camera_num() if _env else 0})
+        return {"status": "already_initialized", "drone_name": _drone_name,
+                "drone_cam_id": _drone_cam_id,
+                "cam_count": _env.unwrapped.unrealcv.get_camera_num() if _env else 0}
 
     if _map_info is None:
-        return jsonify({"error": "map info not configured (is run_simulator.py running?)"}), 500
-    env_id = _map_info["env_id"]
-    data = request.get_json(force=True)
-    time_dilation_val = int(data.get("time_dilation", 10))
-    seed = int(data.get("seed", 0))
+        raise RuntimeError("map info not configured (is run_simulator.py running?)")
 
     import os
     import gymnasium as gym
@@ -113,8 +112,8 @@ def handle_init():
 
     gym_unrealcv.register_env(env_id)
     env = gym.make(env_id)
-    if time_dilation_val > 0:
-        env = td_mod.TimeDilationWrapper(env, time_dilation_val)
+    if time_dilation > 0:
+        env = td_mod.TimeDilationWrapper(env, time_dilation)
     env.unwrapped.agents_category = ["drone"]
     env = configUE.ConfigUEWrapper(env, resolution=(256, 256))
     env = augmentation.RandomPopulationWrapper(env, 2, 2, random_target=False)
@@ -145,8 +144,22 @@ def handle_init():
     logger.info("Sim env initialized: drone=%s, drone_cam=%d, cameras=%d",
                 _drone_name, _drone_cam_id, cam_count)
 
-    return jsonify({"status": "ready", "drone_name": _drone_name,
-                    "drone_cam_id": _drone_cam_id, "cam_count": cam_count})
+    return {"status": "ready", "drone_name": _drone_name,
+            "drone_cam_id": _drone_cam_id, "cam_count": cam_count}
+
+
+@app.route("/init", methods=["POST"])
+def handle_init():
+    data = request.get_json(force=True)
+    time_dilation_val = int(data.get("time_dilation", 10))
+    seed = int(data.get("seed", 0))
+
+    try:
+        result = init_env(_map_info["env_id"] if _map_info else "", time_dilation_val, seed)
+    except RuntimeError as e:
+        return jsonify({"error": str(e)}), 500
+
+    return jsonify(result)
 
 
 @app.route("/teleport", methods=["POST"])
