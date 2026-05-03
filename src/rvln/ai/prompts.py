@@ -82,13 +82,15 @@ The grid shows up to the 9 most recent sampled frames (left to right, top to
 bottom, in temporal order). If there are more than 9 diary entries, earlier frames
 are no longer visible in the grid -- rely on the diary text for that history.
 
-Based on the diary and the grid of sampled frames, respond with EXACTLY ONE JSON
-object (no markdown fences):
+Based on the diary and the grid of sampled frames, assess whether the drone is
+making progress toward the subgoal or going off-track. Consider whether it is
+approaching the target, drifting away, or heading toward an obstacle.
+
+Respond with EXACTLY ONE JSON object (no markdown fences):
 
 {{
   "complete": true/false,
   "completion_percentage": 0.0 to 1.0,
-  "on_track": true/false,
   "should_stop": true/false
 }}
 
@@ -97,10 +99,9 @@ object (no markdown fences):
 - "completion_percentage": your best estimate of how close the subgoal is to
   completion (0.0 = not started, 1.0 = fully done). NEVER set 1.0 unless you
   are highly confident -- use at most 0.95 when unsure.
-- "on_track": true if the drone is making any progress toward the subgoal.
-- "should_stop": true only if the drone is actively making things worse (e.g.,
-  overshooting, moving away from target). The drone will be stopped and a
-  correction issued. Do NOT set true for slow progress."""
+- "should_stop": true if the drone is off-track, moving away from the target,
+  overshooting, or heading toward a collision. The drone will be stopped and a
+  corrective instruction issued. Do NOT set true for slow but correct progress.
 
 DIARY_GLOBAL_PROMPT_WITH_CONSTRAINTS = """\
 Subgoal: {subgoal}
@@ -115,13 +116,16 @@ The grid shows up to the 9 most recent sampled frames (left to right, top to
 bottom, in temporal order). If there are more than 9 diary entries, earlier frames
 are no longer visible in the grid -- rely on the diary text for that history.
 
-Based on the diary and the grid of sampled frames, respond with EXACTLY ONE JSON
-object (no markdown fences):
+Based on the diary and the grid of sampled frames, assess whether the drone is
+making progress toward the subgoal or going off-track. Consider whether it is
+approaching the target, drifting away, or heading toward an obstacle. Also check
+whether any active constraints have been violated.
+
+Respond with EXACTLY ONE JSON object (no markdown fences):
 
 {{
   "complete": true/false,
   "completion_percentage": 0.0 to 1.0,
-  "on_track": true/false,
   "should_stop": true/false,
   "constraint_violated": true/false
 }}
@@ -131,14 +135,13 @@ object (no markdown fences):
 - "completion_percentage": your best estimate of how close the subgoal is to
   completion (0.0 = not started, 1.0 = fully done). NEVER set 1.0 unless you
   are highly confident -- use at most 0.95 when unsure.
-- "on_track": true if the drone is making any progress toward the subgoal.
-- "should_stop": true only if the drone is actively making things worse (e.g.,
-  overshooting, moving away from target). The drone will be stopped and a
-  correction issued. Do NOT set true for slow progress.
+- "should_stop": true if the drone is off-track, moving away from the target,
+  overshooting, or heading toward a collision. The drone will be stopped and a
+  corrective instruction issued. Do NOT set true for slow but correct progress.
 - "constraint_violated": true if any active constraint listed above has been
   violated or is about to be violated based on the visual evidence and diary.
   If true, also set "should_stop" to true. false if no constraints are listed
-  or none have been violated."""
+  or none have been violated.
 
 DIARY_CONVERGENCE_PROMPT = """\
 Subgoal: {subgoal}

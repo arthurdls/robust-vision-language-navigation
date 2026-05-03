@@ -544,14 +544,22 @@ class GoalAdherenceMonitor:
         )
 
     def _is_stalled(self) -> bool:
-        """Return True if completion has plateaued over the last stall_window checkpoints."""
+        """Return True if peak completion has not increased over the last stall_window checkpoints.
+
+        Uses peak_completion as the baseline rather than raw history, which is
+        more robust to non-monotonic VLM estimates (e.g., a hallucinated high
+        value followed by truthful lower values would not trigger false stalls).
+        """
         history = self._completion_history
         if len(history) < self._stall_window:
             return False
         recent = history[-self._stall_window:]
         if min(recent) >= self._stall_completion_floor:
             return False
-        return max(recent) - min(recent) < self._stall_threshold
+        recent_peak = max(recent)
+        if recent_peak >= self._peak_completion - self._stall_threshold:
+            return max(recent) - min(recent) < self._stall_threshold
+        return False
 
     def _save_frame(self, frame: Any) -> Path:
         if isinstance(frame, (str, Path)):
