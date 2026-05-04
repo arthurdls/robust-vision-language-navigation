@@ -130,9 +130,13 @@ Respond with EXACTLY ONE JSON object (no markdown fences):
 
 - "complete": true ONLY if you are highly confident the subgoal is done.
 - "diagnosis": "complete" if done, "stopped_short" if the drone needs to
-  keep going, "overshot" if the drone went past the goal.
+  keep going, "overshot" if the drone went past the goal, "constraint_violated"
+  if an active constraint was breached.
 - "corrective_instruction": REQUIRED if not complete. A single-action drone
-  command to fix the biggest gap. null only if complete.
+  command to fix the biggest gap. If a constraint was violated, restore
+  compliance: move away from a forbidden region for avoidance constraints,
+  or restore the required condition for maintenance constraints (e.g.,
+  "ascend 2 meters"). null only if complete.
 - "constraint_violated": true if any active constraint appears violated."""
 
 

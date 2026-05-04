@@ -248,7 +248,7 @@ Respond with EXACTLY ONE JSON object (no markdown fences):
   If a constraint was violated, the corrective instruction should restore
   compliance with that constraint. For avoidance constraints (e.g., "stay away
   from building B"), move the drone away from the forbidden region. For
-  maintenance constraints (e.g., "stay above the pergolas"), restore the
+  maintenance constraints (e.g., "stay above 10 meters"), restore the
   required condition (e.g., "ascend 2 meters").
   null only if complete.
 - "constraint_violated": true if any active constraint listed above has been

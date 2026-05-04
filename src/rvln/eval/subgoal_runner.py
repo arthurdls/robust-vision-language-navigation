@@ -152,9 +152,14 @@ Respond with EXACTLY ONE JSON object (no markdown fences):
 - "complete": true ONLY if you are highly confident the subgoal has been fully
   accomplished.
 - "diagnosis": "complete" if done, "stopped_short" if the drone needs to keep
-  going, "overshot" if the drone went past the goal.
+  going, "overshot" if the drone went past the goal, "constraint_violated" if
+  an active constraint was breached.
 - "corrective_instruction": REQUIRED if not complete. A single-action drone
-  command. null only if complete.
+  command. If a constraint was violated, the corrective instruction should
+  restore compliance: move away from a forbidden region for avoidance
+  constraints, or restore the required condition for maintenance constraints
+  (e.g., "ascend 2 meters" to regain an altitude constraint).
+  null only if complete.
 - "constraint_violated": true if any active constraint has been violated."""
 
 SINGLE_FRAME_GLOBAL_PROMPT = """\
@@ -247,8 +252,11 @@ Respond with EXACTLY ONE JSON object (no markdown fences):
 
 - "complete": true ONLY if you are highly confident.
 - "diagnosis": "complete" if done, "stopped_short" if needs more, "overshot"
-  if past the goal.
+  if past the goal, "constraint_violated" if an active constraint was breached.
 - "corrective_instruction": REQUIRED if not complete. A single-action command.
+  If a constraint was violated, restore compliance: move away from a forbidden
+  region for avoidance constraints, or restore the required condition for
+  maintenance constraints (e.g., "ascend 2 meters").
 - "constraint_violated": true if any constraint appears violated."""
 
 
