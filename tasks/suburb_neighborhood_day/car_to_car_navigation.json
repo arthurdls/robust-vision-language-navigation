@@ -8,7 +8,7 @@
     300,
     4
   ],
-  "expected_subgoal_count": 8,
+  "expected_subgoal_count": 9,
   "max_steps_per_subgoal": 500,
   "max_corrections": 20,
   "diary_check_interval": 10
