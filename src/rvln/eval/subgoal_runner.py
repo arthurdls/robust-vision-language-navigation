@@ -720,7 +720,6 @@ def run_subgoal(
         "stop_reason": stop_reason,
         "total_steps": total_steps,
         "in_correction_at_end": in_correction,
-        "constraint_violation_count": constraint_violation_count,
     }
     with open(subgoal_dir / "diary_summary.json", "w") as f:
         json.dump(diary_summary, f, indent=2)
