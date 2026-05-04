@@ -40,7 +40,9 @@ from rvln.eval.playback import (
     is_primary_timeline_frame,
     iter_run_frame_paths,
     load_frame_labels,
+    load_constraint_text,
     draw_label_overlay,
+    draw_constraint_overlay,
     write_frames_to_mp4,
     save_run_directory_mp4,
 )
@@ -185,13 +187,18 @@ def main():
         sys.exit(1)
 
     frame_labels = None
+    constraint_text = None
     if not args.disable_overlay:
         frame_labels = load_frame_labels(results_path)
+        constraint_text = load_constraint_text(results_path)
 
     if args.save_video:
         out_path = results_path / "playback.mp4"
         try:
-            write_frames_to_mp4(files, out_path, fps=args.fps, frame_labels=frame_labels)
+            write_frames_to_mp4(
+                files, out_path, fps=args.fps,
+                frame_labels=frame_labels, constraint_text=constraint_text,
+            )
         except (OSError, ValueError) as e:
             print(f"Error: {e}", file=sys.stderr)
             sys.exit(1)
@@ -220,6 +227,8 @@ def main():
 
         if frame_labels and idx in frame_labels:
             draw_label_overlay(img, frame_labels[idx])
+        if constraint_text:
+            draw_constraint_overlay(img, constraint_text)
 
         cv2.imshow(win_name, img)
         cv2.setWindowTitle(win_name, f"[{idx + 1}/{len(files)}] {os.path.basename(path)}")
