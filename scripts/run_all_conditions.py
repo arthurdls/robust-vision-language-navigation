@@ -1,27 +1,41 @@
 #!/usr/bin/env python3
 """
-Run all conditions back-to-back on a single map with a persistent simulator.
+Run all conditions back-to-back, optionally across multiple maps.
 
 Tasks are loaded from a SHARED directory: tasks/<map_dir>/
 Results go to: results/condition<N>/<map_dir>/<run_name>/
 
-The simulator (run_simulator.py) must already be running with the matching map.
+The orchestrator manages the simulator lifecycle automatically: it starts the
+simulator for each map, runs all conditions, stops it, and proceeds to the next.
 
-Usage:
-  python scripts/run_all_conditions.py --map greek_island
-  python scripts/run_all_conditions.py --map downtown_west --conditions 0,1,3
-  python scripts/run_all_conditions.py --map greek_island --save-mp4
+  --map filters to a single map.
+  --conditions filters to specific conditions.
+  --sim-controller delegates simulator management to a remote machine.
+
+Usage (local, single machine):
+  python scripts/run_all_conditions.py                          # all maps, all conditions
+  python scripts/run_all_conditions.py --map greek_island       # one map, all conditions
+  python scripts/run_all_conditions.py --conditions 0,3         # all maps, conditions 0 and 3
+  python scripts/run_all_conditions.py --map greek_island --conditions 0,3
+
+Usage (remote, orchestrator on one machine, simulator on another):
+  # On the simulator machine:
+  python scripts/run_sim_controller.py --port 9002
+
+  # On the orchestrator machine:
+  python scripts/run_all_conditions.py --sim-controller 192.168.0.101:9002 --sim_host 192.168.0.101
 """
 
 import argparse
-import json
 import logging
 import os
+import signal
+import subprocess
 import sys
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 _SRC = Path(__file__).resolve().parent.parent / "src"
 if _SRC.is_dir() and str(_SRC) not in sys.path:
@@ -32,11 +46,8 @@ if str(_SCRIPTS) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS))
 
 from rvln.config import (
-    DEFAULT_DIARY_CHECK_INTERVAL,
     DEFAULT_DIARY_MODE,
     DEFAULT_LLM_MODEL,
-    DEFAULT_MAX_CORRECTIONS,
-    DEFAULT_MAX_STEPS_PER_SUBGOAL,
     DEFAULT_SEED,
     DEFAULT_SERVER_HOST,
     DEFAULT_SERVER_PORT,
@@ -82,6 +93,136 @@ CONDITION_PREFIXES = {
     5: "c5_grid_only",
     6: "c6_text_only",
 }
+
+
+_SIMULATOR_SCRIPT = Path(__file__).resolve().parent / "run_simulator.py"
+
+
+class SimManager:
+    """Manages the simulator lifecycle (local subprocess or remote controller)."""
+
+    def __init__(self, controller_url: Optional[str] = None):
+        self._controller_url = controller_url
+        self._local_proc: Optional[subprocess.Popen] = None
+
+    @property
+    def is_remote(self) -> bool:
+        return self._controller_url is not None
+
+    def start(
+        self,
+        map_info,
+        sim_port: int,
+        api_port: int,
+        time_dilation: int,
+        seed: int,
+        startup_timeout: float = 120.0,
+    ) -> None:
+        if self.is_remote:
+            self._start_remote(map_info, sim_port, api_port, time_dilation, seed, startup_timeout)
+        else:
+            self._start_local(map_info, sim_port, api_port, time_dilation, seed, startup_timeout)
+
+    def stop(self) -> None:
+        if self.is_remote:
+            self._stop_remote()
+        else:
+            self._stop_local()
+
+    def _start_remote(self, map_info, sim_port, api_port, time_dilation, seed, timeout):
+        import requests
+
+        url = f"{self._controller_url}/start"
+        payload = {
+            "scene": map_info.name,
+            "port": sim_port,
+            "api_port": api_port,
+            "time_dilation": time_dilation,
+            "seed": seed,
+            "startup_timeout": timeout,
+        }
+        logger.info("Requesting remote simulator start: scene=%s", map_info.name)
+        resp = requests.post(url, json=payload, timeout=timeout + 30)
+        if not resp.ok:
+            body = resp.json() if resp.headers.get("content-type", "").startswith("application/json") else {}
+            raise RuntimeError(
+                f"Remote controller failed to start simulator for '{map_info.name}': "
+                f"{body.get('error', resp.text)}"
+            )
+        result = resp.json()
+        logger.info("Remote simulator ready: %s", result)
+
+    def _stop_remote(self):
+        import requests
+
+        url = f"{self._controller_url}/stop"
+        logger.info("Requesting remote simulator stop...")
+        try:
+            resp = requests.post(url, timeout=30)
+            if resp.ok:
+                logger.info("Remote simulator stopped: %s", resp.json())
+            else:
+                logger.warning("Remote stop returned %d: %s", resp.status_code, resp.text)
+        except Exception as e:
+            logger.warning("Remote stop request failed: %s", e)
+
+    def _start_local(self, map_info, sim_port, api_port, time_dilation, seed, startup_timeout):
+        cmd = [
+            sys.executable, str(_SIMULATOR_SCRIPT),
+            "--scene", map_info.name,
+            "--port", str(sim_port),
+            "--api-port", str(api_port),
+            "--time_dilation", str(time_dilation),
+            "--seed", str(seed),
+        ]
+        logger.info("Starting simulator locally: %s", " ".join(cmd))
+        self._local_proc = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            start_new_session=True,
+        )
+        if not self._wait_for_api("127.0.0.1", api_port, timeout=startup_timeout):
+            self._local_proc.terminate()
+            self._local_proc.wait(timeout=10)
+            self._local_proc = None
+            raise RuntimeError(
+                f"Simulator for {map_info.name} did not become ready within {startup_timeout}s"
+            )
+        logger.info("Local simulator ready: map=%s, api_port=%d", map_info.name, api_port)
+
+    def _stop_local(self, timeout: float = 15.0):
+        proc = self._local_proc
+        if proc is None or proc.poll() is not None:
+            self._local_proc = None
+            return
+        logger.info("Stopping local simulator (PID %d)...", proc.pid)
+        os.kill(proc.pid, signal.SIGTERM)
+        try:
+            proc.wait(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            logger.warning("Simulator did not exit in %ds, sending SIGKILL", timeout)
+            os.kill(proc.pid, signal.SIGKILL)
+            proc.wait(timeout=5)
+        self._local_proc = None
+        logger.info("Simulator stopped.")
+
+    @staticmethod
+    def _wait_for_api(host: str, port: int, timeout: float = 120.0, interval: float = 3.0) -> bool:
+        import requests
+
+        url = f"http://{host}:{port}/health"
+        start = time.time()
+        while time.time() - start < timeout:
+            try:
+                resp = requests.get(url, timeout=5)
+                if resp.ok and resp.json().get("initialized"):
+                    return True
+            except Exception:
+                pass
+            time.sleep(interval)
+        return False
 
 
 def _import_control_loop(condition: int):
@@ -195,13 +336,66 @@ def _run_condition_tasks(
             logger.error("  Task failed: %s", e, exc_info=True)
 
 
+def _resolve_maps(map_arg: Optional[str]) -> List:
+    """Resolve which maps to run. None means all maps."""
+    if map_arg is None:
+        return list(SUPPORTED_MAPS.values())
+    matching = None
+    for m in SUPPORTED_MAPS.values():
+        if m.task_dir_name == map_arg:
+            matching = m
+            break
+    if matching is None:
+        valid = ", ".join(m.task_dir_name for m in SUPPORTED_MAPS.values())
+        raise SystemExit(f"Unknown map '{map_arg}'. Valid task_dir_names: {valid}")
+    return [matching]
+
+
+def _run_map(
+    map_info,
+    conditions: List[int],
+    args,
+    batch,
+    server_url: str,
+    env,
+):
+    """Run all conditions for a single map on an already-connected env."""
+    tasks = discover_tasks(REPO_ROOT / "tasks" / map_info.task_dir_name)
+    if not tasks:
+        logger.warning("No tasks found in tasks/%s/, skipping map.", map_info.task_dir_name)
+        return
+    logger.info("Found %d shared task(s) for map '%s'", len(tasks), map_info.task_dir_name)
+
+    for cond in conditions:
+        if cond not in CONDITION_MODULES:
+            logger.warning("Unknown condition %d, skipping", cond)
+            continue
+
+        logger.info(
+            "\n===== Condition %d (%s): %d task(s) =====",
+            cond, CONDITION_PREFIXES[cond], len(tasks),
+        )
+
+        _run_condition_tasks(
+            condition=cond,
+            tasks=tasks,
+            env=env,
+            batch=batch,
+            server_url=server_url,
+            map_info=map_info,
+            args=args,
+        )
+
+        logger.info("===== Condition %d finished =====\n", cond)
+
+
 def main():
     load_env_vars()
     parser = argparse.ArgumentParser(
-        description="Run all conditions back-to-back on a single map",
+        description="Run all conditions back-to-back, optionally across multiple maps",
     )
-    parser.add_argument("--map", type=str, required=True,
-                        help="Map task_dir_name (e.g. greek_island, downtown_west)")
+    parser.add_argument("--map", type=str, default=None,
+                        help="Map task_dir_name (e.g. greek_island). Omit to run all maps.")
     parser.add_argument("--conditions", type=str, default=None,
                         help="Comma-separated condition numbers to run (default: all 0-6)")
     parser.add_argument("-t", "--time_dilation", type=int, default=DEFAULT_TIME_DILATION)
@@ -211,6 +405,9 @@ def main():
     parser.add_argument("--sim_host", type=str, default=DEFAULT_SIM_HOST)
     parser.add_argument("--sim_port", type=int, default=DEFAULT_SIM_PORT)
     parser.add_argument("--sim_api_port", type=int, default=DEFAULT_SIM_API_PORT)
+    parser.add_argument("--sim-controller", type=str, default=None,
+                        help="Remote sim controller address (host:port). "
+                             "Omit to manage the simulator locally as a subprocess.")
     parser.add_argument("--llm_model", type=str, default=DEFAULT_LLM_MODEL)
     parser.add_argument("--monitor_model", type=str, default=DEFAULT_VLM_MODEL)
     parser.add_argument("--vlm_model", type=str, default=DEFAULT_VLM_MODEL)
@@ -218,6 +415,8 @@ def main():
     parser.add_argument("--results_dir", default=str(REPO_ROOT / "results"))
     parser.add_argument("--save-mp4", action="store_true")
     parser.add_argument("--mp4-fps", type=float, default=10.0)
+    parser.add_argument("--startup-timeout", type=float, default=120.0,
+                        help="Seconds to wait for simulator startup")
     parser.add_argument("--log_level", default="INFO",
                         choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"])
 
@@ -232,15 +431,7 @@ def main():
     else:
         conditions = ALL_CONDITIONS
 
-    map_task_dir = args.map
-    matching_map = None
-    for m in SUPPORTED_MAPS.values():
-        if m.task_dir_name == map_task_dir:
-            matching_map = m
-            break
-    if matching_map is None:
-        valid = ", ".join(m.task_dir_name for m in SUPPORTED_MAPS.values())
-        raise SystemExit(f"Unknown map '{map_task_dir}'. Valid task_dir_names: {valid}")
+    maps_to_run = _resolve_maps(args.map)
 
     if not BATCH_SCRIPT.exists():
         logger.error("batch_run_act_all.py not found at %s", BATCH_SCRIPT)
@@ -251,50 +442,55 @@ def main():
 
     server_url = f"http://{args.server_host}:{args.server_port}/predict"
 
-    env = setup_sim_env(
-        int(args.time_dilation), int(args.seed), batch,
-        sim_host=args.sim_host, sim_api_port=args.sim_api_port,
-    )
-    map_info = env.get_map_info()
-
-    if map_info.task_dir_name != map_task_dir:
-        raise SystemExit(
-            f"Map mismatch: --map {map_task_dir} but simulator is running "
-            f"'{map_info.name}' (task_dir={map_info.task_dir_name}).\n"
-            f"Restart the simulator with: python scripts/run_simulator.py --scene {matching_map.name}"
-        )
-
-    logger.info("Connected to simulator: map=%s", map_info.name)
-    logger.info("Conditions to run: %s", conditions)
-
-    # All conditions use the SAME shared tasks
-    tasks = discover_tasks(REPO_ROOT / "tasks" / map_task_dir)
-    if not tasks:
-        raise SystemExit(f"No tasks found in tasks/{map_task_dir}/")
-    logger.info("Found %d shared task(s) for map '%s'", len(tasks), map_task_dir)
+    controller_url = None
+    if args.sim_controller:
+        host_port = args.sim_controller
+        if not host_port.startswith("http"):
+            host_port = f"http://{host_port}"
+        controller_url = host_port
+    sim_manager = SimManager(controller_url=controller_url)
 
     try:
-        for cond in conditions:
-            if cond not in CONDITION_MODULES:
-                logger.warning("Unknown condition %d, skipping", cond)
-                continue
-
+        for map_idx, target_map in enumerate(maps_to_run):
             logger.info(
-                "\n===== Condition %d (%s): %d task(s) =====",
-                cond, CONDITION_PREFIXES[cond], len(tasks),
+                "\n########## Map %d/%d: %s ##########",
+                map_idx + 1, len(maps_to_run), target_map.name,
             )
 
-            _run_condition_tasks(
-                condition=cond,
-                tasks=tasks,
-                env=env,
-                batch=batch,
-                server_url=server_url,
-                map_info=map_info,
-                args=args,
+            sim_manager.start(
+                target_map,
+                sim_port=args.sim_port,
+                api_port=args.sim_api_port,
+                time_dilation=args.time_dilation,
+                seed=args.seed,
+                startup_timeout=args.startup_timeout,
             )
 
-            logger.info("===== Condition %d finished =====\n", cond)
+            try:
+                env = setup_sim_env(
+                    int(args.time_dilation), int(args.seed), batch,
+                    sim_host=args.sim_host, sim_api_port=args.sim_api_port,
+                )
+                map_info = env.get_map_info()
+
+                if map_info.task_dir_name != target_map.task_dir_name:
+                    raise RuntimeError(
+                        f"Map mismatch: expected '{target_map.name}' but simulator "
+                        f"is running '{map_info.name}'"
+                    )
+
+                logger.info("Connected to simulator: map=%s", map_info.name)
+                logger.info("Conditions to run: %s", conditions)
+
+                _run_map(map_info, conditions, args, batch, server_url, env)
+
+            finally:
+                sim_manager.stop()
+
+            if map_idx < len(maps_to_run) - 1:
+                logger.info("Waiting 5s before starting next map...")
+                time.sleep(5)
+
     except KeyboardInterrupt:
         logger.info("\nInterrupted. Exiting.")
 

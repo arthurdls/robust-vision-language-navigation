@@ -78,6 +78,11 @@ def _get_pose() -> tuple:
     return [float(v) for v in pos], [float(v) for v in rot]
 
 
+@app.route("/health", methods=["GET"])
+def handle_health():
+    return jsonify({"status": "ok", "initialized": _initialized})
+
+
 @app.route("/map_info", methods=["GET"])
 def handle_map_info():
     if _map_info is None:

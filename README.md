@@ -153,6 +153,54 @@ python scripts/run_integration.py --task first_task.json
 
 Most commands are also wrapped in the `Makefile` (`make setup`, `make download-weights`, `make server`, `make run`).
 
+### Reproducing the Full Evaluation
+
+The evaluation runs 7 conditions across 3 maps (45 tasks per condition = 315 total episodes). The orchestrator manages the simulator lifecycle automatically, starting and stopping it for each map.
+
+**Single machine (simulator + orchestrator on the same host):**
+
+```bash
+# Terminal 1: OpenVLA server (GPU required)
+conda activate rvln-server
+python scripts/start_server.py
+
+# Terminal 2: Run all conditions on all maps
+conda activate rvln-sim
+python scripts/run_all_conditions.py
+```
+
+To run a subset:
+
+```bash
+# One map, all conditions
+python scripts/run_all_conditions.py --map greek_island
+
+# All maps, specific conditions
+python scripts/run_all_conditions.py --conditions 0,2,3
+
+# One map, specific conditions
+python scripts/run_all_conditions.py --map downtown_west --conditions 0,1,3
+```
+
+**Two machines (orchestrator on one, simulator on another):**
+
+```bash
+# On the simulator machine (has the GPU + Unreal binaries):
+conda activate rvln-sim
+python scripts/run_sim_controller.py --port 9002
+
+# On the orchestrator machine:
+conda activate rvln-sim
+python scripts/run_all_conditions.py \
+  --sim-controller <SIM_HOST>:9002 \
+  --sim_host <SIM_HOST> \
+  --sim_api_port 9001
+```
+
+The sim controller will print the exact orchestrator command with the correct IP when it starts.
+
+Results are written to `results/condition<N>/<map_dir>/`. Completed tasks are tracked via `run_info.json`, so interrupted runs can be resumed by re-running the same command (already-completed tasks are skipped, aborted/crashed tasks are retried).
+
 ## Repository Structure
 
 ```
@@ -165,8 +213,11 @@ robust-vision-language-navigation/
     mininav/                MiniNav real-drone interface (TCP control + camera + odometry)
   src/gym_unrealcv/         UnrealCV gym environments (vendored from UAV-Flow)
   scripts/                  CLI entry points
+    run_all_conditions.py   Orchestrator: runs conditions across maps
+    run_sim_controller.py   Remote simulator lifecycle daemon
     run_integration.py      Full system (C0)
     run_condition{2-6}_*.py Ablation conditions
+    run_simulator.py        Launches Unreal binary + sim API server
     start_server.py         OpenVLA server
     run_hardware.py         Real-drone pipeline
     run_repl.py             Interactive drone REPL
