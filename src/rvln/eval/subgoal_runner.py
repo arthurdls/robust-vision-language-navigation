@@ -408,7 +408,11 @@ def run_subgoal(
     last_correction_step = -config.check_interval
     last_correction_time = time.time() if use_async else None
     subgoal_start_time = time.time()
-    stop_reason = "max_steps"
+    # Default terminal reason if no other branch sets it. Reaching the step
+    # ceiling is treated as an implicit ask-for-help: the agent has had its
+    # full budget and not converged, which (per experiment policy) aborts the
+    # mission and is counted as an ask-for-help event.
+    stop_reason = "ask_help"
     total_steps = 0
     replan_instruction = ""
 
@@ -506,7 +510,10 @@ def run_subgoal(
             return "break"
 
         if choice == "abort":
-            stop_reason = "abort"
+            # Counted as an ask-for-help event (the trigger that led to this
+            # abort was an ask_help). Episode-level runners treat "ask_help"
+            # the same as "abort": they end the mission immediately.
+            stop_reason = "ask_help"
             total_steps = step
             return "break"
 
@@ -742,7 +749,14 @@ def run_subgoal(
 
         step += 1
     else:
-        stop_reason = "max_steps"
+        # Reached the step ceiling without completing. Counted as an
+        # ask-for-help event and aborts the mission at the episode level.
+        logger.warning(
+            "Max step count (%d) reached for subgoal '%s'; "
+            "treating as ask_help and aborting mission.",
+            config.max_steps, subgoal_nl,
+        )
+        stop_reason = "ask_help"
         total_steps = config.max_steps
 
     # Collect metrics

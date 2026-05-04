@@ -162,8 +162,11 @@ def run_single_frame_control_loop(
         subgoal_summaries.append(subgoal_result)
 
         sr = subgoal_result["stop_reason"]
-        if sr == "abort":
-            logger.info("Episode aborted at subgoal '%s'.", current_subgoal)
+        if sr in ("abort", "ask_help"):
+            logger.info(
+                "Episode aborted (stop_reason=%s) at subgoal '%s'.",
+                sr, current_subgoal,
+            )
             break
 
         planner.advance_state(current_subgoal)

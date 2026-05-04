@@ -317,8 +317,11 @@ def run_llm_planner_control_loop(
                 next_origin[0], next_origin[1], next_origin[2], next_origin[3],
             )
 
-            if sr == "abort":
-                logger.info("Mission aborted by user.")
+            if sr in ("abort", "ask_help"):
+                logger.info(
+                    "Mission aborted (stop_reason=%s) at subgoal '%s'.",
+                    sr, subgoal_nl,
+                )
                 aborted = True
                 break
 
