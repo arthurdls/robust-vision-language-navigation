@@ -48,6 +48,32 @@ class SubgoalConfig:
 
 GRID_ONLY_GLOBAL_PROMPT = """\
 Subgoal: {subgoal}
+
+Previous estimated completion: {prev_completion_pct}
+
+The grid shows up to the 9 most recent sampled frames (left to right, top to
+bottom, in temporal order).
+
+Based on the visual progression in the grid of sampled frames, respond with
+EXACTLY ONE JSON object (no markdown fences):
+
+{{
+  "complete": true/false,
+  "completion_percentage": 0.0 to 1.0,
+  "should_stop": true/false
+}}
+
+- "complete": true ONLY if you are highly confident the subgoal has been fully
+  accomplished. Do NOT mark complete for partial progress.
+- "completion_percentage": your best estimate of how close the subgoal is to
+  completion (0.0 = not started, 1.0 = fully done). NEVER set 1.0 unless you
+  are highly confident. Cap at 0.95 when unsure.
+- "should_stop": true if the drone appears off-track or heading toward a
+  collision. The drone will be stopped and a corrective instruction issued.
+  Do NOT set true for slow progress."""
+
+GRID_ONLY_GLOBAL_PROMPT_CONSTRAINTS = """\
+Subgoal: {subgoal}
 {constraints_block}
 Previous estimated completion: {prev_completion_pct}
 
@@ -77,6 +103,33 @@ EXACTLY ONE JSON object (no markdown fences):
 
 GRID_ONLY_CONVERGENCE_PROMPT = """\
 Subgoal: {subgoal}
+
+Previous estimated completion: {prev_completion_pct}
+
+The drone has stopped moving. The grid shows up to the 9 most recent sampled
+frames (left to right, top to bottom, in temporal order).
+
+Given the visual progression in the sampled frames, is the subgoal complete?
+If not, did the drone stop short or overshoot?
+
+Respond with EXACTLY ONE JSON object (no markdown fences):
+
+{{
+  "complete": true/false,
+  "completion_percentage": 0.0 to 1.0,
+  "diagnosis": "stopped_short" or "overshot" or "complete",
+  "corrective_instruction": "..." or null
+}}
+
+- "complete": true ONLY if you are highly confident the subgoal has been fully
+  accomplished.
+- "diagnosis": "complete" if done, "stopped_short" if the drone needs to keep
+  going, "overshot" if the drone went past the goal.
+- "corrective_instruction": REQUIRED if not complete. A single-action drone
+  command. null only if complete."""
+
+GRID_ONLY_CONVERGENCE_PROMPT_CONSTRAINTS = """\
+Subgoal: {subgoal}
 {constraints_block}
 Previous estimated completion: {prev_completion_pct}
 
@@ -105,6 +158,33 @@ Respond with EXACTLY ONE JSON object (no markdown fences):
 - "constraint_violated": true if any active constraint has been violated."""
 
 TEXT_ONLY_GLOBAL_PROMPT = """\
+Subgoal: {subgoal}
+
+Previous estimated completion: {prev_completion_pct}
+Current displacement from start: [x, y, z, yaw] = {displacement}
+
+Diary of changes observed so far:
+{diary}
+
+Based on the diary entries and displacement data, respond with EXACTLY ONE
+JSON object (no markdown fences):
+
+{{
+  "complete": true/false,
+  "completion_percentage": 0.0 to 1.0,
+  "should_stop": true/false
+}}
+
+- "complete": true ONLY if you are highly confident the subgoal has been fully
+  accomplished based on the diary and displacement evidence.
+- "completion_percentage": your best estimate of how close the subgoal is to
+  completion (0.0 = not started, 1.0 = fully done). NEVER set 1.0 unless you
+  are highly confident. Cap at 0.95 when unsure.
+- "should_stop": true if the diary suggests the drone is off-track or heading
+  away from the goal. The drone will be stopped and a correction issued.
+  Do NOT set true for slow progress."""
+
+TEXT_ONLY_GLOBAL_PROMPT_CONSTRAINTS = """\
 Subgoal: {subgoal}
 {constraints_block}
 Previous estimated completion: {prev_completion_pct}
@@ -136,6 +216,34 @@ JSON object (no markdown fences):
 
 TEXT_ONLY_CONVERGENCE_PROMPT = """\
 Subgoal: {subgoal}
+
+Previous estimated completion: {prev_completion_pct}
+Current displacement from start: [x, y, z, yaw] = {displacement}
+
+Diary of changes observed so far:
+{diary}
+
+The drone has stopped moving. Based on the diary and displacement, is the
+subgoal complete? If not, did the drone stop short or overshoot?
+
+Respond with EXACTLY ONE JSON object (no markdown fences):
+
+{{
+  "complete": true/false,
+  "completion_percentage": 0.0 to 1.0,
+  "diagnosis": "stopped_short" or "overshot" or "complete",
+  "corrective_instruction": "..." or null
+}}
+
+- "complete": true ONLY if you are highly confident the subgoal has been fully
+  accomplished.
+- "diagnosis": "complete" if done, "stopped_short" if the drone needs to keep
+  going, "overshot" if the drone went past the goal.
+- "corrective_instruction": REQUIRED if not complete. A single-action drone
+  command. null only if complete."""
+
+TEXT_ONLY_CONVERGENCE_PROMPT_CONSTRAINTS = """\
+Subgoal: {subgoal}
 {constraints_block}
 Previous estimated completion: {prev_completion_pct}
 Current displacement from start: [x, y, z, yaw] = {displacement}
@@ -166,6 +274,29 @@ Respond with EXACTLY ONE JSON object (no markdown fences):
 
 SINGLE_FRAME_GLOBAL_PROMPT = """\
 Subgoal: {subgoal}
+
+Previous estimated completion: {prev_completion_pct}
+
+You are looking at the drone's current camera view. Based on this single frame,
+is the subgoal complete?
+
+Respond with EXACTLY ONE JSON object (no markdown fences):
+
+{{
+  "complete": true/false,
+  "completion_percentage": 0.0 to 1.0,
+  "should_stop": true/false
+}}
+
+- "complete": true ONLY if you are highly confident the subgoal has been fully
+  accomplished based on the current view.
+- "completion_percentage": your best estimate (0.0 = not started, 1.0 = done).
+  NEVER set 1.0 unless highly confident. Cap at 0.95 when unsure.
+- "should_stop": true if the drone appears off-track or heading toward a
+  collision. The drone will be stopped and a correction issued."""
+
+SINGLE_FRAME_GLOBAL_PROMPT_CONSTRAINTS = """\
+Subgoal: {subgoal}
 {constraints_block}
 Previous estimated completion: {prev_completion_pct}
 
@@ -190,6 +321,28 @@ Respond with EXACTLY ONE JSON object (no markdown fences):
 - "constraint_violated": true if any active constraint appears violated."""
 
 SINGLE_FRAME_CONVERGENCE_PROMPT = """\
+Subgoal: {subgoal}
+
+Previous estimated completion: {prev_completion_pct}
+
+The drone has stopped moving. Based on the current camera view, is the subgoal
+complete? If not, did it stop short or overshoot?
+
+Respond with EXACTLY ONE JSON object (no markdown fences):
+
+{{
+  "complete": true/false,
+  "completion_percentage": 0.0 to 1.0,
+  "diagnosis": "stopped_short" or "overshot" or "complete",
+  "corrective_instruction": "..." or null
+}}
+
+- "complete": true ONLY if you are highly confident.
+- "diagnosis": "complete" if done, "stopped_short" if needs more, "overshot"
+  if past the goal.
+- "corrective_instruction": REQUIRED if not complete. A single-action command."""
+
+SINGLE_FRAME_CONVERGENCE_PROMPT_CONSTRAINTS = """\
 Subgoal: {subgoal}
 {constraints_block}
 Previous estimated completion: {prev_completion_pct}
@@ -220,19 +373,19 @@ def _patch_monitor_prompts(mode: MonitorMode) -> None:
 
     if mode == "grid_only":
         gam.GLOBAL_PROMPT_TEMPLATE = GRID_ONLY_GLOBAL_PROMPT
-        gam.GLOBAL_PROMPT_TEMPLATE_CONSTRAINTS = GRID_ONLY_GLOBAL_PROMPT
+        gam.GLOBAL_PROMPT_TEMPLATE_CONSTRAINTS = GRID_ONLY_GLOBAL_PROMPT_CONSTRAINTS
         gam.CONVERGENCE_PROMPT_TEMPLATE = GRID_ONLY_CONVERGENCE_PROMPT
-        gam.CONVERGENCE_PROMPT_TEMPLATE_CONSTRAINTS = GRID_ONLY_CONVERGENCE_PROMPT
+        gam.CONVERGENCE_PROMPT_TEMPLATE_CONSTRAINTS = GRID_ONLY_CONVERGENCE_PROMPT_CONSTRAINTS
     elif mode == "text_only":
         gam.GLOBAL_PROMPT_TEMPLATE = TEXT_ONLY_GLOBAL_PROMPT
-        gam.GLOBAL_PROMPT_TEMPLATE_CONSTRAINTS = TEXT_ONLY_GLOBAL_PROMPT
+        gam.GLOBAL_PROMPT_TEMPLATE_CONSTRAINTS = TEXT_ONLY_GLOBAL_PROMPT_CONSTRAINTS
         gam.CONVERGENCE_PROMPT_TEMPLATE = TEXT_ONLY_CONVERGENCE_PROMPT
-        gam.CONVERGENCE_PROMPT_TEMPLATE_CONSTRAINTS = TEXT_ONLY_CONVERGENCE_PROMPT
+        gam.CONVERGENCE_PROMPT_TEMPLATE_CONSTRAINTS = TEXT_ONLY_CONVERGENCE_PROMPT_CONSTRAINTS
     elif mode == "single_frame":
         gam.GLOBAL_PROMPT_TEMPLATE = SINGLE_FRAME_GLOBAL_PROMPT
-        gam.GLOBAL_PROMPT_TEMPLATE_CONSTRAINTS = SINGLE_FRAME_GLOBAL_PROMPT
+        gam.GLOBAL_PROMPT_TEMPLATE_CONSTRAINTS = SINGLE_FRAME_GLOBAL_PROMPT_CONSTRAINTS
         gam.CONVERGENCE_PROMPT_TEMPLATE = SINGLE_FRAME_CONVERGENCE_PROMPT
-        gam.CONVERGENCE_PROMPT_TEMPLATE_CONSTRAINTS = SINGLE_FRAME_CONVERGENCE_PROMPT
+        gam.CONVERGENCE_PROMPT_TEMPLATE_CONSTRAINTS = SINGLE_FRAME_CONVERGENCE_PROMPT_CONSTRAINTS
 
 
 # ---------------------------------------------------------------------------
@@ -443,6 +596,7 @@ def run_subgoal(
             total_steps = step
             break
 
+        async_force_converge = False
         if use_async and monitor:
             async_result = monitor.poll_result()
             if async_result is not None:
@@ -461,6 +615,7 @@ def run_subgoal(
                         "reasoning": async_result.reasoning,
                         "constraint_violated": async_result.constraint_violated,
                     })
+                    async_force_converge = True
 
         image = set_drone_cam_and_get_image(env, cam_id)
         if image is None:
@@ -574,6 +729,8 @@ def run_subgoal(
                 if small_count >= batch.ACTION_SMALL_STEPS:
                     converged = True
         else:
+            if async_force_converge:
+                converged = True
             elapsed_since_correction = time.time() - last_correction_time
             if last_pose is not None and elapsed_since_correction >= config.check_interval_s:
                 diffs = [abs(a - b) for a, b in zip(current_pose, last_pose)]

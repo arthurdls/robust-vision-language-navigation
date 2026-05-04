@@ -167,7 +167,7 @@ def mcnemars_test(
         }
 
     if n_discordant < 25:
-        p_value = scipy_stats.binom_test(b, n_discordant, 0.5)
+        p_value = scipy_stats.binomtest(b, n_discordant, 0.5).pvalue
         return {
             "statistic": None,
             "p_value": p_value,
@@ -348,7 +348,7 @@ def compute_correction_rate(run: dict) -> dict[str, int] | None:
         total_corrections += corrections
         # Count convergence events in vlm_call_records
         records = sg.get("vlm_call_records", [])
-        convergence_count = sum(1 for r in records if r.get("label") == "convergence")
+        convergence_count = sum(1 for r in records if r.get("label", "").startswith("convergence"))
         total_convergences += convergence_count
         # If the subgoal eventually completed (monitor_complete) but had convergences,
         # those early convergences were "rescued" by the supervisor
