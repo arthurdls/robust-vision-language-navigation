@@ -1,7 +1,7 @@
 {
   "task_id": "maintain_sight_red_car_2",
   "category": "constrained",
-  "instruction": "Pass by the red car while maintaining site of it.",
+  "instruction": "Pass by the red car while maintaining sight of it.",
   "initial_pos": [
     -5341,
     1829,

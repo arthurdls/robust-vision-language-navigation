@@ -58,13 +58,13 @@ class TestParsePosition:
 
 
 class TestNormalizeInitialPos:
-    def test_five_elements_passthrough(self):
+    def test_five_elements_extracts_yaw_from_idx4(self):
         result = normalize_initial_pos([1, 2, 3, 0, 90])
-        assert result == [1, 2, 3, 0, 90]
+        assert result == [1.0, 2.0, 3.0, 90.0]
 
-    def test_four_elements_expand(self):
+    def test_four_elements_passthrough(self):
         result = normalize_initial_pos([1, 2, 3, 90])
-        assert result == [1.0, 2.0, 3.0, 0.0, 90.0]
+        assert result == [1.0, 2.0, 3.0, 90.0]
 
     def test_three_elements_raises(self):
         with pytest.raises(ValueError):

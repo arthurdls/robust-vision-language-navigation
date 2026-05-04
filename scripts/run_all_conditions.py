@@ -14,7 +14,6 @@ Usage:
 """
 
 import argparse
-import glob
 import json
 import logging
 import os
@@ -46,6 +45,11 @@ from rvln.config import (
     DEFAULT_SIM_PORT,
     DEFAULT_TIME_DILATION,
     DEFAULT_VLM_MODEL,
+)
+from rvln.eval.task_utils import (
+    get_completed_task_ids,
+    discover_tasks,
+    sanitize_run_label,
 )
 from rvln.maps import SUPPORTED_MAPS
 from rvln.paths import BATCH_SCRIPT, REPO_ROOT, UAV_FLOW_EVAL
@@ -80,78 +84,6 @@ CONDITION_PREFIXES = {
 }
 
 
-def _get_completed_task_ids(results_dir: Path) -> set:
-    completed = set()
-    if not results_dir.is_dir():
-        return completed
-    for entry in results_dir.iterdir():
-        if not entry.is_dir():
-            continue
-        run_info_path = entry / "run_info.json"
-        if not run_info_path.exists():
-            continue
-        try:
-            with open(run_info_path, "r") as f:
-                run_info = json.load(f)
-            task_id = run_info.get("task", {}).get("task_id", "")
-            if task_id:
-                completed.add(task_id)
-        except Exception:
-            continue
-    return completed
-
-
-def _load_task_full(path: Path) -> Dict[str, Any]:
-    """Load a task JSON with all optional fields for any condition."""
-    with open(path, "r") as f:
-        data = json.load(f)
-    if not isinstance(data, dict):
-        raise ValueError("Task JSON must be an object")
-    instruction = data.get("instruction", "").strip()
-    initial_pos = data.get("initial_pos")
-    if not instruction:
-        raise ValueError("Task JSON must have 'instruction'")
-    if not initial_pos or not isinstance(initial_pos, (list, tuple)) or len(initial_pos) < 4:
-        raise ValueError("Task JSON must have 'initial_pos' with at least 4 numbers")
-    result = {
-        "instruction": instruction,
-        "initial_pos": [float(x) for x in initial_pos],
-        "max_steps": int(data.get("max_steps_per_subgoal", DEFAULT_MAX_STEPS_PER_SUBGOAL))
-                    * int(data.get("expected_subgoal_count", 3)),
-        "max_steps_per_subgoal": int(data.get("max_steps_per_subgoal", DEFAULT_MAX_STEPS_PER_SUBGOAL)),
-        "diary_check_interval": int(data.get("diary_check_interval", DEFAULT_DIARY_CHECK_INTERVAL)),
-        "max_corrections": int(data.get("max_corrections", DEFAULT_MAX_CORRECTIONS)),
-        "expected_subgoal_count": int(data.get("expected_subgoal_count", 3)),
-    }
-    for passthrough_key in ("task_id", "category", "difficulty", "region", "notes",
-                            "constraints_expected"):
-        if passthrough_key in data:
-            result[passthrough_key] = data[passthrough_key]
-    return result
-
-
-def _discover_tasks(task_dir_name: str) -> List[Dict[str, Any]]:
-    """Discover tasks from the shared tasks/<map_dir>/ directory."""
-    tasks_dir = REPO_ROOT / "tasks" / task_dir_name
-    if not tasks_dir.is_dir():
-        logger.warning("No shared task directory: %s", tasks_dir)
-        return []
-    json_files = sorted(glob.glob(str(tasks_dir / "*.json")))
-    tasks = []
-    for jf in json_files:
-        try:
-            tasks.append(_load_task_full(Path(jf)))
-        except Exception as e:
-            logger.warning("Skipping %s: %s", jf, e)
-    return tasks
-
-
-def _sanitize_name(text: str, max_len: int = 40) -> str:
-    clean = text.lower().replace(" ", "_")
-    safe = "".join(c for c in clean if c.isalnum() or c == "_")
-    return safe[:max_len] or "task"
-
-
 def _import_control_loop(condition: int):
     """Import and return the control loop function for a condition."""
     module_name, func_name = CONDITION_MODULES[condition]
@@ -174,7 +106,7 @@ def _run_condition_tasks(
     prefix = CONDITION_PREFIXES[condition]
     drone_cam_id = env.drone_cam_id
 
-    completed_ids = _get_completed_task_ids(results_dir)
+    completed_ids = get_completed_task_ids(results_dir)
     if completed_ids:
         logger.info("  Found %d completed task(s) in %s", len(completed_ids), results_dir)
 
@@ -189,7 +121,7 @@ def _run_condition_tasks(
             idx + 1, len(tasks), task["instruction"][:80],
         )
         ts = datetime.now().strftime("%Y_%m_%d_%H_%M_%S")
-        task_label = task.get("task_id") or _sanitize_name(task["instruction"], max_len=30)
+        task_label = task.get("task_id") or sanitize_run_label(task["instruction"], max_len=30)
         run_name = f"{prefix}__{task_label}__{ts}"
         run_dir = results_dir / run_name
 
@@ -336,7 +268,7 @@ def main():
     logger.info("Conditions to run: %s", conditions)
 
     # All conditions use the SAME shared tasks
-    tasks = _discover_tasks(map_task_dir)
+    tasks = discover_tasks(REPO_ROOT / "tasks" / map_task_dir)
     if not tasks:
         raise SystemExit(f"No tasks found in tasks/{map_task_dir}/")
     logger.info("Found %d shared task(s) for map '%s'", len(tasks), map_task_dir)

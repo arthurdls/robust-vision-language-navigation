@@ -27,6 +27,18 @@ Statistical tests:
   - McNemar's test for paired comparisons (matched starting positions)
   - Bonferroni correction for 6 comparisons (threshold: p < 0.0083)
   - Effect size (odds ratio) reporting
+
+Known limitations:
+  - Category imbalance: Greek Island is ~80% constrained tasks, Suburb
+    Neighborhood is ~80% sequential. Per-category breakdowns are confounded
+    by map effects.
+  - Statistical power: 45 episodes per condition (15 tasks x 3 starting
+    positions) is borderline for detecting moderate effect sizes. Starting
+    position variants may not be fully independent, reducing effective N.
+  - Stochastic factors: simulator determinism is imperfect (propeller visual
+    effects, rendering variations) and cannot be fully controlled.
+  - Manual annotation: C1 and C3 require manual video review for task
+    success (M1) and constraint adherence (M2). Use --strict to enforce.
 """
 
 import argparse
@@ -67,6 +79,14 @@ CONDITION_ORDER = [
 
 # Bonferroni-corrected significance threshold (0.05 / 6 comparisons)
 BONFERRONI_THRESHOLD = 0.05 / 6  # ~0.0083
+
+API_PRICING = {
+    "gpt-5.4": {"input": 2.50 / 1_000_000, "output": 10.00 / 1_000_000},
+    "gpt-4o": {"input": 2.50 / 1_000_000, "output": 10.00 / 1_000_000},
+    "gpt-4o-mini": {"input": 0.15 / 1_000_000, "output": 0.60 / 1_000_000},
+    "gemini-2.0-flash": {"input": 0.10 / 1_000_000, "output": 0.40 / 1_000_000},
+}
+DEFAULT_PRICING = {"input": 5.00 / 1_000_000, "output": 15.00 / 1_000_000}
 
 
 # ---------------------------------------------------------------------------
@@ -415,6 +435,106 @@ def compute_episode_length(run: dict) -> dict[str, float]:
     }
 
 
+def compute_path_efficiency(run: dict) -> dict | None:
+    """
+    Compute path efficiency as displacement / total_distance.
+
+    Tries trajectory_log first (inlined or on-disk), then falls back to
+    subgoal_summaries origins.  Returns None when position data is
+    unavailable or total_distance is zero.
+    """
+    positions: list[tuple[float, float, float]] = []
+
+    # Try inlined trajectory log
+    traj_log = run.get("_trajectory_log")
+    if traj_log and isinstance(traj_log, list):
+        for entry in traj_log:
+            pos = entry.get("position")
+            if pos and len(pos) >= 2:
+                positions.append(tuple(float(v) for v in pos[:3]) if len(pos) >= 3 else (float(pos[0]), float(pos[1]), 0.0))
+
+    # Try loading trajectory log from disk
+    if not positions:
+        source_path = run.get("_source_path", "")
+        if source_path:
+            traj_path = Path(source_path).parent / "trajectory_log.json"
+            if traj_path.exists():
+                try:
+                    with open(traj_path, "r") as f:
+                        traj_log = json.load(f)
+                    if isinstance(traj_log, list):
+                        for entry in traj_log:
+                            pos = entry.get("position")
+                            if pos and len(pos) >= 2:
+                                positions.append(
+                                    tuple(float(v) for v in pos[:3]) if len(pos) >= 3
+                                    else (float(pos[0]), float(pos[1]), 0.0)
+                                )
+                except (json.JSONDecodeError, OSError):
+                    pass
+
+    # Fall back to subgoal_summaries origins
+    if not positions:
+        summaries = run.get("subgoal_summaries", [])
+        for sg in summaries:
+            origin = sg.get("next_origin")
+            if origin and len(origin) >= 2:
+                positions.append(
+                    tuple(float(v) for v in origin[:3]) if len(origin) >= 3
+                    else (float(origin[0]), float(origin[1]), 0.0)
+                )
+
+    if len(positions) < 2:
+        return None
+
+    total_distance = 0.0
+    for i in range(1, len(positions)):
+        dx = positions[i][0] - positions[i - 1][0]
+        dy = positions[i][1] - positions[i - 1][1]
+        dz = positions[i][2] - positions[i - 1][2]
+        total_distance += math.sqrt(dx * dx + dy * dy + dz * dz)
+
+    if total_distance == 0:
+        return None
+
+    first, last = positions[0], positions[-1]
+    dx = last[0] - first[0]
+    dy = last[1] - first[1]
+    dz = last[2] - first[2]
+    displacement = math.sqrt(dx * dx + dy * dy + dz * dz)
+
+    efficiency_ratio = min(displacement / total_distance, 1.0)
+
+    return {
+        "total_distance": round(total_distance, 4),
+        "displacement": round(displacement, 4),
+        "efficiency_ratio": round(efficiency_ratio, 4),
+    }
+
+
+def compute_api_cost(run: dict) -> dict:
+    """
+    Estimate API cost for an episode based on token counts and model pricing.
+    """
+    model = run.get("monitor_model") or run.get("llm_model") or ""
+    pricing = API_PRICING.get(model, DEFAULT_PRICING)
+    pricing_source = "known" if model in API_PRICING else "default"
+
+    input_tokens = run.get("total_input_tokens", 0)
+    output_tokens = run.get("total_output_tokens", 0)
+
+    input_cost = input_tokens * pricing["input"]
+    output_cost = output_tokens * pricing["output"]
+
+    return {
+        "input_cost": round(input_cost, 6),
+        "output_cost": round(output_cost, 6),
+        "total_cost": round(input_cost + output_cost, 6),
+        "model": model,
+        "pricing_source": pricing_source,
+    }
+
+
 # ---------------------------------------------------------------------------
 # Aggregation
 # ---------------------------------------------------------------------------
@@ -520,6 +640,33 @@ def aggregate_condition(condition: str, runs: list[dict]) -> dict[str, Any]:
     avg_steps = sum(all_steps) / n
     avg_wall = sum(all_wall) / n
 
+    # Path efficiency (per-episode, then averaged)
+    efficiency_values = []
+    for run in runs:
+        pe = compute_path_efficiency(run)
+        if pe is not None:
+            efficiency_values.append(pe["efficiency_ratio"])
+
+    avg_efficiency = (
+        round(sum(efficiency_values) / len(efficiency_values), 4)
+        if efficiency_values else None
+    )
+
+    # M9: API cost
+    total_cost = 0.0
+    total_input_cost = 0.0
+    total_output_cost = 0.0
+    cost_model = None
+    cost_pricing_source = None
+    for run in runs:
+        ac = compute_api_cost(run)
+        total_cost += ac["total_cost"]
+        total_input_cost += ac["input_cost"]
+        total_output_cost += ac["output_cost"]
+        if cost_model is None:
+            cost_model = ac["model"]
+            cost_pricing_source = ac["pricing_source"]
+
     return {
         "n_episodes": n,
         "M1_task_success": {
@@ -574,6 +721,18 @@ def aggregate_condition(condition: str, runs: list[dict]) -> dict[str, Any]:
             "max_steps": max(all_steps) if all_steps else 0,
             "min_wall_clock_s": round(min(all_wall), 1) if all_wall else 0.0,
             "max_wall_clock_s": round(max(all_wall), 1) if all_wall else 0.0,
+        },
+        "path_efficiency": {
+            "avg_efficiency_ratio": avg_efficiency,
+            "n_episodes_with_data": len(efficiency_values),
+        },
+        "M9_api_cost": {
+            "total_cost": round(total_cost, 4),
+            "total_input_cost": round(total_input_cost, 4),
+            "total_output_cost": round(total_output_cost, 4),
+            "avg_cost_per_episode": round(total_cost / n, 4),
+            "model": cost_model,
+            "pricing_source": cost_pricing_source,
         },
     }
 
@@ -768,6 +927,55 @@ def aggregate_by_map(runs_by_condition: dict[str, list[dict]]) -> dict[str, dict
     return result
 
 
+def aggregate_by_subgoal_position(
+    runs_by_condition: dict[str, list[dict]],
+) -> dict[str, dict[int, dict]]:
+    """
+    For each condition, group subgoals by ordinal position across episodes
+    and compute Wilson CI success rates per position.
+
+    Skips C1 (no subgoals) and C3 (open-loop convergence is unreliable).
+
+    Returns: {condition: {position_idx: {successes, total, rate,
+              wilson_ci_lower, wilson_ci_upper}}}
+    """
+    skip_conditions = {"condition1", "condition3"}
+    result: dict[str, dict[int, dict]] = {}
+
+    for cond in CONDITION_ORDER:
+        if cond in skip_conditions:
+            continue
+        runs = runs_by_condition.get(cond, [])
+        if not runs:
+            continue
+
+        position_data: dict[int, dict] = defaultdict(lambda: {"successes": 0, "total": 0})
+
+        for run in runs:
+            summaries = run.get("subgoal_summaries", [])
+            for idx, sg in enumerate(summaries):
+                position_data[idx]["total"] += 1
+                if sg.get("stop_reason", "") == "monitor_complete":
+                    position_data[idx]["successes"] += 1
+
+        cond_positions = {}
+        for pos_idx in sorted(position_data.keys()):
+            pd = position_data[pos_idx]
+            rate, ci_lo, ci_hi = wilson_ci(pd["successes"], pd["total"])
+            cond_positions[pos_idx] = {
+                "successes": pd["successes"],
+                "total": pd["total"],
+                "rate": round(rate, 4),
+                "wilson_ci_lower": round(ci_lo, 4),
+                "wilson_ci_upper": round(ci_hi, 4),
+            }
+
+        if cond_positions:
+            result[cond] = cond_positions
+
+    return result
+
+
 def compute_paired_mcnemar_tests(
     runs_by_condition: dict[str, list[dict]],
 ) -> dict[str, dict]:
@@ -930,7 +1138,10 @@ def print_summary_table(condition_metrics: dict[str, dict], pairwise: dict[str, 
     # Diagnostic metrics
     print("-" * 100)
     print("Diagnostic Metrics:")
-    print(f"{'Condition':<28} {'M4 (Corr%)':>10} {'M6 (RTT)':>10} {'M7 (Tok/ep)':>12} {'VLM Calls':>10}")
+    print(
+        f"{'Condition':<28} {'M4 (Corr%)':>10} {'M6 (RTT)':>10} "
+        f"{'M7 (Tok/ep)':>12} {'VLM Calls':>10} {'M9 ($/ep)':>10}"
+    )
     print("-" * 100)
     for cond in CONDITION_ORDER:
         metrics = condition_metrics.get(cond)
@@ -940,13 +1151,18 @@ def print_summary_table(condition_metrics: dict[str, dict], pairwise: dict[str, 
         m4 = metrics["M4_correction_rate"]
         m6 = metrics["M6_latency"]
         m7 = metrics["M7_token_overhead"]
+        m9 = metrics["M9_api_cost"]
 
         m4_str = f"{m4['rate']:.2%}" if m4["rate"] is not None else "N/A"
         m6_str = f"{m6['mean_rtt_s']:.2f}s" if m6["mean_rtt_s"] is not None else "N/A"
         m7_str = f"{m7['avg_total_tokens_per_episode']:.0f}"
         vlm_str = f"{m6['total_vlm_calls']}"
+        m9_str = f"${m9['avg_cost_per_episode']:.4f}"
 
-        print(f"{name:<28} {m4_str:>10} {m6_str:>10} {m7_str:>12} {vlm_str:>10}")
+        print(
+            f"{name:<28} {m4_str:>10} {m6_str:>10} "
+            f"{m7_str:>12} {vlm_str:>10} {m9_str:>10}"
+        )
 
     print()
 
@@ -1137,6 +1353,38 @@ def print_mcnemar_table(mcnemar_results: dict[str, dict]):
     print()
 
 
+def print_subgoal_position_table(subgoal_position: dict[str, dict[int, dict]]):
+    """Print subgoal success rates by ordinal position for each condition."""
+    if not subgoal_position:
+        return
+    sep = "=" * 100
+    print()
+    print(sep)
+    print(f"{'Subgoal Success by Position':^100}")
+    print(sep)
+    print()
+
+    for cond in CONDITION_ORDER:
+        pos_data = subgoal_position.get(cond)
+        if not pos_data:
+            continue
+        name = CONDITION_NAMES.get(cond, cond)
+        print(f"  {name}")
+        print(f"    {'Position':>8} {'Success':>8} {'Total':>6} {'Rate':>8} {'95% CI':>22}")
+        print("    " + "-" * 56)
+        for pos_idx in sorted(pos_data.keys()):
+            pd = pos_data[pos_idx]
+            ci_str = f"[{pd['wilson_ci_lower']:.3f}, {pd['wilson_ci_upper']:.3f}]"
+            print(
+                f"    {pos_idx + 1:>8} {pd['successes']:>8} {pd['total']:>6} "
+                f"{pd['rate']:.2%}{'':<2} {ci_str:>22}"
+            )
+        print()
+
+    print(sep)
+    print()
+
+
 def write_json_output(
     condition_metrics: dict[str, dict],
     pairwise: dict[str, dict],
@@ -1144,6 +1392,7 @@ def write_json_output(
     category_metrics: dict[str, dict[str, dict]] | None = None,
     map_metrics: dict[str, dict[str, dict]] | None = None,
     mcnemar_results: dict[str, dict] | None = None,
+    subgoal_position: dict[str, dict[int, dict]] | None = None,
 ):
     """Write full metrics to JSON."""
     output = {
@@ -1161,6 +1410,8 @@ def write_json_output(
         output["map_breakdown"] = map_metrics
     if mcnemar_results:
         output["mcnemar_paired_tests"] = mcnemar_results
+    if subgoal_position:
+        output["subgoal_position_breakdown"] = subgoal_position
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with open(output_path, "w") as f:
         json.dump(output, f, indent=2, default=str)
@@ -1171,6 +1422,7 @@ def write_csv_output(
     condition_metrics: dict[str, dict],
     pairwise: dict[str, dict],
     output_path: Path,
+    subgoal_position: dict[str, dict[int, dict]] | None = None,
 ):
     """Write summary metrics to CSV for LaTeX/matplotlib import."""
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -1184,6 +1436,7 @@ def write_csv_output(
         "m6_mean_rtt_s", "m6_median_rtt_s", "m6_p95_rtt_s", "m6_total_calls",
         "m7_avg_input_tokens", "m7_avg_output_tokens", "m7_avg_total_tokens",
         "m8_avg_steps", "m8_avg_wall_clock_s",
+        "m9_avg_cost_per_episode", "m9_total_cost",
     ]
 
     with open(output_path, "w", newline="") as f:
@@ -1202,6 +1455,7 @@ def write_csv_output(
             m6 = metrics["M6_latency"]
             m7 = metrics["M7_token_overhead"]
             m8 = metrics["M8_episode_length"]
+            m9 = metrics["M9_api_cost"]
 
             row = {
                 "condition": cond,
@@ -1234,6 +1488,8 @@ def write_csv_output(
                 "m7_avg_total_tokens": m7["avg_total_tokens_per_episode"],
                 "m8_avg_steps": m8["avg_steps"],
                 "m8_avg_wall_clock_s": m8["avg_wall_clock_s"],
+                "m9_avg_cost_per_episode": m9["avg_cost_per_episode"],
+                "m9_total_cost": m9["total_cost"],
             }
             writer.writerow(row)
 
@@ -1252,6 +1508,28 @@ def write_csv_output(
                     "odds_ratio": test_result.get("odds_ratio", ""),
                     "significant_bonferroni": test_result.get("significant_bonferroni", ""),
                 })
+
+    # Write subgoal position CSV
+    if subgoal_position:
+        sp_path = output_path.parent / "subgoal_position.csv"
+        sp_fields = ["condition", "position", "successes", "total", "rate"]
+        with open(sp_path, "w", newline="") as f:
+            writer = csv.DictWriter(f, fieldnames=sp_fields)
+            writer.writeheader()
+            for cond in CONDITION_ORDER:
+                pos_data = subgoal_position.get(cond)
+                if not pos_data:
+                    continue
+                for pos_idx in sorted(pos_data.keys()):
+                    pd = pos_data[pos_idx]
+                    writer.writerow({
+                        "condition": cond,
+                        "position": pos_idx,
+                        "successes": pd["successes"],
+                        "total": pd["total"],
+                        "rate": pd["rate"],
+                    })
+        print(f"Subgoal position CSV written to: {sp_path}")
 
     print(f"CSV output written to: {output_path}")
     print(f"Pairwise CSV written to: {pairwise_path}")
@@ -1285,6 +1563,11 @@ def main():
         default=None,
         help="Filter to specific conditions (e.g. condition0 condition1)",
     )
+    parser.add_argument(
+        "--strict",
+        action="store_true",
+        help="Exit with code 1 if any runs are missing required annotations",
+    )
     args = parser.parse_args()
 
     results_dir = args.results_dir
@@ -1309,6 +1592,44 @@ def main():
             print(f"  {label}: {n} episodes")
     print()
 
+    # ---- Annotation validation ----
+    missing_annotations: list[dict] = []
+    for cond in ["condition1", "condition3"]:
+        for run in runs_by_condition.get(cond, []):
+            ca = run.get("_constraint_analysis")
+            if not ca or "task_success" not in ca:
+                missing_annotations.append({
+                    "condition": cond,
+                    "path": run["_source_path"],
+                    "missing": "task_success annotation in constraint_analysis.json",
+                })
+    for cond, runs in runs_by_condition.items():
+        for run in runs:
+            task = run.get("task", {})
+            if task.get("category") == "constrained":
+                ce = task.get("constraints_expected")
+                if not ce or not isinstance(ce, list) or len(ce) == 0:
+                    missing_annotations.append({
+                        "condition": cond,
+                        "path": run["_source_path"],
+                        "missing": "constraints_expected in task JSON",
+                    })
+
+    if missing_annotations:
+        print(f"WARNING: {len(missing_annotations)} runs require manual annotation "
+              "before metrics can be fully computed.")
+        for entry in missing_annotations:
+            print(f"  [{entry['condition']}] {entry['path']}: {entry['missing']}")
+        print()
+        print("  - To annotate C1/C3 task success: add {\"task_success\": true/false} "
+              "to constraint_analysis.json in each run directory")
+        print("  - To annotate constraints: add constraints_expected list to the task JSON files")
+        print()
+
+        if args.strict:
+            print("Exiting due to --strict flag.", file=sys.stderr)
+            sys.exit(1)
+
     # Compute per-condition metrics
     condition_metrics = {}
     for cond in CONDITION_ORDER:
@@ -1328,11 +1649,15 @@ def main():
     # Compute per-map breakdown (generalization across environments)
     map_metrics = aggregate_by_map(runs_by_condition)
 
+    # Compute subgoal position breakdown
+    subgoal_position = aggregate_by_subgoal_position(runs_by_condition)
+
     # Output
     print_summary_table(condition_metrics, pairwise)
     print_mcnemar_table(mcnemar_results)
     print_category_table(category_metrics)
     print_map_table(map_metrics)
+    print_subgoal_position_table(subgoal_position)
 
     # Write files
     output_path = Path(output_dir)
@@ -1341,8 +1666,12 @@ def main():
         category_metrics=category_metrics,
         map_metrics=map_metrics,
         mcnemar_results=mcnemar_results,
+        subgoal_position=subgoal_position,
     )
-    write_csv_output(condition_metrics, pairwise, output_path / "experiment_summary.csv")
+    write_csv_output(
+        condition_metrics, pairwise, output_path / "experiment_summary.csv",
+        subgoal_position=subgoal_position,
+    )
 
 
 if __name__ == "__main__":

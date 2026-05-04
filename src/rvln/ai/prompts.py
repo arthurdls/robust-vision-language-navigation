@@ -749,3 +749,136 @@ SUBTASK_COMPLETE_DIARY_PROMPT = (
     "Diary of what changed between consecutive moments:\n{diary_blob}\n\n"
     + PROMPT_SUBTASK_COMPLETE
 )
+
+
+# ---------------------------------------------------------------------------
+# Text-only prompts (Condition 6): global/convergence with no image grid
+# ---------------------------------------------------------------------------
+
+TEXT_ONLY_GLOBAL_SYSTEM_PROMPT = """\
+You are a completion monitor for an autonomous drone executing a single subgoal.
+You read a running text diary and displacement data to decide whether the
+subgoal is done, and issue corrections when the drone stops prematurely.
+You do NOT have access to any images."""
+
+TEXT_ONLY_GLOBAL_PROMPT = """\
+Subgoal: {subgoal}
+{constraints_block}
+Previous estimated completion: {prev_completion_pct}
+Current displacement from start: [x, y, z, yaw] = {displacement}
+
+Diary of changes observed so far:
+{diary}
+
+Based on the diary text and displacement data only (no images available),
+respond with EXACTLY ONE JSON object (no markdown fences):
+
+{{
+  "complete": true/false,
+  "completion_percentage": 0.0 to 1.0,
+  "should_stop": true/false,
+  "constraint_violated": true/false
+}}
+
+- "complete": true ONLY if you are highly confident the subgoal has been fully
+  accomplished based on the diary and displacement. Do NOT mark complete for
+  partial progress.
+- "completion_percentage": your best estimate (0.0 to 1.0). NEVER set 1.0
+  unless highly confident. Cap at 0.95 when unsure.
+- "should_stop": true if the diary suggests the drone is off-track or heading
+  away from the goal. The drone will be stopped and a correction issued.
+  Do NOT set true for slow progress.
+- "constraint_violated": true if the diary or displacement suggests a
+  constraint violation. false if no constraints are listed."""
+
+TEXT_ONLY_GLOBAL_PROMPT_WITH_CONSTRAINTS = """\
+Subgoal: {subgoal}
+{constraints_block}
+Previous estimated completion: {prev_completion_pct}
+Current displacement from start: [x, y, z, yaw] = {displacement}
+
+Diary of changes observed so far:
+{diary}
+
+Based on the diary text and displacement data only (no images available),
+respond with EXACTLY ONE JSON object (no markdown fences):
+
+{{
+  "complete": true/false,
+  "completion_percentage": 0.0 to 1.0,
+  "should_stop": true/false,
+  "constraint_violated": true/false
+}}
+
+- "complete": true ONLY if you are highly confident the subgoal has been fully
+  accomplished based on the diary and displacement. Do NOT mark complete for
+  partial progress.
+- "completion_percentage": your best estimate (0.0 to 1.0). NEVER set 1.0
+  unless highly confident. Cap at 0.95 when unsure.
+- "should_stop": true if the diary suggests the drone is off-track or heading
+  away from the goal. The drone will be stopped and a correction issued.
+  Do NOT set true for slow progress.
+- "constraint_violated": true if the diary or displacement suggests a
+  constraint violation. false if no constraints are listed."""
+
+TEXT_ONLY_CONVERGENCE_PROMPT = """\
+Subgoal: {subgoal}
+{constraints_block}
+Previous estimated completion: {prev_completion_pct}
+Current displacement from start: [x, y, z, yaw] = {displacement}
+
+Diary of changes observed so far:
+{diary}
+
+The drone has stopped moving. Based on the diary text and displacement data
+only (no images available), is the subgoal complete? If not, what single
+corrective command should be issued?
+
+Respond with EXACTLY ONE JSON object (no markdown fences):
+
+{{
+  "complete": true/false,
+  "completion_percentage": 0.0 to 1.0,
+  "diagnosis": "stopped_short" or "overshot" or "complete" or "constraint_violated",
+  "corrective_instruction": "..." or null,
+  "constraint_violated": true/false
+}}
+
+- "complete": true ONLY if the diary and displacement strongly indicate
+  the subgoal is done.
+- "diagnosis": "complete" if done, "stopped_short" if more progress needed,
+  "overshot" if too far.
+- "corrective_instruction": REQUIRED if not complete. A single-action drone
+  command. null only if complete.
+- "constraint_violated": true if any constraint was violated."""
+
+TEXT_ONLY_CONVERGENCE_PROMPT_WITH_CONSTRAINTS = """\
+Subgoal: {subgoal}
+{constraints_block}
+Previous estimated completion: {prev_completion_pct}
+Current displacement from start: [x, y, z, yaw] = {displacement}
+
+Diary of changes observed so far:
+{diary}
+
+The drone has stopped moving. Based on the diary text and displacement data
+only (no images available), is the subgoal complete? If not, what single
+corrective command should be issued?
+
+Respond with EXACTLY ONE JSON object (no markdown fences):
+
+{{
+  "complete": true/false,
+  "completion_percentage": 0.0 to 1.0,
+  "diagnosis": "stopped_short" or "overshot" or "complete" or "constraint_violated",
+  "corrective_instruction": "..." or null,
+  "constraint_violated": true/false
+}}
+
+- "complete": true ONLY if the diary and displacement strongly indicate
+  the subgoal is done.
+- "diagnosis": "complete" if done, "stopped_short" if more progress needed,
+  "overshot" if too far.
+- "corrective_instruction": REQUIRED if not complete. A single-action drone
+  command. null only if complete.
+- "constraint_violated": true if any constraint was violated."""

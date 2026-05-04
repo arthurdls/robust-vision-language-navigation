@@ -233,7 +233,7 @@ def interactive_camera_select(env: Any, initial_pos: List[float], batch: Any) ->
 
     if isinstance(env, SimClient):
         logger.info("Requesting camera selection on simulator (check the simulator display)...")
-        return env.select_camera(initial_pos[0:3], initial_pos[4])
+        return env.select_camera(initial_pos[0:3], initial_pos[3])
 
     try:
         import cv2
@@ -245,7 +245,7 @@ def interactive_camera_select(env: Any, initial_pos: List[float], batch: Any) ->
         env.unwrapped.player_list[0], initial_pos[0:3]
     )
     env.unwrapped.unrealcv.set_rotation(
-        env.unwrapped.player_list[0], initial_pos[4] - 180
+        env.unwrapped.player_list[0], initial_pos[3] - 180
     )
     batch.set_cam(env)
     time.sleep(batch.SLEEP_AFTER_RESET_S)

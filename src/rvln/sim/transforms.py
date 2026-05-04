@@ -30,16 +30,18 @@ def normalize_angle(angle: float) -> float:
 
 
 def normalize_initial_pos(initial_pos: List[float]) -> List[float]:
-    """Ensure initial_pos has at least 5 elements for batch (x,y,z,?,yaw).
+    """Validate and return initial_pos as [x, y, z, yaw].
 
-    4 elements [x,y,z,yaw] -> [x,y,z,0,yaw].
+    Accepts 4 elements [x,y,z,yaw] directly, or legacy 5+ element
+    formats [x,y,z,_,yaw] (index 3 is ignored, yaw taken from index 4).
+    Always returns a 4-element list.
     """
     if len(initial_pos) >= 5:
-        return list(initial_pos)
+        return [float(initial_pos[0]), float(initial_pos[1]),
+                float(initial_pos[2]), float(initial_pos[4])]
     if len(initial_pos) == 4:
-        return [float(initial_pos[0]), float(initial_pos[1]), float(initial_pos[2]),
-                0.0, float(initial_pos[3])]
-    raise ValueError("initial_pos must have 4 or 5 elements (x,y,z,yaw or x,y,z,?,yaw)")
+        return [float(x) for x in initial_pos]
+    raise ValueError("initial_pos must have at least 4 elements (x,y,z,yaw)")
 
 
 def relative_pose_to_world(
