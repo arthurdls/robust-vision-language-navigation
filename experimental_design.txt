@@ -318,12 +318,16 @@ constraints are present:
   - Constraints are injected into DIARY_GLOBAL_PROMPT and
     DIARY_CONVERGENCE_PROMPT after the subgoal line, labeled as
     "AVOID: ..." for negative or "MAINTAIN: ..." for positive.
-  - The VLM JSON output includes a "constraint_violated": true/false
-    field.
-  - On violation: force_converge stops the drone, then the existing
-    convergence correction flow issues a corrective command (e.g.,
-    "move away from building B" for avoidance violations, or
-    "ascend to restore altitude" for maintenance violations).
+  - During flight (global prompt): the VLM JSON output includes a
+    "constraint_violated": true/false boolean. On violation,
+    force_converge stops the drone and triggers the convergence
+    correction flow.
+  - During convergence: the diagnosis field includes
+    "constraint_violated" as an option (no separate boolean).
+    The corrective instruction guidance covers both constraint
+    types: move away from a forbidden region for avoidance
+    violations, or restore the required condition for maintenance
+    violations (e.g., "ascend 2 meters").
     Corrections share the same budget as normal convergence
     corrections.
 
@@ -564,11 +568,15 @@ M8. Average Episode Length
 - Starting position variations are fixed across conditions (same
   3 positions per task for all 7 conditions) to enable paired
   comparison (McNemar's test on matched episodes).
-- Task presentation order is fixed (alphabetical by task_id) and
-  identical across all conditions. Rationale: the simulator fully
-  resets between episodes (teleport + state reset), so there is no
-  drift or carryover between tasks. A fixed order simplifies
-  reproducibility without introducing ordering bias.
+- Task execution is interleaved by variant round: for each starting
+  position variant (1, 2, 3), all tasks are run across all conditions
+  before the next variant begins. Within a variant round, tasks are
+  ordered alphabetically by task_id and cycled through all conditions.
+  This ensures the first variant of every task is completed across
+  all conditions before any second variant starts, enabling early
+  progress monitoring and reducing the impact of long-running failures.
+  The simulator fully resets between episodes (teleport + state reset),
+  so there is no drift or carryover.
 - The simulator state is fully reset between episodes via
   teleport + stabilization wait. There is no environmental drift
   or accumulated state across episodes.
