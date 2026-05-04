@@ -246,6 +246,14 @@ class GoalAdherenceMonitor:
         return self._corrections_used
 
     @property
+    def max_corrections(self) -> int:
+        return self._max_corrections
+
+    @property
+    def corrections_exhausted(self) -> bool:
+        return self._corrections_used >= self._max_corrections
+
+    @property
     def last_completion_pct(self) -> float:
         return self._last_completion_pct
 
