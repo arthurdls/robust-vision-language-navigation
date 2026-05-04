@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 """
-Condition 6: Text-Only Diary (No Image Grid, "Blind LLM").
+Condition 6: Text-Only Global Assessment (No Image Grid).
 
-Uses the full LTL planner and SubgoalConverter. The local prompt still uses
-a VLM (2-frame comparison to generate diary entries, since it needs images).
-For global and convergence checks, sends only the text diary and displacement
-data to a text-only LLM (no image grid).
+Uses the full LTL planner and SubgoalConverter. The LOCAL prompt still uses
+a VLM (2-frame comparison to generate diary text entries). For GLOBAL and
+CONVERGENCE checks, sends only the text diary and displacement data to a
+text-only LLM (no image grid). This means the condition is not fully
+"text-only": the VLM is still required to produce diary entries, but the
+completion/correction decisions are made without visual input.
 
 This tests whether the text diary and odometry data are sufficient for
 completion assessment, or whether visual confirmation from the image grid

@@ -57,7 +57,7 @@ CONDITION_NAMES = {
     "condition3": "C3: Open Loop",
     "condition4": "C4: Single Frame",
     "condition5": "C5: Grid Only",
-    "condition6": "C6: Text Only",
+    "condition6": "C6: Text-Only Global",
 }
 
 CONDITION_ORDER = [
