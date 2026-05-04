@@ -168,34 +168,33 @@ def is_task_success(run: dict) -> bool | None:
     Determine if an episode was a task success.
 
     For conditions with subgoals: all subgoals must have stop_reason == "monitor_complete".
-    For C1 (naive, no subgoals): convergence alone does not mean success;
-      returns None (requires manual annotation or post-hoc analysis).
-    For C3 (open loop): convergence on all subgoals counts as "success" from the
-      system's perspective, though ground truth may differ.
+    For C1 (naive, no subgoals): returns None (requires manual annotation).
+    For C3 (open loop): returns None (convergence does not prove goal
+      achievement; requires manual video review).
     """
     condition = run.get("condition", "")
     subgoal_summaries = run.get("subgoal_summaries")
 
     # C1 naive: no subgoals, no monitor
     if "condition1" in condition or "naive" in condition:
-        # If constraint_analysis provides a verdict, use it
         ca = run.get("_constraint_analysis")
         if ca and "task_success" in ca:
             return bool(ca["task_success"])
-        # Otherwise cannot determine automatically
+        return None
+
+    # C3 open-loop: convergence is self-fulfilling, not a real success signal
+    if "condition3" in condition or "open_loop" in condition:
+        ca = run.get("_constraint_analysis")
+        if ca and "task_success" in ca:
+            return bool(ca["task_success"])
         return None
 
     # Conditions with subgoal_summaries
     if subgoal_summaries:
         for sg in subgoal_summaries:
             stop = sg.get("stop_reason", "")
-            # For open-loop (C3), convergence = the system's "success" signal
-            if "condition3" in condition or "open_loop" in condition:
-                if stop not in ("monitor_complete", "convergence"):
-                    return False
-            else:
-                if stop != "monitor_complete":
-                    return False
+            if stop != "monitor_complete":
+                return False
         return True
 
     # Fallback: single-episode conditions without subgoals
@@ -236,10 +235,12 @@ def is_constraint_adhered(run: dict) -> bool | None:
 def compute_subgoal_success_rate(run: dict) -> float | None:
     """
     Compute fraction of subgoals that were successfully completed in an episode.
-    Returns None for C1 (no subgoals).
+    Returns None for C1 (no subgoals) and C3 (convergence is not a real signal).
     """
     condition = run.get("condition", "")
     if "condition1" in condition or "naive" in condition:
+        return None
+    if "condition3" in condition or "open_loop" in condition:
         return None
 
     subgoal_summaries = run.get("subgoal_summaries", [])
@@ -249,12 +250,8 @@ def compute_subgoal_success_rate(run: dict) -> float | None:
     successes = 0
     for sg in subgoal_summaries:
         stop = sg.get("stop_reason", "")
-        if "condition3" in condition or "open_loop" in condition:
-            if stop in ("monitor_complete", "convergence"):
-                successes += 1
-        else:
-            if stop == "monitor_complete":
-                successes += 1
+        if stop == "monitor_complete":
+            successes += 1
 
     return successes / len(subgoal_summaries)
 
@@ -387,19 +384,17 @@ def aggregate_condition(condition: str, runs: list[dict]) -> dict[str, Any]:
     total_subgoals = 0
     successful_subgoals = 0
     for run in runs:
+        cond = run.get("condition", "")
+        if "condition3" in cond or "open_loop" in cond:
+            continue
         summaries = run.get("subgoal_summaries", [])
         if not summaries:
             continue
         for sg in summaries:
             total_subgoals += 1
             stop = sg.get("stop_reason", "")
-            cond = run.get("condition", "")
-            if "condition3" in cond or "open_loop" in cond:
-                if stop in ("monitor_complete", "convergence"):
-                    successful_subgoals += 1
-            else:
-                if stop == "monitor_complete":
-                    successful_subgoals += 1
+            if stop == "monitor_complete":
+                successful_subgoals += 1
         rate = compute_subgoal_success_rate(run)
         if rate is not None:
             subgoal_rates.append(rate)
@@ -508,6 +503,99 @@ def aggregate_condition(condition: str, runs: list[dict]) -> dict[str, Any]:
             "max_wall_clock_s": round(max(all_wall), 1) if all_wall else 0.0,
         },
     }
+
+
+def aggregate_by_category(runs_by_condition: dict[str, list[dict]]) -> dict[str, dict[str, dict]]:
+    """
+    Group episodes by task category and compute M1/M2/M3 for each category
+    within each condition.
+
+    Returns a nested dict: {condition: {category: {M1, M2, M3 metrics}}}.
+    Episodes whose task lacks a category field are grouped under "unknown".
+    """
+    result: dict[str, dict[str, dict]] = {}
+
+    for cond in CONDITION_ORDER:
+        runs = runs_by_condition.get(cond, [])
+        if not runs:
+            continue
+
+        # Group runs by category
+        by_cat: dict[str, list[dict]] = defaultdict(list)
+        for run in runs:
+            task_info = run.get("task", {})
+            category = task_info.get("category", "unknown")
+            by_cat[category].append(run)
+
+        cond_cats = {}
+        for cat, cat_runs in sorted(by_cat.items()):
+            n = len(cat_runs)
+
+            # M1: Task Success Rate
+            task_successes = 0
+            task_determined = 0
+            for run in cat_runs:
+                res = is_task_success(run)
+                if res is not None:
+                    task_determined += 1
+                    if res:
+                        task_successes += 1
+            m1_rate, m1_lo, m1_hi = wilson_ci(task_successes, task_determined)
+
+            # M2: Constraint Adherence Rate
+            constraint_adhered = 0
+            constraint_determined = 0
+            for run in cat_runs:
+                res = is_constraint_adhered(run)
+                if res is not None:
+                    constraint_determined += 1
+                    if res:
+                        constraint_adhered += 1
+            m2_rate, m2_lo, m2_hi = wilson_ci(constraint_adhered, constraint_determined)
+
+            # M3: Subgoal Success Rate
+            successful_subgoals = 0
+            total_subgoals = 0
+            for run in cat_runs:
+                c = run.get("condition", "")
+                if "condition3" in c or "open_loop" in c:
+                    continue
+                summaries = run.get("subgoal_summaries", [])
+                for sg in summaries:
+                    total_subgoals += 1
+                    stop = sg.get("stop_reason", "")
+                    if stop == "monitor_complete":
+                        successful_subgoals += 1
+            m3_rate, m3_lo, m3_hi = wilson_ci(successful_subgoals, total_subgoals)
+
+            cond_cats[cat] = {
+                "n_episodes": n,
+                "M1_task_success": {
+                    "successes": task_successes,
+                    "determined": task_determined,
+                    "rate": round(m1_rate, 4),
+                    "wilson_ci_lower": round(m1_lo, 4),
+                    "wilson_ci_upper": round(m1_hi, 4),
+                },
+                "M2_constraint_adherence": {
+                    "adhered": constraint_adhered,
+                    "determined": constraint_determined,
+                    "rate": round(m2_rate, 4),
+                    "wilson_ci_lower": round(m2_lo, 4),
+                    "wilson_ci_upper": round(m2_hi, 4),
+                },
+                "M3_subgoal_success": {
+                    "successful_subgoals": successful_subgoals,
+                    "total_subgoals": total_subgoals,
+                    "rate": round(m3_rate, 4),
+                    "wilson_ci_lower": round(m3_lo, 4),
+                    "wilson_ci_upper": round(m3_hi, 4),
+                },
+            }
+
+        result[cond] = cond_cats
+
+    return result
 
 
 def compute_pairwise_tests(
@@ -669,8 +757,9 @@ def print_summary_table(condition_metrics: dict[str, dict], pairwise: dict[str, 
     print(sep)
     print("Notes:")
     print("  - M1: Task success = all subgoals completed (monitor_complete).")
-    print("  - C1 (naive) has no subgoals; task success requires manual annotation or post-hoc analysis.")
-    print("  - C3 (open loop) convergence on all subgoals = system-reported success (may differ from ground truth).")
+    print("  - C1 (naive): no subgoals; task success requires manual video review.")
+    print("  - C3 (open loop): convergence is self-fulfilling; task success requires manual video review.")
+    print("  - M3: C1 and C3 excluded from subgoal success (no reliable automated signal).")
     print("  - M5 (qualitative): Requires manual video annotation, not computed here.")
     print(f"  - Bonferroni correction applied for 6 pairwise comparisons (alpha = {BONFERRONI_THRESHOLD:.4f}).")
     if not HAS_SCIPY:
@@ -678,10 +767,75 @@ def print_summary_table(condition_metrics: dict[str, dict], pairwise: dict[str, 
     print(sep)
 
 
+def print_category_table(category_metrics: dict[str, dict[str, dict]]):
+    """Print a per-category breakdown showing how each condition performs
+    on sequential vs constrained tasks (M1, M2, M3)."""
+    sep = "=" * 110
+    print()
+    print(sep)
+    print(f"{'Per-Category Breakdown (Sequential vs Constrained)':^110}")
+    print(sep)
+    print()
+
+    # Collect all categories across conditions
+    all_cats = set()
+    for cond_data in category_metrics.values():
+        all_cats.update(cond_data.keys())
+    all_cats = sorted(all_cats)
+
+    for cat in all_cats:
+        print(f"Category: {cat}")
+        header = (
+            f"  {'Condition':<28} {'N':>4} "
+            f"{'M1 (Task)':>12} {'M1 CI':>20} "
+            f"{'M2 (Const)':>12} {'M2 CI':>20} "
+            f"{'M3 (Subg)':>12}"
+        )
+        print(header)
+        print("  " + "-" * 106)
+
+        for cond in CONDITION_ORDER:
+            cond_data = category_metrics.get(cond, {})
+            cat_data = cond_data.get(cat)
+            if not cat_data:
+                continue
+
+            name = CONDITION_NAMES.get(cond, cond)
+            n = cat_data["n_episodes"]
+            m1 = cat_data["M1_task_success"]
+            m2 = cat_data["M2_constraint_adherence"]
+            m3 = cat_data["M3_subgoal_success"]
+
+            m1_str = f"{m1['rate']:.2%}" if m1["determined"] > 0 else "N/A"
+            m1_ci = (
+                f"[{m1['wilson_ci_lower']:.3f}, {m1['wilson_ci_upper']:.3f}]"
+                if m1["determined"] > 0 else "N/A"
+            )
+            m2_str = f"{m2['rate']:.2%}" if m2["determined"] > 0 else "N/A"
+            m2_ci = (
+                f"[{m2['wilson_ci_lower']:.3f}, {m2['wilson_ci_upper']:.3f}]"
+                if m2["determined"] > 0 else "N/A"
+            )
+            m3_str = f"{m3['rate']:.2%}" if m3["total_subgoals"] > 0 else "N/A"
+
+            print(
+                f"  {name:<28} {n:>4} "
+                f"{m1_str:>12} {m1_ci:>20} "
+                f"{m2_str:>12} {m2_ci:>20} "
+                f"{m3_str:>12}"
+            )
+
+        print()
+
+    print(sep)
+    print()
+
+
 def write_json_output(
     condition_metrics: dict[str, dict],
     pairwise: dict[str, dict],
     output_path: Path,
+    category_metrics: dict[str, dict[str, dict]] | None = None,
 ):
     """Write full metrics to JSON."""
     output = {
@@ -693,6 +847,8 @@ def write_json_output(
         "conditions": condition_metrics,
         "pairwise_comparisons": pairwise,
     }
+    if category_metrics:
+        output["category_breakdown"] = category_metrics
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with open(output_path, "w") as f:
         json.dump(output, f, indent=2, default=str)
@@ -851,12 +1007,19 @@ def main():
     # Compute pairwise statistical tests
     pairwise = compute_pairwise_tests(condition_metrics)
 
+    # Compute per-category breakdown (sequential vs constrained)
+    category_metrics = aggregate_by_category(runs_by_condition)
+
     # Output
     print_summary_table(condition_metrics, pairwise)
+    print_category_table(category_metrics)
 
     # Write files
     output_path = Path(output_dir)
-    write_json_output(condition_metrics, pairwise, output_path / "experiment_summary.json")
+    write_json_output(
+        condition_metrics, pairwise, output_path / "experiment_summary.json",
+        category_metrics=category_metrics,
+    )
     write_csv_output(condition_metrics, pairwise, output_path / "experiment_summary.csv")
 
 
