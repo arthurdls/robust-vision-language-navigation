@@ -254,8 +254,18 @@ Respond with EXACTLY ONE JSON object (no markdown fences):
 
 
 def _patch_monitor_prompts(mode: MonitorMode) -> None:
-    """Monkey-patch GoalAdherenceMonitor prompt templates for the given mode."""
+    """Set GoalAdherenceMonitor prompt templates for the given mode.
+
+    Must be called for every mode (including "full") to prevent stale
+    templates from a previous call leaking into the next run.
+    """
     import rvln.ai.goal_adherence_monitor as gam
+    from rvln.ai.prompts import (
+        DIARY_GLOBAL_PROMPT,
+        DIARY_GLOBAL_PROMPT_WITH_CONSTRAINTS,
+        DIARY_CONVERGENCE_PROMPT,
+        DIARY_CONVERGENCE_PROMPT_WITH_CONSTRAINTS,
+    )
 
     if mode == "grid_only":
         gam.GLOBAL_PROMPT_TEMPLATE = GRID_ONLY_GLOBAL_PROMPT
@@ -267,6 +277,11 @@ def _patch_monitor_prompts(mode: MonitorMode) -> None:
         gam.GLOBAL_PROMPT_TEMPLATE_CONSTRAINTS = SINGLE_FRAME_GLOBAL_PROMPT_CONSTRAINTS
         gam.CONVERGENCE_PROMPT_TEMPLATE = SINGLE_FRAME_CONVERGENCE_PROMPT
         gam.CONVERGENCE_PROMPT_TEMPLATE_CONSTRAINTS = SINGLE_FRAME_CONVERGENCE_PROMPT_CONSTRAINTS
+    else:
+        gam.GLOBAL_PROMPT_TEMPLATE = DIARY_GLOBAL_PROMPT
+        gam.GLOBAL_PROMPT_TEMPLATE_CONSTRAINTS = DIARY_GLOBAL_PROMPT_WITH_CONSTRAINTS
+        gam.CONVERGENCE_PROMPT_TEMPLATE = DIARY_CONVERGENCE_PROMPT
+        gam.CONVERGENCE_PROMPT_TEMPLATE_CONSTRAINTS = DIARY_CONVERGENCE_PROMPT_WITH_CONSTRAINTS
 
 
 # ---------------------------------------------------------------------------
@@ -325,8 +340,7 @@ def run_subgoal(
         state_for_openvla,
     )
 
-    if config.monitor_mode not in ("full", "text_only"):
-        _patch_monitor_prompts(config.monitor_mode)
+    _patch_monitor_prompts(config.monitor_mode)
 
     effective_constraints = constraints if config.use_constraints else None
 

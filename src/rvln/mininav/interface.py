@@ -772,6 +772,7 @@ def run_subgoal(
     stall_window: int = 3,
     stall_threshold: float = 0.05,
     stall_completion_floor: float = 0.8,
+    constraints: Optional[List[Any]] = None,
 ) -> Dict[str, Any]:
     """Execute a single subgoal with OpenVLA, goal adherence monitoring, and operator help.
 
@@ -811,6 +812,7 @@ def run_subgoal(
         stall_window=stall_window,
         stall_threshold=stall_threshold,
         stall_completion_floor=stall_completion_floor,
+        constraints=constraints,
     )
 
     openvla.reset_model()
@@ -1469,6 +1471,14 @@ def main() -> None:
         subgoal_index = 0
         while current_subgoal is not None and not stop_capture:
             subgoal_index += 1
+
+            active_constraints = planner.get_active_constraints()
+            if active_constraints:
+                logger.info(
+                    "Active constraints for subgoal %d: %s",
+                    subgoal_index, active_constraints,
+                )
+
             logger.info("Running subgoal %d: %s", subgoal_index, current_subgoal)
             result = run_subgoal(
                 subgoal_nl=current_subgoal,
@@ -1493,6 +1503,7 @@ def main() -> None:
                 stall_window=args.stall_window,
                 stall_threshold=args.stall_threshold,
                 stall_completion_floor=args.stall_completion_floor,
+                constraints=active_constraints,
             )
             frame_offset += result["total_steps"]
             subgoal_summaries.append(result)
