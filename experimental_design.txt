@@ -318,18 +318,19 @@ constraints are present:
   - Constraints are injected into DIARY_GLOBAL_PROMPT and
     DIARY_CONVERGENCE_PROMPT after the subgoal line, labeled as
     "AVOID: ..." for negative or "MAINTAIN: ..." for positive.
-  - During flight (global prompt): the VLM JSON output includes a
-    "constraint_violated": true/false boolean. On violation,
-    force_converge stops the drone and triggers the convergence
-    correction flow.
+  - During flight (global prompt): the model sets "should_stop"
+    to true when a constraint is violated or about to be violated.
+    No separate constraint_violated field is needed; the constraints
+    are listed in the prompt and the model reasons about them
+    directly. On should_stop, force_converge stops the drone and
+    triggers the convergence correction flow.
   - During convergence: the diagnosis field includes
-    "constraint_violated" as an option (no separate boolean).
-    The corrective instruction guidance covers both constraint
-    types: move away from a forbidden region for avoidance
-    violations, or restore the required condition for maintenance
-    violations (e.g., "ascend 2 meters").
-    Corrections share the same budget as normal convergence
-    corrections.
+    "constraint_violated" as an option. The corrective instruction
+    guidance covers both constraint types: move away from a
+    forbidden region for avoidance violations, or restore the
+    required condition for maintenance violations (e.g., "ascend
+    2 meters"). Corrections share the same budget as normal
+    convergence corrections.
 
 The SubgoalConverter is NOT modified. Constraints are handled entirely
 by the goal adherence monitor, since OpenVLA cannot process compound constraint

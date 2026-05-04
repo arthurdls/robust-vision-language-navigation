@@ -76,7 +76,6 @@ class DiaryCheckResult:
     reasoning: str
     diary_entry: str      # latest diary entry (what changed)
     completion_pct: float = 0.0  # latest estimated completion percentage
-    constraint_violated: bool = False
 
 # ---------------------------------------------------------------------------
 # GoalAdherenceMonitor
@@ -1136,16 +1135,6 @@ class GoalAdherenceMonitor:
                 )
         pct = float(parsed.get("completion_percentage", self._last_completion_pct))
         pct = max(0.0, min(1.0, pct))
-
-        if self._constraints and parsed.get("constraint_violated", False):
-            return DiaryCheckResult(
-                action="force_converge",
-                new_instruction="",
-                reasoning=f"Constraint violated, stopping for correction. Raw: {response}",
-                diary_entry=diary_entry,
-                completion_pct=pct,
-                constraint_violated=True,
-            )
 
         if parsed.get("complete", False):
             return DiaryCheckResult(

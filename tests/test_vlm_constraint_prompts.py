@@ -2,7 +2,7 @@
 Tier 3 VLM prompt smoke tests for constraint-aware goal adherence monitoring.
 
 These tests make real VLM API calls with synthetic diary context to verify
-the VLM correctly returns constraint_violated in its JSON response.
+the VLM correctly returns should_stop when constraints are active and violated.
 
 Run: conda run -n rvln-sim pytest tests/test_vlm_constraint_prompts.py -v -m "tier3"
 """
@@ -50,8 +50,8 @@ def _render_global_prompt(subgoal, constraints, diary, displacement, prev_pct):
 
 @needs_api
 @tier3
-def test_vlm_returns_constraint_violated_field():
-    """VLM should include constraint_violated in JSON when constraints are present."""
+def test_vlm_returns_should_stop_for_constraint_violation():
+    """VLM should set should_stop to true when constraints are active and violated."""
     from rvln.ai.prompts import DIARY_SYSTEM_PROMPT
     from rvln.ai.utils.llm_providers import LLMFactory
 
@@ -59,9 +59,9 @@ def test_vlm_returns_constraint_violated_field():
 
     prompt = _render_global_prompt(
         subgoal="Approach the tree",
-        constraints=["stay away from building B"],
+        constraints=["AVOID: Near building B"],
         diary="Steps 0-20: Drone moved forward, building B visible on the right.\n"
-              "Steps 20-40: Drone turned slightly toward building B.\n"
+              "Steps 20-40: Drone turned toward building B, now very close.\n"
               "Checkpoint 40: completion = 0.30",
         displacement="[x: 3.50 m, y: 1.20 m, z: 0.00 m, yaw: 15.0 deg]",
         prev_pct=0.30,
@@ -80,11 +80,11 @@ def test_vlm_returns_constraint_violated_field():
     assert start != -1 and end != -1, f"No JSON in VLM response: {text}"
     parsed = json.loads(text[start:end + 1])
 
-    assert "constraint_violated" in parsed, (
-        f"VLM response missing 'constraint_violated' field. Got: {parsed}"
+    assert "should_stop" in parsed, (
+        f"VLM response missing 'should_stop' field. Got: {parsed}"
     )
-    assert isinstance(parsed["constraint_violated"], bool), (
-        f"'constraint_violated' should be bool, got: {type(parsed['constraint_violated'])}"
+    assert parsed["should_stop"] is True, (
+        f"VLM should set should_stop=true for constraint violation. Got: {parsed}"
     )
 
 
