@@ -80,13 +80,23 @@ def _stop_sim(timeout: float = 15.0) -> None:
         _sim_api_port = None
         return
 
-    logger.info("Stopping simulator (PID %d, scene=%s)...", _sim_proc.pid, _current_scene)
-    os.kill(_sim_proc.pid, signal.SIGTERM)
+    pgid = _sim_proc.pid  # proc is session leader (start_new_session=True)
+    logger.info("Stopping simulator (PGID %d, scene=%s)...", pgid, _current_scene)
+    try:
+        os.killpg(pgid, signal.SIGTERM)
+    except ProcessLookupError:
+        _sim_proc = None
+        _current_scene = None
+        _sim_api_port = None
+        return
     try:
         _sim_proc.wait(timeout=timeout)
     except subprocess.TimeoutExpired:
         logger.warning("Simulator did not exit in %ds, sending SIGKILL", timeout)
-        os.kill(_sim_proc.pid, signal.SIGKILL)
+        try:
+            os.killpg(pgid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
         _sim_proc.wait(timeout=5)
 
     _sim_proc = None
@@ -157,9 +167,8 @@ def handle_start():
     logger.info("Starting simulator: %s", " ".join(cmd))
     _sim_proc = subprocess.Popen(
         cmd,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
         start_new_session=True,
     )
 

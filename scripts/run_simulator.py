@@ -187,11 +187,15 @@ def count_connections(port: int, state: str) -> int:
 
 
 def launch_simulator(cmd: list[str]) -> subprocess.Popen:
-    """Launch the simulator binary and return the Popen handle."""
+    """Launch the simulator binary and return the Popen handle.
+
+    The child inherits the caller's process group so that a single
+    os.killpg() from the orchestrator can tear down both run_simulator.py
+    and the UE binary together.
+    """
     return subprocess.Popen(
         cmd, stdin=subprocess.DEVNULL,
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-        start_new_session=True,
     )
 
 
@@ -253,7 +257,6 @@ def main():
     _current_proc = proc
 
     def shutdown(signum, frame):
-        print("\nShutting down simulator...")
         stop_process(_current_proc)
         sys.exit(0)
 

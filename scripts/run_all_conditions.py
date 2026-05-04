@@ -179,9 +179,8 @@ class SimManager:
         logger.info("Starting simulator locally: %s", " ".join(cmd))
         self._local_proc = subprocess.Popen(
             cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
             start_new_session=True,
         )
         if not self._wait_for_api("127.0.0.1", api_port, timeout=startup_timeout):
@@ -198,13 +197,21 @@ class SimManager:
         if proc is None or proc.poll() is not None:
             self._local_proc = None
             return
-        logger.info("Stopping local simulator (PID %d)...", proc.pid)
-        os.kill(proc.pid, signal.SIGTERM)
+        pgid = proc.pid  # proc is session leader (start_new_session=True)
+        logger.info("Stopping local simulator (PGID %d)...", pgid)
+        try:
+            os.killpg(pgid, signal.SIGTERM)
+        except ProcessLookupError:
+            self._local_proc = None
+            return
         try:
             proc.wait(timeout=timeout)
         except subprocess.TimeoutExpired:
             logger.warning("Simulator did not exit in %ds, sending SIGKILL", timeout)
-            os.kill(proc.pid, signal.SIGKILL)
+            try:
+                os.killpg(pgid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
             proc.wait(timeout=5)
         self._local_proc = None
         logger.info("Simulator stopped.")
@@ -536,6 +543,12 @@ def main():
 
                 _run_map(map_info, conditions, args, batch, server_url, env, sim_manager)
 
+            except KeyboardInterrupt:
+                raise
+            except Exception as e:
+                logger.error(
+                    "Map '%s' aborted, moving to next map: %s", target_map.name, e,
+                )
             finally:
                 sim_manager.stop()
 
