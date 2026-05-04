@@ -1126,5 +1126,99 @@ class TestLastGoalViaSinkEdge:
         assert planner.finished
 
 
+# ------------------------------------------------------------------
+# Regression: single goal dropped when constraint is the last pi_map key
+# ------------------------------------------------------------------
+
+def _make_postprocessed_planner(formula, predicates, instruction):
+    """Build a planner with a postprocessed (smaller) automaton.
+
+    spot.postprocess(aut, "monitor", "small") merges states, reproducing
+    the automaton structure that some Spot versions create natively.
+    """
+    mock = MockLLM()
+    mock.ltl_nl_formula = {
+        "pi_predicates": predicates,
+        "ltl_nl_formula": formula,
+    }
+    planner = LTLSymbolicPlanner(mock)
+    planner.plan_from_natural_language(instruction)
+
+    smaller = spot.postprocess(planner.automaton, "monitor", "small")
+    planner.automaton = smaller
+    planner._bdd_false = spot.formula_to_bdd(
+        spot.formula("0"), planner.automaton.get_dict(), planner.automaton
+    )
+    planner._sink_state = None
+    planner.constraint_predicates = planner._classify_predicates()
+    planner._add_sink_state()
+    planner.current_automaton_state = planner.automaton.get_init_state_number()
+    planner.finished = False
+    planner._last_returned_predicate_key = None
+    return planner
+
+
+class TestSingleGoalWithConstraintPostprocessed:
+    """Regression: a single goal (F pi_1) paired with a constraint (G(pi_2))
+    must still be returned when Spot postprocessing merges the automaton
+    down to a single state, forcing all transitions through the sink edge.
+
+    This is the exact pattern that caused the production failure:
+        F pi_1 & G(pi_2)  ->  0 subgoals (pi_1 skipped)
+    """
+
+    def test_positive_constraint(self):
+        """F pi_1 & G(pi_2): single goal + positive constraint."""
+        planner = _make_postprocessed_planner(
+            "F pi_1 & G(pi_2)",
+            {"pi_1": "Go past pergolas", "pi_2": "Above the pergolas"},
+            "go past pergolas, stay above them",
+        )
+        order = _run_full(planner)
+        assert order == ["Go past pergolas"], (
+            f"Single goal must be returned, got {order}"
+        )
+        assert planner.finished
+
+    def test_negative_constraint(self):
+        """F pi_1 & G(!pi_2): single goal + negative constraint."""
+        planner = _make_postprocessed_planner(
+            "F pi_1 & G(!pi_2)",
+            {"pi_1": "Reach landmark", "pi_2": "Near danger zone"},
+            "reach landmark, avoid danger zone",
+        )
+        order = _run_full(planner)
+        assert order == ["Reach landmark"], (
+            f"Single goal must be returned, got {order}"
+        )
+        assert planner.finished
+
+    def test_two_goals_positive_constraint(self):
+        """F pi_2 & (!pi_2 U pi_1) & G(pi_3): two goals + positive constraint."""
+        planner = _make_postprocessed_planner(
+            "F pi_2 & (!pi_2 U pi_1) & G(pi_3)",
+            {"pi_1": "Go to A", "pi_2": "Go to B", "pi_3": "Keep altitude"},
+            "A then B, maintain altitude",
+        )
+        order = _run_full(planner)
+        assert order == ["Go to A", "Go to B"], (
+            f"Both goals must be returned in order, got {order}"
+        )
+        assert planner.finished
+
+    def test_no_double_return(self):
+        """After the sole goal completes, get_next_predicate returns None."""
+        planner = _make_postprocessed_planner(
+            "F pi_1 & G(pi_2)",
+            {"pi_1": "Go past pergolas", "pi_2": "Above the pergolas"},
+            "go past pergolas, stay above them",
+        )
+        order = _run_full(planner)
+        assert len(order) == 1
+        for _ in range(3):
+            assert planner.get_next_predicate() is None
+        assert planner.finished
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

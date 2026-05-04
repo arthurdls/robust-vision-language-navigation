@@ -183,19 +183,24 @@ class LTLSymbolicPlanner:
         """Add a sink state and connect dead-end states to it.
 
         States with no outgoing edge to a different state are connected to
-        the sink. The edge condition uses the last predicate's BDD so
-        get_next_predicate returns that predicate when in such a state.
+        the sink. The edge condition uses the last *goal* predicate's
+        goal-check BDD (which includes positive constraints) so that
+        get_next_predicate's sink fallback can match goal completions even
+        when the last key in pi_map is a constraint rather than a goal.
         """
         self._sink_state = None
         if not self.pi_map or self.automaton is None:
             return
         try:
+            goal_keys = [k for k in self.pi_map if k not in self.constraint_predicates]
+            if not goal_keys:
+                return
             n = self.automaton.num_states()
             self.automaton.new_states(1)
             self._sink_state = n
-            last_key = list(self.pi_map.keys())[-1]
-            last_p_idx = _predicate_key_to_index(last_key)
-            bdd_sink_cond = self._get_bdd_for_single_task(last_p_idx)
+            last_goal_key = goal_keys[-1]
+            last_goal_idx = _predicate_key_to_index(last_goal_key)
+            bdd_sink_cond = self._get_bdd_goal_check(last_goal_idx)
             for s in range(n):
                 has_outgoing_to_other = any(
                     edge.dst != s for edge in self.automaton.out(s)
