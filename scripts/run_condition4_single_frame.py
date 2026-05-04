@@ -212,10 +212,7 @@ def _run_subgoal(
     converted_instruction = conversion.instruction
     current_instruction = converted_instruction
 
-    if monitor_model.startswith("gemini"):
-        llm = LLMFactory.create("gemini", model=monitor_model)
-    else:
-        llm = LLMFactory.create("openai", model=monitor_model)
+    llm = LLMFactory.create("openai", model=monitor_model)
 
     current_pose = [0.0, 0.0, 0.0, 0.0]
     openvla_pose_origin = [0.0, 0.0, 0.0, 0.0]
@@ -277,7 +274,7 @@ def _run_subgoal(
                         break
                     if parsed.get("should_stop", False):
                         logger.info("Single-frame check: should_stop at step %d", step)
-                        # Force convergence to trigger correction
+                        small_count = batch.ACTION_SMALL_STEPS
             except Exception as e:
                 logger.error("Single-frame check failed at step %d: %s", step, e)
 

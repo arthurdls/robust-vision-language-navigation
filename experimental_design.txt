@@ -37,7 +37,7 @@ Default parameters (from config.py):
   - SubgoalConverter uses the LLM model (gpt-5.4), not the VLM, since
     subgoal conversion is a text-to-text task with no image input.
   - Max steps per subgoal: 500
-  - Diary check interval: every 20 frames
+  - Diary check interval: every 10 frames
   - Max corrections per subgoal: 20
   - Stall window: 3 checkpoints
   - Stall threshold: 0.05 (completion spread)
@@ -369,16 +369,15 @@ to exercise different LTL operators and constraint types. For analysis,
 tasks are classified into two categories based on whether their
 instructions contain constraint language:
 
-Category: SEQUENTIAL (7 tasks across 3 maps)
+Category: SEQUENTIAL (6 tasks across 3 maps)
   Pure sequential navigation with no constraint language. Simple
   ordered sequences (A then B then C) or multi-step traversals.
   LTL: F pi_3 & (!pi_3 U pi_2) & (!pi_2 U pi_1)
   Purpose: Baseline difficulty. All conditions should handle these.
   Examples:
     - "Go past the streetlamp, then stop at the bridge..." (bridge_crossing_to_tree)
-    - "Go forward until the end of the road..." (orbit_white_house)
 
-Category: CONSTRAINED (8 tasks across 3 maps)
+Category: CONSTRAINED (9 tasks across 3 maps)
   Instructions that include constraint language such as "maintain
   altitude", "stay above/below/near", "never go on", "always stay",
   "maintaining sight", etc. These are ordered sequences where temporal
@@ -394,16 +393,17 @@ Category: CONSTRAINED (8 tasks across 3 maps)
     - "Never go on the road..." (sidewalk_to_crosswalk)
     - "Stay above the water..." (shoreline_to_banner_to_statue)
     - "...while staying above the clear trail." (trail_to_beach_over_rocks)
+    - "Go forward until the end of the road..." (orbit_white_house, maintenance: "maintain a view of the house")
 
 Task distribution per map:
   downtown_west:           2 sequential, 3 constrained
   greek_island:            1 sequential, 4 constrained
-  suburb_neighborhood_day: 4 sequential, 1 constrained
+  suburb_neighborhood_day: 3 sequential, 2 constrained
 
-With 3 starting position variants per task: 21 sequential episodes
-and 24 constrained episodes per condition (45 total).
+With 3 starting position variants per task: 18 sequential episodes
+and 27 constrained episodes per condition (45 total).
 
-NOTE ON TASK BALANCE: 8 of the 15 tasks (53%) include meaningful
+NOTE ON TASK BALANCE: 9 of the 15 tasks (60%) include meaningful
 temporal constraints (avoidance, maintenance, or both). This is
 critical: without them, the gap between Condition 0 and Condition 2
 narrows, undermining the LTL contribution. The aggregate_results.py
@@ -599,24 +599,23 @@ Per VLM checkpoint (local + global):
 Per convergence assessment:
   - Similar to global: ~5,000 input tokens
 
-Per episode (rough estimate):
-  - ~15 checkpoints per subgoal x 3 subgoals avg = 45 checkpoints
-  - 45 x 7,100 = ~320,000 input tokens
-  - Plus ~5 convergence assessments x 5,000 = ~25,000
+Per episode (rough estimate, diary interval = 10 frames):
+  - ~30 checkpoints per subgoal x 3 subgoals avg = 90 checkpoints
+  - 90 x 7,100 = ~640,000 input tokens
+  - Plus ~8 convergence assessments x 5,000 = ~40,000
   - Plus planning + subgoal conversion: ~5,000
-  - Total per episode: ~350,000 input tokens
+  - Total per episode: ~685,000 input tokens
 
 IMPORTANT: These estimates must be validated empirically by running
 2-3 test episodes and measuring actual token usage from the VLM call
 logs. The image token count depends heavily on the VLM provider's
 image encoding. Adjust the budget after validation.
 
-Per-condition cost (at $2.50/MTok input for gpt-5.4, or $10/MTok for
-GPT-5.4):
-  - gpt-5.4 monitor: 45 eps x 350K tokens x $10/MTok = ~$158
+Per-condition cost (at $2.50/MTok input, $10/MTok output for gpt-5.4):
+  - gpt-5.4 monitor: 45 eps x 685K tokens x $10/MTok = ~$308
 
 Total for 7 conditions:
-  - If all use gpt-5.4 monitor: ~$1,100
+  - If all use gpt-5.4 monitor: ~$2,160
   - If Conditions 1, 3 use no monitor: savings of ~$316
   - Net estimate: ~$800-$1,100
 

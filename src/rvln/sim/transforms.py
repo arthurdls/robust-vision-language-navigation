@@ -22,7 +22,7 @@ def transform_to_global(
 
 
 def normalize_angle(angle: float) -> float:
-    """Normalize angle to [-180, 180) degrees."""
+    """Normalize angle to (-180, 180] degrees."""
     angle = angle % 360
     if angle > 180:
         angle -= 360

@@ -360,10 +360,7 @@ def analyze_single_run(
     grid_image = build_frame_grid(sampled_frames)
 
     # Create LLM instance (reuse across constraints)
-    if model.startswith("gemini"):
-        llm = LLMFactory.create("gemini", model=model)
-    else:
-        llm = LLMFactory.create("openai", model=model)
+    llm = LLMFactory.create("openai", model=model)
 
     # Analyze each constraint
     constraint_results = []
