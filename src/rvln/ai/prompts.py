@@ -229,8 +229,7 @@ Respond with EXACTLY ONE JSON object (no markdown fences):
   "complete": true/false,
   "completion_percentage": 0.0 to 1.0,
   "diagnosis": "stopped_short" or "overshot" or "complete" or "constraint_violated",
-  "corrective_instruction": "..." or null,
-  "constraint_violated": true/false
+  "corrective_instruction": "..." or null
 }}
 
 - "complete": true ONLY if you are highly confident the subgoal has been fully
@@ -251,9 +250,6 @@ Respond with EXACTLY ONE JSON object (no markdown fences):
   maintenance constraints (e.g., "stay above 10 meters"), restore the
   required condition (e.g., "ascend 2 meters").
   null only if complete.
-- "constraint_violated": true if any active constraint listed above has been
-  violated based on the visual evidence and diary. false if no constraints are
-  listed or none have been violated.
 
   Useful corrective patterns:
     * "Turn toward <landmark>" -- re-orient the drone toward a visible or
@@ -874,8 +870,7 @@ Respond with EXACTLY ONE JSON object (no markdown fences):
   "complete": true/false,
   "completion_percentage": 0.0 to 1.0,
   "diagnosis": "stopped_short" or "overshot" or "complete" or "constraint_violated",
-  "corrective_instruction": "..." or null,
-  "constraint_violated": true/false
+  "corrective_instruction": "..." or null
 }}
 
 - "complete": true ONLY if the diary and displacement strongly indicate
@@ -888,5 +883,4 @@ Respond with EXACTLY ONE JSON object (no markdown fences):
   restore compliance: move away from a forbidden region for avoidance
   constraints, or restore the required condition for maintenance constraints
   (e.g., "ascend 2 meters" to regain an altitude constraint).
-  null only if complete.
-- "constraint_violated": true if any constraint was violated."""
+  null only if complete."""

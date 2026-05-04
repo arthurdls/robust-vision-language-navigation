@@ -124,8 +124,7 @@ Respond with EXACTLY ONE JSON object (no markdown fences):
   "complete": true/false,
   "completion_percentage": 0.0 to 1.0,
   "diagnosis": "stopped_short" or "overshot" or "complete" or "constraint_violated",
-  "corrective_instruction": "..." or null,
-  "constraint_violated": true/false
+  "corrective_instruction": "..." or null
 }}
 
 - "complete": true ONLY if you are highly confident the subgoal is done.
@@ -136,8 +135,7 @@ Respond with EXACTLY ONE JSON object (no markdown fences):
   command to fix the biggest gap. If a constraint was violated, restore
   compliance: move away from a forbidden region for avoidance constraints,
   or restore the required condition for maintenance constraints (e.g.,
-  "ascend 2 meters"). null only if complete.
-- "constraint_violated": true if any active constraint appears violated."""
+  "ascend 2 meters"). null only if complete."""
 
 
 # ---------------------------------------------------------------------------
@@ -379,12 +377,11 @@ def _run_subgoal(
                 stop_reason = "parse_error"
                 break
 
-            if parsed.get("constraint_violated", False):
+            if parsed.get("diagnosis") == "constraint_violated":
                 constraint_violation_count += 1
                 override_history.append({
                     "step": step,
                     "type": "constraint_violation",
-                    "constraint_violated": True,
                 })
 
             if parsed.get("complete", False) or parsed.get("diagnosis") == "complete":
