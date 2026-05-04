@@ -60,6 +60,7 @@ from rvln.config import (
 from rvln.eval.task_utils import (
     get_completed_task_ids,
     discover_tasks,
+    group_tasks_by_variant,
     sanitize_run_label,
 )
 from rvln.maps import SUPPORTED_MAPS
@@ -264,133 +265,95 @@ def _restart_sim(sim_manager: SimManager, map_info, args, batch):
 MAX_CONSECUTIVE_TIMEOUTS = 2
 
 
-def _run_condition_tasks(
+def _run_single_task(
     condition: int,
-    tasks: List[Dict[str, Any]],
+    task: Dict[str, Any],
+    control_loop,
+    results_dir: Path,
+    prefix: str,
     env,
     batch,
     server_url: str,
     map_info,
     args,
-    sim_manager: SimManager,
+    drone_cam_id,
 ):
-    control_loop = _import_control_loop(condition)
-    results_dir = Path(args.results_dir) / f"condition{condition}" / map_info.task_dir_name
-    results_dir.mkdir(parents=True, exist_ok=True)
-    prefix = CONDITION_PREFIXES[condition]
-    drone_cam_id = env.drone_cam_id
-    consecutive_timeouts = 0
+    """Execute one task for one condition.
 
-    completed_ids = get_completed_task_ids(results_dir)
-    if completed_ids:
-        logger.info("  Found %d completed task(s) in %s", len(completed_ids), results_dir)
+    Returns the run_info dict on success, or None on failure.
+    Raises KeyboardInterrupt, ReadTimeout, or RequestsConnectionError
+    so the caller can manage retries and simulator restarts.
+    """
+    ts = datetime.now().strftime("%Y_%m_%d_%H_%M_%S")
+    task_label = task.get("task_id") or sanitize_run_label(task["instruction"], max_len=30)
+    run_name = f"{prefix}__{task_label}__{ts}"
+    run_dir = results_dir / run_name
 
-    idx = 0
-    while idx < len(tasks):
-        task = tasks[idx]
-        task_id = task.get("task_id", "")
-        if task_id and task_id in completed_ids:
-            logger.info("  Skipping already completed task: %s", task_id)
-            idx += 1
-            continue
+    common_kwargs = dict(
+        env=env,
+        batch=batch,
+        task=task,
+        server_url=server_url,
+        run_dir=run_dir,
+        drone_cam_id=drone_cam_id,
+        save_mp4=args.save_mp4,
+        mp4_fps=args.mp4_fps,
+        seed=args.seed,
+        time_dilation=args.time_dilation,
+        env_id=map_info.env_id,
+    )
 
-        logger.info(
-            "  Task %d/%d: '%s'",
-            idx + 1, len(tasks), task["instruction"][:80],
+    if condition == 0:
+        run_info = control_loop(
+            **common_kwargs,
+            llm_model=args.llm_model,
+            monitor_model=args.monitor_model,
+            diary_mode=args.diary_mode,
         )
-
-        ts = datetime.now().strftime("%Y_%m_%d_%H_%M_%S")
-        task_label = task.get("task_id") or sanitize_run_label(task["instruction"], max_len=30)
-        run_name = f"{prefix}__{task_label}__{ts}"
-        run_dir = results_dir / run_name
-
-        common_kwargs = dict(
-            env=env,
-            batch=batch,
-            task=task,
-            server_url=server_url,
-            run_dir=run_dir,
-            drone_cam_id=drone_cam_id,
-            save_mp4=args.save_mp4,
-            mp4_fps=args.mp4_fps,
-            seed=args.seed,
-            time_dilation=args.time_dilation,
-            env_id=map_info.env_id,
+    elif condition == 1:
+        run_info = control_loop(**common_kwargs)
+    elif condition == 2:
+        run_info = control_loop(
+            **common_kwargs,
+            llm_model=args.llm_model,
+            monitor_model=args.monitor_model,
+            diary_mode=args.diary_mode,
         )
+    elif condition == 3:
+        run_info = control_loop(
+            **common_kwargs,
+            llm_model=args.llm_model,
+            converter_model=args.llm_model,
+        )
+    elif condition == 4:
+        run_info = control_loop(
+            **common_kwargs,
+            llm_model=args.llm_model,
+            monitor_model=args.monitor_model,
+        )
+    elif condition == 5:
+        run_info = control_loop(
+            **common_kwargs,
+            llm_model=args.llm_model,
+            monitor_model=args.monitor_model,
+            diary_mode=args.diary_mode,
+        )
+    elif condition == 6:
+        run_info = control_loop(
+            **common_kwargs,
+            llm_model=args.llm_model,
+            vlm_model=args.vlm_model,
+        )
+    else:
+        raise ValueError(f"Unknown condition: {condition}")
 
-        try:
-            if condition == 0:
-                run_info = control_loop(
-                    **common_kwargs,
-                    llm_model=args.llm_model,
-                    monitor_model=args.monitor_model,
-                    diary_mode=args.diary_mode,
-                )
-            elif condition == 1:
-                run_info = control_loop(**common_kwargs)
-            elif condition == 2:
-                run_info = control_loop(
-                    **common_kwargs,
-                    llm_model=args.llm_model,
-                    monitor_model=args.monitor_model,
-                    diary_mode=args.diary_mode,
-                )
-            elif condition == 3:
-                run_info = control_loop(
-                    **common_kwargs,
-                    llm_model=args.llm_model,
-                    converter_model=args.llm_model,
-                )
-            elif condition == 4:
-                run_info = control_loop(
-                    **common_kwargs,
-                    llm_model=args.llm_model,
-                    monitor_model=args.monitor_model,
-                )
-            elif condition == 5:
-                run_info = control_loop(
-                    **common_kwargs,
-                    llm_model=args.llm_model,
-                    monitor_model=args.monitor_model,
-                    diary_mode=args.diary_mode,
-                )
-            elif condition == 6:
-                run_info = control_loop(
-                    **common_kwargs,
-                    llm_model=args.llm_model,
-                    vlm_model=args.vlm_model,
-                )
-
-            consecutive_timeouts = 0
-            logger.info(
-                "  Run saved to %s (steps=%s, stop=%s)",
-                run_dir,
-                run_info.get("total_steps", "?"),
-                run_info.get("stop_reason", "?"),
-            )
-        except KeyboardInterrupt:
-            logger.info("  Task interrupted.")
-            raise
-        except (ReadTimeout, RequestsConnectionError) as e:
-            consecutive_timeouts += 1
-            logger.error("  Task failed (timeout %d/%d): %s",
-                         consecutive_timeouts, MAX_CONSECUTIVE_TIMEOUTS, e)
-            if consecutive_timeouts >= MAX_CONSECUTIVE_TIMEOUTS:
-                logger.warning("  %d consecutive timeouts, restarting simulator...",
-                               consecutive_timeouts)
-                try:
-                    env = _restart_sim(sim_manager, map_info, args, batch)
-                    drone_cam_id = env.drone_cam_id
-                    consecutive_timeouts = 0
-                    continue  # retry same task without advancing idx
-                except Exception as restart_err:
-                    logger.error("  Simulator restart failed: %s", restart_err)
-                    raise
-        except Exception as e:
-            consecutive_timeouts = 0
-            logger.error("  Task failed: %s", e, exc_info=True)
-
-        idx += 1
+    logger.info(
+        "  Run saved to %s (steps=%s, stop=%s)",
+        run_dir,
+        run_info.get("total_steps", "?"),
+        run_info.get("stop_reason", "?"),
+    )
+    return run_info
 
 
 def _resolve_maps(map_arg: Optional[str]) -> List:
@@ -417,35 +380,117 @@ def _run_map(
     env,
     sim_manager: SimManager,
 ):
-    """Run all conditions for a single map on an already-connected env."""
+    """Run all conditions for a single map, interleaved by variant round.
+
+    Execution order: for each variant round (1, 2, 3, ...), for each base
+    task (alphabetical), for each condition -- execute that task variant.
+    This ensures the first variant of every task is run across all conditions
+    before any second variant begins.
+    """
     tasks = discover_tasks(REPO_ROOT / "tasks" / map_info.task_dir_name)
     if not tasks:
         logger.warning("No tasks found in tasks/%s/, skipping map.", map_info.task_dir_name)
         return
     logger.info("Found %d shared task(s) for map '%s'", len(tasks), map_info.task_dir_name)
 
-    for cond in conditions:
-        if cond not in CONDITION_MODULES:
-            logger.warning("Unknown condition %d, skipping", cond)
-            continue
+    variant_groups = group_tasks_by_variant(tasks)
+    valid_conditions = [c for c in conditions if c in CONDITION_MODULES]
+    for c in conditions:
+        if c not in CONDITION_MODULES:
+            logger.warning("Unknown condition %d, skipping", c)
 
+    cond_state: Dict[int, Dict[str, Any]] = {}
+    for cond in valid_conditions:
+        results_dir = Path(args.results_dir) / f"condition{cond}" / map_info.task_dir_name
+        results_dir.mkdir(parents=True, exist_ok=True)
+        completed_ids = get_completed_task_ids(results_dir)
+        if completed_ids:
+            logger.info(
+                "  Condition %d: %d completed task(s) in %s",
+                cond, len(completed_ids), results_dir,
+            )
+        cond_state[cond] = {
+            "control_loop": _import_control_loop(cond),
+            "results_dir": results_dir,
+            "completed_ids": completed_ids,
+            "prefix": CONDITION_PREFIXES[cond],
+        }
+
+    drone_cam_id = env.drone_cam_id
+    consecutive_timeouts = 0
+
+    for variant_num, variant_tasks in variant_groups:
         logger.info(
-            "\n===== Condition %d (%s): %d task(s) =====",
-            cond, CONDITION_PREFIXES[cond], len(tasks),
+            "\n===== Variant round %d: %d task(s) across %d condition(s) =====",
+            variant_num, len(variant_tasks), len(valid_conditions),
         )
 
-        _run_condition_tasks(
-            condition=cond,
-            tasks=tasks,
-            env=env,
-            batch=batch,
-            server_url=server_url,
-            map_info=map_info,
-            args=args,
-            sim_manager=sim_manager,
-        )
+        for task in variant_tasks:
+            task_id = task.get("task_id", "")
 
-        logger.info("===== Condition %d finished =====\n", cond)
+            for cond in valid_conditions:
+                state = cond_state[cond]
+
+                if task_id and task_id in state["completed_ids"]:
+                    logger.info(
+                        "  Skipping completed: %s (condition %d)", task_id, cond,
+                    )
+                    continue
+
+                logger.info(
+                    "  Task '%s' | Condition %d (%s)",
+                    task_id or task["instruction"][:60],
+                    cond,
+                    state["prefix"],
+                )
+
+                retry = True
+                while retry:
+                    retry = False
+                    try:
+                        _run_single_task(
+                            condition=cond,
+                            task=task,
+                            control_loop=state["control_loop"],
+                            results_dir=state["results_dir"],
+                            prefix=state["prefix"],
+                            env=env,
+                            batch=batch,
+                            server_url=server_url,
+                            map_info=map_info,
+                            args=args,
+                            drone_cam_id=drone_cam_id,
+                        )
+                        consecutive_timeouts = 0
+                    except KeyboardInterrupt:
+                        logger.info("  Task interrupted.")
+                        raise
+                    except (ReadTimeout, RequestsConnectionError) as e:
+                        consecutive_timeouts += 1
+                        logger.error(
+                            "  Task failed (timeout %d/%d): %s",
+                            consecutive_timeouts, MAX_CONSECUTIVE_TIMEOUTS, e,
+                        )
+                        if consecutive_timeouts >= MAX_CONSECUTIVE_TIMEOUTS:
+                            logger.warning(
+                                "  %d consecutive timeouts, restarting simulator...",
+                                consecutive_timeouts,
+                            )
+                            try:
+                                env = _restart_sim(sim_manager, map_info, args, batch)
+                                drone_cam_id = env.drone_cam_id
+                                consecutive_timeouts = 0
+                                retry = True
+                            except Exception as restart_err:
+                                logger.error(
+                                    "  Simulator restart failed: %s", restart_err,
+                                )
+                                raise
+                    except Exception as e:
+                        consecutive_timeouts = 0
+                        logger.error("  Task failed: %s", e, exc_info=True)
+
+    logger.info("===== All variant rounds finished for map '%s' =====", map_info.name)
 
 
 def main():
