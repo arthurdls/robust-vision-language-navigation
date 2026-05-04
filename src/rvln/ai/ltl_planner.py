@@ -17,24 +17,6 @@ class ConstraintInfo:
     polarity: Literal["negative", "positive"]
 
 
-def _find_eventuality_aps(node) -> set[str]:
-    """Find all atomic propositions under F (eventually) operators in a Spot formula tree."""
-    results: set[str] = set()
-    if node.kind() == spot.op_F:
-        _collect_aps(node, results)
-    for i in range(node.size()):
-        results |= _find_eventuality_aps(node[i])
-    return results
-
-
-def _collect_aps(node, results: set[str]) -> None:
-    """Collect all atomic propositions in a formula subtree."""
-    if node.kind() == spot.op_ap:
-        results.add(str(node))
-    for i in range(node.size()):
-        _collect_aps(node[i], results)
-
-
 def _predicate_key_to_index(key: str) -> int:
     """Parse predicate key to integer index (e.g. 'pi_1' -> 1, 'p1' -> 1)."""
     key = key.strip()
@@ -126,11 +108,8 @@ class LTLSymbolicPlanner:
         self._bdd_false = spot.formula_to_bdd(
             spot.formula("0"), self.automaton.get_dict(), self.automaton
         )
-        # IMPORTANT: classify predicates BEFORE adding the sink state.
-        # _classify_predicates uses _has_forward_edge which skips sink edges,
-        # so if the sink exists during classification, the last goal predicate
-        # (whose only forward edge leads to the sink) gets misclassified as a
-        # constraint and is never returned by get_next_predicate.
+        # Classify before adding the sink state (ordering is harmless since
+        # formula-structural classification doesn't inspect the automaton).
         self.constraint_predicates = self._classify_predicates()
         self._add_sink_state()
         self.current_automaton_state = self.automaton.get_init_state_number()
@@ -170,10 +149,6 @@ class LTLSymbolicPlanner:
     def _get_bdd_goal_check(self, goal_p_idx: int):
         """BDD: goal predicate TRUE, positive constraints TRUE, rest FALSE."""
         return self._build_bdd({goal_p_idx} | self._positive_constraint_indices())
-
-    def _get_bdd_all_false(self):
-        """BDD: ALL predicates FALSE."""
-        return self._build_bdd(set())
 
     def _get_bdd_constraint_violation(self, key: str):
         """BDD representing the violation state for a constraint.
@@ -332,118 +307,87 @@ class LTLSymbolicPlanner:
     # ------------------------------------------------------------------
 
     def _classify_predicates(self) -> dict[str, ConstraintInfo]:
-        """Classify predicates as constraints vs goals using automaton structure.
+        """Classify predicates as constraints vs goals by walking the formula tree.
 
-        Three-pass approach:
-        1. Identify candidates: predicates with no forward edge when only
-           that predicate is TRUE (all others FALSE).
-        2. Detect polarity of each candidate.
-        3. Re-check negative candidates with positive constraints TRUE. If
-           forward edges appear, the candidate is a goal blocked by
-           unsatisfied positive constraints in pass 1.
+        Deterministic rules (no automaton probing):
+          G(pN)              -> positive constraint (maintain)
+          G(!pN)             -> negative constraint (avoid)
+          F(...)             -> all APs underneath are goals
+          positive pN left of U -> positive constraint (maintain until right side)
+          negated !pN left of U -> pN is a sequenced goal, not a constraint
+          right of U         -> goal
+          bare AP / default  -> goal
         """
         if not self.pi_map or self.automaton is None:
             return {}
 
-        num_states = self.automaton.num_states()
-
-        candidate_keys: list[str] = []
-        for key in self.pi_map:
-            p_idx = _predicate_key_to_index(key)
-            try:
-                test_bdd = self._get_bdd_for_single_task(p_idx)
-            except ValueError:
-                continue
-            if not self._has_forward_edge(test_bdd, num_states):
-                candidate_keys.append(key)
-
-        polarities: dict[str, Literal["negative", "positive"]] = {}
-        for key in candidate_keys:
-            polarities[key] = self._detect_polarity(key)
-
-        positive_keys = [k for k, p in polarities.items() if p == "positive"]
-        positive_indices = {_predicate_key_to_index(k) for k in positive_keys}
-
-        constraints: dict[str, ConstraintInfo] = {}
-        for key in candidate_keys:
-            if polarities[key] == "positive":
-                constraints[key] = ConstraintInfo(
-                    description=self.pi_map[key], polarity="positive",
-                )
-                continue
-
-            if positive_keys:
-                p_idx = _predicate_key_to_index(key)
-                recheck_bdd = self._build_bdd({p_idx} | positive_indices)
-                if self._has_forward_edge(recheck_bdd, num_states):
-                    continue
-
-            constraints[key] = ConstraintInfo(
-                description=self.pi_map[key], polarity="negative",
-            )
-
-        # IMPORTANT: formula-level override for postprocessed/merged automata.
-        # spot.postprocess(aut, "monitor", "small") (or some Spot versions
-        # natively) can merge the final accepting state into an earlier state.
-        # This makes the last goal's accepting transition a self-loop, causing
-        # _has_forward_edge to miss it and misclassify the goal as a constraint.
-        # A predicate under an F (eventually) operator is semantically a goal
-        # that MUST be achieved, never a constraint. We walk Spot's own parse
-        # tree to find these predicates reliably.
-        spot_formula = self._raw_formula.replace("pi_", "p")
+        spot_str = self._raw_formula.replace("pi_", "p")
         try:
-            eventuality_aps = _find_eventuality_aps(spot.formula(spot_formula))
+            tree = spot.formula(spot_str)
         except Exception:
-            eventuality_aps = set()
-        for key in list(constraints.keys()):
-            p_idx = _predicate_key_to_index(key)
-            if f"p{p_idx}" in eventuality_aps:
-                del constraints[key]
+            return {}
 
-        return constraints
+        ap_constraints: dict[str, ConstraintInfo] = {}
+        self._walk_classify(tree, ap_constraints)
 
-    def _has_forward_edge(self, test_bdd, num_states: int) -> bool:
-        """Check if test_bdd produces any forward (non-self, non-sink) edge at any state."""
-        for state in range(num_states):
-            if state == self._sink_state:
-                continue
-            for edge in self.automaton.out(state):
-                if edge.dst == state:
-                    continue
-                if edge.dst == self._sink_state:
-                    continue
-                if (test_bdd & edge.cond) != self._bdd_false:
-                    return True
-        return False
+        result: dict[str, ConstraintInfo] = {}
+        for ap_name, info in ap_constraints.items():
+            if ap_name.startswith("p") and ap_name[1:].isdigit():
+                pi_key = f"pi_{ap_name[1:]}"
+                if pi_key in self.pi_map:
+                    result[pi_key] = info
+        return result
 
-    def _detect_polarity(self, key: str) -> Literal["negative", "positive"]:
-        """Detect whether a constraint is negative (avoid) or positive (maintain).
+    def _walk_classify(self, node, out: dict[str, ConstraintInfo]) -> None:
+        kind = node.kind()
+        if kind == spot.op_G:
+            self._classify_under_g(node[0], out)
+            return
+        if kind == spot.op_F:
+            return
+        if kind == spot.op_U:
+            self._classify_until_left(node[0], out)
+            return
+        for i in range(node.size()):
+            self._walk_classify(node[i], out)
 
-        Tests two BDDs at the initial state:
-        - bdd_true: this predicate TRUE, all others FALSE
-        - bdd_all_false: all predicates FALSE
+    def _classify_under_g(self, node, out: dict[str, ConstraintInfo]) -> None:
+        kind = node.kind()
+        if kind == spot.op_ap:
+            ap = str(node)
+            out[ap] = ConstraintInfo(
+                description=self._ap_description(ap), polarity="positive",
+            )
+            return
+        if kind == spot.op_Not and node[0].kind() == spot.op_ap:
+            ap = str(node[0])
+            out[ap] = ConstraintInfo(
+                description=self._ap_description(ap), polarity="negative",
+            )
+            return
+        if kind in (spot.op_F, spot.op_U, spot.op_G):
+            self._walk_classify(node, out)
+            return
+        for i in range(node.size()):
+            self._classify_under_g(node[i], out)
 
-        If bdd_true has edges but bdd_all_false does not, the predicate being
-        TRUE is accepted and being FALSE is rejected: positive (maintain).
-        Otherwise, default to negative (avoid).
-        """
-        p_idx = _predicate_key_to_index(key)
-        bdd_true = self._get_bdd_for_single_task(p_idx)
-        bdd_all_false = self._get_bdd_all_false()
+    def _classify_until_left(self, node, out: dict[str, ConstraintInfo]) -> None:
+        kind = node.kind()
+        if kind == spot.op_ap:
+            ap = str(node)
+            out[ap] = ConstraintInfo(
+                description=self._ap_description(ap), polarity="positive",
+            )
+            return
+        if kind == spot.op_Not and node[0].kind() == spot.op_ap:
+            return
+        for i in range(node.size()):
+            self._classify_until_left(node[i], out)
 
-        init = self.automaton.get_init_state_number()
-        has_edge_true = any(
-            (bdd_true & edge.cond) != self._bdd_false
-            for edge in self.automaton.out(init)
-        )
-        has_edge_all_false = any(
-            (bdd_all_false & edge.cond) != self._bdd_false
-            for edge in self.automaton.out(init)
-        )
-
-        if has_edge_true and not has_edge_all_false:
-            return "positive"
-        return "negative"
+    def _ap_description(self, ap_name: str) -> str:
+        if ap_name.startswith("p") and ap_name[1:].isdigit():
+            return self.pi_map.get(f"pi_{ap_name[1:]}", ap_name)
+        return ap_name
 
     def get_active_constraints(self) -> list[ConstraintInfo]:
         """Return constraints active at the current automaton state.
