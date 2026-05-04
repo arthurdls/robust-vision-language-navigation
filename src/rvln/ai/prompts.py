@@ -844,23 +844,16 @@ Respond with EXACTLY ONE JSON object (no markdown fences):
 {{
   "complete": true/false,
   "completion_percentage": 0.0 to 1.0,
-  "diagnosis": "stopped_short" or "overshot" or "complete" or "constraint_violated",
-  "corrective_instruction": "..." or null,
-  "constraint_violated": true/false
+  "diagnosis": "stopped_short" or "overshot" or "complete",
+  "corrective_instruction": "..." or null
 }}
 
 - "complete": true ONLY if the diary and displacement strongly indicate
   the subgoal is done.
 - "diagnosis": "complete" if done, "stopped_short" if more progress needed,
-  "overshot" if too far, "constraint_violated" if an active constraint was
-  breached.
+  "overshot" if too far.
 - "corrective_instruction": REQUIRED if not complete. A single-action drone
-  command. If a constraint was violated, the corrective instruction should
-  restore compliance: move away from a forbidden region for avoidance
-  constraints, or restore the required condition for maintenance constraints
-  (e.g., "ascend 2 meters" to regain an altitude constraint).
-  null only if complete.
-- "constraint_violated": true if any constraint was violated."""
+  command. null only if complete."""
 
 TEXT_ONLY_CONVERGENCE_PROMPT_WITH_CONSTRAINTS = """\
 Subgoal: {subgoal}
