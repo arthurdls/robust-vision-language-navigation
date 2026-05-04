@@ -245,8 +245,11 @@ Respond with EXACTLY ONE JSON object (no markdown fences):
   an active constraint was breached.
 - "corrective_instruction": REQUIRED if not complete -- a single-action drone
   command to fix the biggest gap (not compound -- one action per correction).
-  If a constraint was violated, the corrective instruction should move the drone
-  AWAY from the constraint violation (e.g., "move away from building B").
+  If a constraint was violated, the corrective instruction should restore
+  compliance with that constraint. For avoidance constraints (e.g., "stay away
+  from building B"), move the drone away from the forbidden region. For
+  maintenance constraints (e.g., "stay above the pergolas"), restore the
+  required condition (e.g., "ascend 2 meters").
   null only if complete.
 - "constraint_violated": true if any active constraint listed above has been
   violated based on the visual evidence and diary. false if no constraints are
@@ -258,8 +261,10 @@ Respond with EXACTLY ONE JSON object (no markdown fences):
     * "Turn right/left <N> degrees" -- precise yaw adjustment when the target
       is off-screen or partially visible.
     * "Move forward <N> meters" / "Move closer to <landmark>" -- close a gap.
-    * "Ascend/Descend <N> meters" -- altitude correction.
-    * "Move away from <landmark>" -- retreat from a constraint violation.
+    * "Ascend/Descend <N> meters" -- altitude correction or restoring an
+      altitude-related maintenance constraint.
+    * "Move away from <landmark>" -- retreat from an avoidance constraint
+      violation or an obstruction.
     * "Ascend <N> meters" -- rise above an obstacle blocking the path.
     * "Turn right/left <N> degrees" -- reorient to route around an obstacle.
     * "Move back from <obstacle>" -- retreat from an obstruction that is too
@@ -847,9 +852,14 @@ Respond with EXACTLY ONE JSON object (no markdown fences):
 - "complete": true ONLY if the diary and displacement strongly indicate
   the subgoal is done.
 - "diagnosis": "complete" if done, "stopped_short" if more progress needed,
-  "overshot" if too far.
+  "overshot" if too far, "constraint_violated" if an active constraint was
+  breached.
 - "corrective_instruction": REQUIRED if not complete. A single-action drone
-  command. null only if complete.
+  command. If a constraint was violated, the corrective instruction should
+  restore compliance: move away from a forbidden region for avoidance
+  constraints, or restore the required condition for maintenance constraints
+  (e.g., "ascend 2 meters" to regain an altitude constraint).
+  null only if complete.
 - "constraint_violated": true if any constraint was violated."""
 
 TEXT_ONLY_CONVERGENCE_PROMPT_WITH_CONSTRAINTS = """\
@@ -878,7 +888,12 @@ Respond with EXACTLY ONE JSON object (no markdown fences):
 - "complete": true ONLY if the diary and displacement strongly indicate
   the subgoal is done.
 - "diagnosis": "complete" if done, "stopped_short" if more progress needed,
-  "overshot" if too far.
+  "overshot" if too far, "constraint_violated" if an active constraint was
+  breached.
 - "corrective_instruction": REQUIRED if not complete. A single-action drone
-  command. null only if complete.
+  command. If a constraint was violated, the corrective instruction should
+  restore compliance: move away from a forbidden region for avoidance
+  constraints, or restore the required condition for maintenance constraints
+  (e.g., "ascend 2 meters" to regain an altitude constraint).
+  null only if complete.
 - "constraint_violated": true if any constraint was violated."""
