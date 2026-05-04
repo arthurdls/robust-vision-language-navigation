@@ -8,8 +8,10 @@ run_condition*.py and run_all_conditions.py.
 import glob
 import json
 import logging
+import re
+from collections import defaultdict
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from ..config import (
     DEFAULT_DIARY_CHECK_INTERVAL,
@@ -181,6 +183,44 @@ def _apply_overrides(task: dict, args, overrides: Dict[str, str]) -> None:
         val = getattr(args, attr, None)
         if val is not None:
             task[key] = val
+
+
+_VARIANT_SUFFIX_RE = re.compile(r"^(.+)_(\d+)$")
+
+
+def _parse_variant(task_id: str) -> Tuple[str, int]:
+    """Extract (base_name, variant_number) from a task_id.
+
+    Convention: ``above_pergolas`` is variant 1, ``above_pergolas_2`` is
+    variant 2, ``above_pergolas_3`` is variant 3.  A trailing ``_N`` with
+    N >= 2 is treated as a variant suffix; everything else is variant 1.
+    """
+    m = _VARIANT_SUFFIX_RE.match(task_id)
+    if m and int(m.group(2)) >= 2:
+        return m.group(1), int(m.group(2))
+    return task_id, 1
+
+
+def group_tasks_by_variant(
+    tasks: List[Dict[str, Any]],
+) -> List[Tuple[int, List[Dict[str, Any]]]]:
+    """Group tasks by variant round for interleaved execution.
+
+    Returns a list of ``(variant_number, task_list)`` pairs sorted by
+    variant number, where each *task_list* is sorted alphabetically by
+    base task name.  Tasks without a ``task_id`` are placed in variant 1.
+    """
+    buckets: Dict[int, List[Tuple[str, Dict[str, Any]]]] = defaultdict(list)
+    for task in tasks:
+        task_id = task.get("task_id", "")
+        base, variant = _parse_variant(task_id) if task_id else ("", 1)
+        buckets[variant].append((base, task))
+
+    result: List[Tuple[int, List[Dict[str, Any]]]] = []
+    for variant_num in sorted(buckets):
+        sorted_tasks = [t for _, t in sorted(buckets[variant_num], key=lambda x: x[0])]
+        result.append((variant_num, sorted_tasks))
+    return result
 
 
 def sanitize_run_label(text: str, max_len: int = 40, fallback: str = "task") -> str:
