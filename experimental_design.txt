@@ -219,8 +219,9 @@ Expected outcome: Reasonable progress tracking but unreliable
 
 The LTL planner supports temporal constraints (both avoidance and
 maintenance) in addition to goal sequencing. The system handles all
-constraint types that the Spot automaton can represent, using BDD
-queries rather than formula parsing. Four constraint forms are
+constraint types that the Spot automaton can represent. Classification
+uses deterministic formula-tree walking, and runtime constraint
+checking uses BDD queries on the automaton. Four constraint forms are
 supported:
 
   Negative (avoidance) constraints:
@@ -268,49 +269,45 @@ LTL_NL_EXAMPLES_PROMPT includes worked examples:
   - Mixed constraints: "Navigate to bridge, stay above treeline,
     never over highway" with G(pi_2) & G(!pi_3)
 
-3b. AUTOMATON-BASED CONSTRAINT CLASSIFICATION
-----------------------------------------------
+3b. CONSTRAINT CLASSIFICATION AND RUNTIME CHECKING
+----------------------------------------------------
+Constraint handling has two phases: initial classification (syntactic,
+at plan time) and runtime activity checking (BDD-based, per step).
+
+INITIAL CLASSIFICATION (formula-tree walking):
+
 After the Spot automaton is built, each predicate is classified as
-goal or constraint, and each constraint's polarity is determined,
-using a three-pass BDD query approach:
+goal or constraint by walking the parsed LTL formula tree. This is
+deterministic and requires no automaton probing:
 
-  Pass 1 (goal vs. constraint): A predicate is a CONSTRAINT if it
-  never has a forward-progressing edge (dst != src) at any state.
-  Goal predicates advance the automaton; constraint predicates do
-  not.
+  G(pN)              -> positive constraint (maintain)
+  G(!pN)             -> negative constraint (avoid)
+  F(...)             -> all atomic propositions underneath are goals
+  positive pN left of U -> positive constraint (maintain until right)
+  negated !pN left of U -> sequenced goal, not a constraint
+  right of U         -> goal
+  bare AP / default  -> goal
 
-  Pass 2 (polarity detection): For each candidate constraint, two
-  BDDs are tested at the initial state:
-    - "Only this predicate TRUE" BDD: if edges exist, the automaton
-      accepts the predicate being true (positive candidate).
-    - "All predicates FALSE" BDD: if no edges exist, the automaton
-      rejects the predicate being false (positive confirmation).
-  A constraint is classified as positive when the first BDD has edges
-  and the second does not. Otherwise it defaults to negative.
+This approach covers all four supported constraint forms (G(pi_X),
+G(!pi_X), pi_X U pi_Y, !pi_X U pi_Y) and their compositions. It
+relies on the LLM producing formulas in these standard patterns,
+which the prompt design in section 3a is engineered to ensure.
 
-  Pass 3 (re-check with positive constraints): Candidates classified
-  as negative in pass 2 are re-checked using a BDD that sets the
-  candidate TRUE alongside all identified positive constraints.
-  If forward edges now appear, the candidate is actually a goal that
-  was blocked by unsatisfied positive constraints in pass 1, and it
-  is reclassified as a goal.
+RUNTIME CONSTRAINT CHECKING (BDD queries):
 
-  Active constraint detection per state uses polarity-aware BDDs:
-    - Negative: making the predicate TRUE produces no valid edge at
-      the current state (the violation is rejected).
-    - Positive: making the predicate FALSE (with other positive
-      constraints set TRUE) produces no valid edge at the current
-      state.
-  When a scoped constraint expires (e.g., !pi_X U pi_Y after pi_Y,
-  or pi_X U pi_Y after pi_Y), the violation BDD starts matching
-  edges and the constraint is released.
+Active constraint detection per state uses polarity-aware BDDs:
+  - Negative: making the predicate TRUE produces no valid edge at
+    the current state (the automaton rejects the violation).
+  - Positive: making the predicate FALSE (with other positive
+    constraints set TRUE) produces no valid edge at the current
+    state.
+When a scoped constraint expires (e.g., !pi_X U pi_Y after pi_Y,
+or pi_X U pi_Y after pi_Y), the violation BDD starts matching
+edges and the constraint is released.
 
-  Goal checking (get_next_predicate, advance_state) also satisfies
-  positive constraints in BDD queries, so the automaton correctly
-  identifies forward edges even when positive constraints are present.
-
-This approach is robust to any formula structure the automaton can
-represent, with no regex parsing of the LTL formula string.
+Goal checking (get_next_predicate, advance_state) also satisfies
+positive constraints in BDD queries, so the automaton correctly
+identifies forward edges even when positive constraints are present.
 
 3c. GOAL ADHERENCE MONITOR CONSTRAINT HANDLING
 -----------------------------------------------
@@ -690,12 +687,15 @@ Diary Monitor          | Yes | No  | Yes | No  | No* | Mod | Mod
 Text Diary             | Yes | No  | Yes | No  | No  | No  | Yes
 Displacement Data      | Yes | No  | Yes | No  | No  | No  | Yes
 Convergence Correction | Yes | No  | Yes | No  | Yes*| Yes | Yes
-Stall Detection        | Yes | No  | Yes | No  | No  | No  | Yes
-Constraint Enforcement | Yes | No  | No  | No  | No  | No  | No
+Stall Detection        | Yes | No  | Yes | No  | No  | Yes+| Yes+
+Constraint Enforcement | Yes | No  | No  | No  | Yes | Yes | Yes
 
 C4*: Uses single-frame VLM, no diary. Has convergence corrections
      but based on single-frame assessment only.
 Mod: Modified version (C5 = grid only, C6 = text-only global).
+Yes+: C5 and C6 use the shared subgoal_runner which triggers stall
+     detection, but unlike C0 and C2 they have no ask_help callback,
+     so a stall stops the subgoal rather than skipping it.
 C6 NOTE: C6 still uses a VLM for the LOCAL prompt (2-frame comparison
      to generate diary entries). Only the GLOBAL and CONVERGENCE
      assessments use a text-only LLM. In the paper, label this

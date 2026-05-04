@@ -6,30 +6,21 @@ Add negative constraint support to the LTL-guided UAV system so the drone can en
 
 ## Architecture
 
-The Spot automaton already encodes constraint semantics in its edge structure. Rather than parsing the LTL formula string, we query the automaton directly to classify predicates and determine which constraints are active at each state.
+Constraint handling has two phases: initial classification uses deterministic formula-tree walking at plan time, while runtime activity checking uses BDD queries on the automaton per step.
 
-### Constraint Classification (One-Time)
+### Constraint Classification (One-Time, Formula-Tree Walking)
 
-After `plan_from_natural_language()` builds the automaton, classify each predicate:
+After `plan_from_natural_language()` builds the automaton, `_classify_predicates()` walks the parsed LTL formula tree to classify each predicate using deterministic rules:
 
-- **Goal predicate**: has a forward-progressing edge (dst != src) at some reachable state. These are subgoals the drone must achieve.
-- **Constraint predicate**: never has a forward-progressing edge at any state. These represent conditions that must NOT become true.
+- `G(pN)`: positive constraint (maintain)
+- `G(!pN)`: negative constraint (avoid)
+- `F(...)`: all atomic propositions underneath are goals
+- Positive `pN` left of `U`: positive constraint (maintain until right side)
+- Negated `!pN` left of `U`: sequenced goal, not a constraint
+- Right of `U`: goal
+- Bare AP / default: goal
 
-Algorithm:
-```
-for each pi_X in pi_map:
-    is_goal = False
-    for each state S in automaton:
-        build BDD where pi_X=true, all others=false
-        for each edge from S where dst != S:
-            if BDD & edge.cond != false:
-                is_goal = True
-                break
-    if not is_goal:
-        mark pi_X as constraint predicate
-```
-
-This classification is stored once and does not change during execution.
+This classification is stored once and does not change during execution. It covers all four supported constraint forms and relies on the LLM producing formulas in these standard patterns.
 
 ### Active Constraint Detection (Per State)
 
@@ -53,14 +44,12 @@ for each constraint predicate pi_X:
 
 ### Prompt Injection
 
-Active constraint NL descriptions are passed to the `GoalAdherenceMonitor` constructor via a new `negative_constraints: Optional[List[str]]` parameter (default `None`, empty list internally).
-
-When constraints are present, they are injected into `DIARY_GLOBAL_PROMPT` and `DIARY_CONVERGENCE_PROMPT` after the subgoal line:
+Active constraint `ConstraintInfo` objects (with description and polarity) are passed to the `GoalAdherenceMonitor` constructor via the `constraints` parameter. When constraints are present, the monitor selects the `_CONSTRAINTS` variant of global and convergence prompt templates and injects a constraints block:
 
 ```
 Active constraints (must be maintained throughout):
-  - stay away from building B
-  - do not fly over zone C
+  - AVOID: stay away from building B
+  - MAINTAIN: keep altitude above 10 meters
 ```
 
 The expected JSON output gains a `constraint_violated: true/false` field. Documentation in the prompt explains when to set it true.
