@@ -19,15 +19,12 @@ import argparse
 import glob
 import json
 import logging
-import math
 import os
 import sys
 import time
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
-
-from PIL import Image
 
 _SRC = Path(__file__).resolve().parent.parent / "src"
 if _SRC.is_dir() and str(_SRC) not in sys.path:
@@ -52,6 +49,7 @@ from rvln.config import (
     DEFAULT_TIME_DILATION,
     DEFAULT_VLM_MODEL,
 )
+from rvln.eval.subgoal_runner import SubgoalConfig, run_subgoal
 from rvln.paths import (
     BATCH_SCRIPT,
     REPO_ROOT,
@@ -59,16 +57,12 @@ from rvln.paths import (
 )
 from rvln.maps import validate_task_map
 from rvln.sim.env_setup import (
-    apply_action_poses,
     import_batch_module,
     interactive_camera_select,
     load_env_vars,
     normalize_initial_pos,
     parse_position,
-    relative_pose_to_world,
-    set_drone_cam_and_get_image,
     setup_sim_env,
-    state_for_openvla,
 )
 
 SHARED_TASKS_DIR = REPO_ROOT / "tasks"
@@ -321,385 +315,6 @@ def _ask_user_for_help(
             print("Invalid choice, please enter a, b, c, d, or e.")
 
 
-def _run_subgoal(
-    env, batch, server_url, subgoal_nl, monitor_model, llm_model, check_interval,
-    max_steps, max_corrections, origin_x, origin_y, origin_z, origin_yaw,
-    drone_cam_id, frames_dir, subgoal_dir, frame_offset, trajectory_log,
-    check_interval_s=None, max_seconds=None,
-):
-    """Run goal-adherence-monitored control loop for a single subgoal (same as run_integration._run_subgoal but with no constraints)."""
-    from rvln.ai.goal_adherence_monitor import DiaryCheckResult, GoalAdherenceMonitor
-    from rvln.ai.subgoal_converter import SubgoalConverter
-
-    use_async = check_interval_s is not None
-    subgoal_dir.mkdir(parents=True, exist_ok=True)
-    diary_artifacts = subgoal_dir / "diary_artifacts"
-    diary_artifacts.mkdir(parents=True, exist_ok=True)
-
-    converter = SubgoalConverter(model=llm_model)
-    conversion = converter.convert(subgoal_nl)
-    converted_instruction = conversion.instruction
-    current_instruction = converted_instruction
-
-    monitor = GoalAdherenceMonitor(
-        subgoal=subgoal_nl,
-        check_interval=check_interval,
-        model=monitor_model,
-        artifacts_dir=diary_artifacts,
-        max_corrections=max_corrections,
-        check_interval_s=check_interval_s,
-    )
-
-    current_pose = [0.0, 0.0, 0.0, 0.0]
-    openvla_pose_origin = [0.0, 0.0, 0.0, 0.0]
-    last_pose = None
-    small_count = 0
-    override_history = []
-    in_correction = False
-    last_correction_step = -check_interval
-    last_correction_time = time.time() if use_async else None
-    subgoal_start_time = time.time()
-    stop_reason = "max_steps"
-    total_steps = 0
-    replan_instruction = ""
-
-    batch.reset_model(server_url)
-    result = None
-    step = 0
-
-    def _process_help(completion_pct: float, reasoning: str, trigger: str) -> str:
-        """Handle interactive help prompt. Returns "retry" or "break"."""
-        nonlocal current_instruction, subgoal_nl, converted_instruction
-        nonlocal openvla_pose_origin, small_count, last_pose
-        nonlocal in_correction, last_correction_step, last_correction_time
-        nonlocal monitor, converter
-        nonlocal stop_reason, total_steps, replan_instruction
-
-        logger.warning(
-            "Ask-help triggered at step %d by %s (completion: %.0f%%): %s",
-            step, trigger, completion_pct * 100, reasoning,
-        )
-
-        choice, value = _ask_user_for_help(
-            subgoal_nl, completion_pct, current_instruction, reasoning,
-        )
-
-        logger.info(
-            "User chose '%s' at step %d (value: %s)",
-            choice, step, repr(value) if value else "(none)",
-        )
-
-        if choice == "correction":
-            old_instruction = current_instruction
-            current_instruction = value
-            openvla_pose_origin = list(current_pose)
-            small_count = 0
-            last_pose = None
-            in_correction = True
-            last_correction_step = step
-            if use_async:
-                last_correction_time = time.time()
-            batch.reset_model(server_url)
-            override_history.append({
-                "step": step,
-                "type": "user_correction",
-                "trigger": trigger,
-                "old_instruction": old_instruction,
-                "new_instruction": value,
-            })
-            logger.info(
-                "User correction applied: '%s' -> '%s' (subgoal unchanged: '%s')",
-                old_instruction, value, subgoal_nl,
-            )
-            return "retry"
-
-        if choice == "override_subgoal":
-            monitor.cleanup()
-            old_subgoal = subgoal_nl
-            subgoal_nl = value
-            logger.info(
-                "User overriding subgoal: '%s' -> '%s'. Running SubgoalConverter...",
-                old_subgoal, value,
-            )
-            converter = SubgoalConverter(model=llm_model)
-            conversion = converter.convert(subgoal_nl)
-            converted_instruction = conversion.instruction
-            current_instruction = converted_instruction
-            monitor = GoalAdherenceMonitor(
-                subgoal=subgoal_nl,
-                check_interval=check_interval,
-                model=monitor_model,
-                artifacts_dir=diary_artifacts,
-                max_corrections=max_corrections,
-                check_interval_s=check_interval_s,
-            )
-            openvla_pose_origin = list(current_pose)
-            small_count = 0
-            last_pose = None
-            in_correction = False
-            last_correction_step = step
-            if use_async:
-                last_correction_time = time.time()
-            batch.reset_model(server_url)
-            override_history.append({
-                "step": step,
-                "type": "user_override_subgoal",
-                "trigger": trigger,
-                "old_subgoal": old_subgoal,
-                "new_subgoal": value,
-                "new_instruction": converted_instruction,
-            })
-            logger.info(
-                "Subgoal overridden: '%s' -> '%s' (OpenVLA instruction: '%s')",
-                old_subgoal, value, converted_instruction,
-            )
-            return "retry"
-
-        if choice == "replan":
-            logger.info(
-                "User requesting full replan with new instruction: '%s'", value,
-            )
-            stop_reason = "replan"
-            replan_instruction = value
-            total_steps = step
-            return "break"
-
-        if choice == "abort":
-            logger.info("User aborted mission at step %d.", step)
-            stop_reason = "abort"
-            total_steps = step
-            return "break"
-
-        # skip
-        logger.info("User skipped subgoal '%s' at step %d.", subgoal_nl, step)
-        stop_reason = "skipped"
-        total_steps = step
-        return "break"
-
-    while step < max_steps:
-        if max_seconds is not None and (time.time() - subgoal_start_time) >= max_seconds:
-            stop_reason = "max_seconds"
-            total_steps = step
-            break
-
-        if use_async:
-            async_result = monitor.poll_result()
-            if async_result is not None:
-                if async_result.action == "stop":
-                    stop_reason = "monitor_complete"
-                    total_steps = step
-                    break
-                if async_result.action == "ask_help":
-                    if _process_help(async_result.completion_pct, async_result.reasoning, "async_monitor") == "retry":
-                        continue
-                    break
-
-        image = set_drone_cam_and_get_image(env, drone_cam_id)
-        if image is None:
-            stop_reason = "no_image"
-            total_steps = step
-            break
-
-        global_frame_idx = frame_offset + step
-        frame_path = frames_dir / f"frame_{global_frame_idx:06d}.png"
-        try:
-            import cv2
-            cv2.imwrite(str(frame_path), image)
-        except Exception:
-            pass
-
-        try:
-            result = monitor.on_frame(frame_path, displacement=list(current_pose))
-        except Exception as e:
-            logger.error("monitor.on_frame failed at step %d: %s", step, e)
-            result = DiaryCheckResult(
-                action="continue", new_instruction="", reasoning="",
-                diary_entry="", completion_pct=monitor.last_completion_pct,
-            )
-
-        if not use_async:
-            if result.action == "stop":
-                stop_reason = "monitor_complete"
-                total_steps = step
-                break
-            if result.action == "ask_help":
-                if _process_help(result.completion_pct, result.reasoning, "sync_monitor") == "retry":
-                    continue
-                break
-
-        openvla_pose = [c - o for c, o in zip(current_pose, openvla_pose_origin)]
-        response = batch.send_prediction_request(
-            image=Image.fromarray(image),
-            proprio=state_for_openvla(openvla_pose),
-            instr=current_instruction.strip().lower(),
-            server_url=server_url,
-        )
-
-        if response is None:
-            stop_reason = "no_response"
-            total_steps = step
-            break
-
-        action_poses = response.get("action")
-        if not isinstance(action_poses, list) or len(action_poses) == 0:
-            stop_reason = "empty_action"
-            total_steps = step
-            break
-
-        if any(o != 0.0 for o in openvla_pose_origin):
-            yaw_origin_rad = math.radians(openvla_pose_origin[3])
-            reframed_poses = []
-            for pose in action_poses:
-                if isinstance(pose, (list, tuple)) and len(pose) >= 4:
-                    reframed_poses.append([
-                        float(pose[0]) + openvla_pose_origin[0],
-                        float(pose[1]) + openvla_pose_origin[1],
-                        float(pose[2]) + openvla_pose_origin[2],
-                        float(pose[3]) + yaw_origin_rad,
-                    ])
-                else:
-                    reframed_poses.append(pose)
-            action_poses = reframed_poses
-
-        try:
-            new_image, current_pose, steps_added = apply_action_poses(
-                env, action_poses, origin_x, origin_y, origin_z, origin_yaw,
-                trajectory_log=trajectory_log, sleep_s=0.1, drone_cam_id=drone_cam_id,
-            )
-        except Exception as e:
-            logger.error("Error executing action at step %d: %s", step, e)
-            stop_reason = "action_error"
-            total_steps = step
-            break
-
-        total_steps = step + 1
-
-        converged = False
-        if not use_async:
-            if result is not None and result.action == "force_converge":
-                converged = True
-            steps_since_correction = step - last_correction_step
-            if last_pose is not None and steps_since_correction >= check_interval:
-                diffs = [abs(a - b) for a, b in zip(current_pose, last_pose)]
-                if all(d < ACTION_SMALL_DELTA_POS for d in diffs[:3]) and diffs[3] < ACTION_SMALL_DELTA_YAW:
-                    small_count += 1
-                else:
-                    small_count = 0
-                if small_count >= batch.ACTION_SMALL_STEPS:
-                    converged = True
-        else:
-            elapsed_since_correction = time.time() - last_correction_time
-            if last_pose is not None and elapsed_since_correction >= check_interval_s:
-                diffs = [abs(a - b) for a, b in zip(current_pose, last_pose)]
-                if all(d < ACTION_SMALL_DELTA_POS for d in diffs[:3]) and diffs[3] < ACTION_SMALL_DELTA_YAW:
-                    small_count += 1
-                else:
-                    small_count = 0
-                if small_count >= batch.ACTION_SMALL_STEPS:
-                    converged = True
-        last_pose = list(current_pose)
-
-        if converged:
-            conv_frame = set_drone_cam_and_get_image(env, drone_cam_id)
-            conv_path = frame_path
-            if conv_frame is not None:
-                conv_path = frames_dir / f"frame_conv_{global_frame_idx:06d}.png"
-                try:
-                    import cv2
-                    cv2.imwrite(str(conv_path), conv_frame)
-                except Exception:
-                    conv_path = frame_path
-
-            try:
-                conv_result = monitor.on_convergence(conv_path, displacement=list(current_pose))
-            except Exception as e:
-                logger.error("monitor.on_convergence failed: %s", e)
-                conv_result = DiaryCheckResult(
-                    action="stop", new_instruction="",
-                    reasoning="LLM error on convergence", diary_entry="",
-                    completion_pct=monitor.last_completion_pct,
-                )
-
-            if conv_result.action == "stop":
-                stop_reason = "monitor_complete"
-                break
-
-            elif conv_result.action == "ask_help":
-                in_correction = False
-                help_decision = _process_help(
-                    conv_result.completion_pct, conv_result.reasoning, "convergence",
-                )
-                if help_decision == "break":
-                    break
-                # "retry": fall through to step += 1
-
-            elif conv_result.new_instruction:
-                override_history.append({
-                    "step": step,
-                    "type": f"convergence_{conv_result.action}",
-                    "old_instruction": current_instruction,
-                    "new_instruction": conv_result.new_instruction,
-                })
-                current_instruction = conv_result.new_instruction
-                in_correction = True
-                last_correction_step = step
-                if use_async:
-                    last_correction_time = time.time()
-                openvla_pose_origin = list(current_pose)
-                small_count = 0
-                last_pose = None
-                batch.reset_model(server_url)
-            else:
-                stop_reason = "convergence_no_command"
-                break
-
-        step += 1
-    else:
-        stop_reason = "max_steps"
-        total_steps = max_steps
-
-    all_vlm_call_records = list(monitor.vlm_rtts) + list(converter.llm_call_records)
-
-    diary_summary = {
-        "subgoal": subgoal_nl,
-        "converted_instruction": converted_instruction,
-        "diary": monitor.diary,
-        "override_history": override_history,
-        "corrections_used": monitor.corrections_used,
-        "last_completion_pct": monitor.last_completion_pct,
-        "peak_completion": monitor.peak_completion,
-        "parse_failures": monitor.parse_failures,
-        "vlm_call_count": monitor.vlm_calls,
-        "vlm_call_records": list(monitor.vlm_rtts),
-        "converter_call_records": list(converter.llm_call_records),
-        "stop_reason": stop_reason,
-        "total_steps": total_steps,
-    }
-    with open(subgoal_dir / "diary_summary.json", "w") as f:
-        json.dump(diary_summary, f, indent=2)
-
-    monitor.cleanup()
-
-    next_origin_x, next_origin_y, next_origin_z, next_origin_yaw = relative_pose_to_world(
-        origin_x, origin_y, origin_z, origin_yaw, current_pose,
-    )
-
-    return {
-        "subgoal": subgoal_nl,
-        "converted_instruction": converted_instruction,
-        "total_steps": total_steps,
-        "stop_reason": stop_reason,
-        "corrections_used": monitor.corrections_used,
-        "last_completion_pct": monitor.last_completion_pct,
-        "peak_completion": monitor.peak_completion,
-        "vlm_call_count": monitor.vlm_calls,
-        "vlm_call_records": all_vlm_call_records,
-        "parse_failures": monitor.parse_failures,
-        "next_origin": [next_origin_x, next_origin_y, next_origin_z, next_origin_yaw],
-        "replan_instruction": replan_instruction,
-    }
-
-
 def run_llm_planner_control_loop(
     env, batch, task, server_url, run_dir,
     llm_model, monitor_model, drone_cam_id,
@@ -769,17 +384,25 @@ def run_llm_planner_control_loop(
                 subgoal_index, sg_i, len(subgoals), subgoal_nl,
             )
 
-            subgoal_result = _run_subgoal(
+            sg_config = SubgoalConfig(
+                monitor_mode="full",
+                use_constraints=False,
+                check_interval=check_interval,
+                max_steps=max_steps_per_subgoal,
+                max_corrections=max_corrections,
+                check_interval_s=check_interval_s,
+                max_seconds=max_seconds,
+            )
+            subgoal_result = run_subgoal(
                 env=env, batch=batch, server_url=server_url,
                 subgoal_nl=subgoal_nl, monitor_model=monitor_model, llm_model=llm_model,
-                check_interval=check_interval, max_steps=max_steps_per_subgoal,
-                max_corrections=max_corrections,
+                config=sg_config,
                 origin_x=origin_x, origin_y=origin_y,
                 origin_z=origin_z, origin_yaw=origin_yaw,
                 drone_cam_id=drone_cam_id, frames_dir=frames_dir,
                 subgoal_dir=subgoal_dir, frame_offset=total_frame_count,
                 trajectory_log=trajectory_log,
-                check_interval_s=check_interval_s, max_seconds=max_seconds,
+                ask_help_callback=_ask_user_for_help,
             )
 
             total_frame_count += subgoal_result["total_steps"]
