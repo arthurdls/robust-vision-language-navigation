@@ -32,19 +32,21 @@ Key components:
     outputs action poses.
 
 Default parameters (from config.py):
-  - LLM model: gpt-4o (planning, subgoal conversion)
-  - VLM model: gpt-5.4 (goal adherence monitoring)
-  - Max steps per subgoal: 300
+  - LLM model: gpt-4o (planning, subgoal conversion, C6 global checks)
+  - VLM model: gpt-5.4 (goal adherence monitoring: local, global, convergence)
+  - SubgoalConverter uses the LLM model (gpt-4o), not the VLM, since
+    subgoal conversion is a text-to-text task with no image input.
+  - Max steps per subgoal: 500
   - Diary check interval: every 20 frames
-  - Max corrections per subgoal: 15
+  - Max corrections per subgoal: 20
   - Stall window: 3 checkpoints
   - Stall threshold: 0.05 (completion spread)
   - Convergence: position delta < 3.0 cm AND yaw delta < 1.0 deg
     for 10 consecutive steps
 
-Simulation: Unreal Engine (DowntownWest environment), UnrealCV gym.
-Single environment with diverse landmarks (buildings, trees, cars,
-streetlights, pergolas, sculptures, people, dogs, traffic lights).
+Simulation: Unreal Engine via UnrealCV gym. Three maps:
+DowntownWest (urban), Greek_Island (coastal), SuburbNeighborhood_Day
+(residential). See Section 4a for details.
 
 
 2. CONDITIONS (7 TOTAL: 1 FULL SYSTEM + 6 BASELINES)
@@ -98,6 +100,14 @@ Expected outcome: Performs reasonably on simple sequential tasks but
   fails on tasks with temporal constraints, branching, or complex
   dependencies. The gap vs. Condition 0 should be largest on tasks
   with constraints.
+CONFOUND NOTE: C2 ablates BOTH LTL planning AND formal constraint
+  enforcement simultaneously. If C2 underperforms C0 on constrained
+  tasks, we cannot attribute the gap solely to the absence of LTL;
+  the lack of runtime constraint enforcement also contributes. This
+  is acknowledged as a limitation. The per-category breakdown
+  (sequential vs constrained) helps distinguish the sources: if C2
+  matches C0 on sequential tasks but diverges on constrained tasks,
+  the gap is attributable to constraint enforcement.
 
 CONDITION 3: OPEN-LOOP LTL (No Monitor, No Corrections)
 --------------------------------------------------------
@@ -119,6 +129,11 @@ Expected outcome: Moderate planning accuracy (LTL decomposition works)
   but frequent execution failures. The drone will stop short, think
   it is done, and blindly advance, causing cascading failures in
   subsequent subgoals.
+SUCCESS METRIC NOTE: Convergence in C3 is self-fulfilling (the system
+  always considers convergence as "success"), so automated M1/M3
+  metrics are not meaningful. Task success for C3 must be determined
+  by manual video review, same as C1. The aggregate_results.py script
+  reports C3 M1 as "requires manual annotation" (returns None).
 
 CONDITION 4: FRAME-BY-FRAME MONITOR (No Temporal Context)
 ----------------------------------------------------------
@@ -169,7 +184,7 @@ Expected outcome: VLM can detect gross completion (target clearly
   - Stall detection (no completion percentage history to detect plateau)
   Performance between Condition 4 and Condition 0.
 
-CONDITION 6: TEXT-ONLY DIARY (No Image Grid, "Blind LLM")
+CONDITION 6: TEXT-ONLY GLOBAL ASSESSMENT (No Image Grid)
 ----------------------------------------------------------
 Pipeline: NL --> LTL-NL --> Subgoal --> SubgoalConverter --> OpenVLA
           + GoalAdherenceMonitor with text diary + displacement but NO
@@ -331,92 +346,89 @@ passed to the GoalAdherenceMonitor via _run_subgoal. Constraint status
 4. TASK DESIGN
 ======================================================================
 
-4a. ENVIRONMENT
-----------------
-Simulation environment: DowntownWest (Unreal Engine, UnrealCV)
-  - Outdoor suburban setting with diverse landmarks
-  - Buildings (white building, red building, multi-story structures)
-  - Vegetation (trees, hedges, parks)
-  - Vehicles (black car, red car, white car, parked vehicles)
-  - Infrastructure (streetlights, traffic lights, pergolas, sculptures)
-  - People and dogs
+4a. ENVIRONMENTS
+-----------------
+Three simulation maps (Unreal Engine, UnrealCV):
 
-NOTE: Currently only one simulation environment (DowntownWest) is
-available. The "3 distinct environments" from the original plan
-should be reframed as 3 distinct REGIONS within DowntownWest, each
-with different landmark compositions and visual characteristics.
-Select 3 non-overlapping regions of the map with sufficiently
-different scenery (e.g., a residential area with trees and houses,
-a commercial area with cars and buildings, a park area with
-sculptures and pergolas).
+  DowntownWest: Urban setting with diverse landmarks.
+    Buildings, vehicles, streetlights, traffic lights, pergolas,
+    sculptures, people, dogs. Mixed commercial/residential.
+
+  Greek_Island: Mediterranean coastal setting.
+    Shoreline, palm trees, Greek statues, banners, rocky trails,
+    bridges, houses on hills. Diverse terrain (beach, cliff, trail).
+
+  SuburbNeighborhood_Day: Residential suburban setting.
+    Houses, yards, parked cars, hallways, driveways, trees.
+    Quieter environment with fewer landmarks.
+
+Per-map results are reported separately by aggregate_results.py to
+demonstrate generalization across visually distinct environments.
 
 4b. TASK CATEGORIES (5 tasks per region, 15 total)
 ---------------------------------------------------
 Each task is a multi-step long-horizon instruction. Tasks are designed
-to exercise different LTL operators and constraint types.
+to exercise different LTL operators and constraint types. For analysis,
+tasks are classified into two categories based on whether their
+instructions contain constraint language:
 
-Category 1: PURE SEQUENTIAL (3 tasks)
-  Simple ordered sequences (A then B then C).
+Category: SEQUENTIAL (7 tasks across 3 maps)
+  Pure sequential navigation with no constraint language. Simple
+  ordered sequences (A then B then C) or multi-step traversals.
   LTL: F pi_3 & (!pi_3 U pi_2) & (!pi_2 U pi_1)
   Purpose: Baseline difficulty. All conditions should handle these.
-  Example: "Go past the first streetlamp, then turn right until you
-  see the black car, then approach the black car."
+  Examples:
+    - "Go past the streetlamp, then stop at the bridge..." (bridge_crossing_to_tree)
+    - "Go forward until the end of the road..." (orbit_white_house)
 
-Category 2: SEQUENTIAL WITH CONSTRAINTS (6 tasks)
-  Ordered sequences where temporal constraints (avoidance or
-  maintenance) must be enforced during execution.
+Category: CONSTRAINED (8 tasks across 3 maps)
+  Instructions that include constraint language such as "maintain
+  altitude", "stay above/below/near", "never go on", "always stay",
+  "maintaining sight", etc. These are ordered sequences where temporal
+  constraints (avoidance or maintenance) must be enforced during
+  execution.
   LTL: F pi_2 & (!pi_2 U pi_1) & (!pi_3 U pi_2) (avoidance)
        F pi_2 & (!pi_2 U pi_1) & G(pi_3) (maintenance)
   Purpose: THE KEY DIFFERENTIATOR. These tasks make the LTL formalism
   strictly necessary. Without formal constraint encoding, Condition 2
   (LLM planner) has no mechanism to enforce temporal constraints.
   Examples:
-    - "Approach the tree from the right side, then go to the
-      streetlight, but stay away from the red car until you reach
-      the streetlight."
-    - "Fly to the landmark, then the park, but always stay above
-      10 meters altitude."
+    - "Go past all of the pergolas ahead, maintain an altitude above the pergolas." (above_pergolas)
+    - "Never go on the road..." (sidewalk_to_crosswalk)
+    - "Stay above the water..." (shoreline_to_banner_to_statue)
+    - "...while staying above the clear trail." (trail_to_beach_over_rocks)
 
-Category 3: BRANCHING / OR (3 tasks)
-  Tasks with alternative paths (do A or B, then C).
-  LTL: F pi_3 & (!pi_3 U (pi_1 | pi_2))
-  Purpose: Tests automaton's ability to handle non-linear execution.
-  Example: "Go to either the sculpture or the pergola, then approach
-  the white building."
+Task distribution per map:
+  downtown_west:           2 sequential, 3 constrained
+  greek_island:            1 sequential, 4 constrained
+  suburb_neighborhood_day: 4 sequential, 1 constrained
 
-Category 4: COMPLEX MULTI-CONSTRAINT (3 tasks)
-  Combine sequencing, mixed constraint types, and branching.
-  LTL: F pi_3 & (!pi_3 U pi_1) & G(pi_4) & G(!pi_5)
-  with concurrent avoidance and maintenance constraints.
-  Purpose: Stress test the full system. Should maximally differentiate
-  Condition 0 from all baselines.
-  Example: "First approach the tree, then navigate to the traffic
-  light, then land near the sculpture. Always stay above the
-  treeline and never fly over the highway."
+With 3 starting position variants per task: 21 sequential episodes
+and 24 constrained episodes per condition (45 total).
 
-NOTE ON TASK BALANCE: At least 9 of the 15 tasks (60%) must include
-meaningful temporal constraints (avoidance, maintenance, or both).
-This is critical: without them, the gap between Condition 0 and
-Condition 2 narrows, undermining the LTL contribution.
+NOTE ON TASK BALANCE: 8 of the 15 tasks (53%) include meaningful
+temporal constraints (avoidance, maintenance, or both). This is
+critical: without them, the gap between Condition 0 and Condition 2
+narrows, undermining the LTL contribution. The aggregate_results.py
+script includes a per-category breakdown to show how each condition
+performs on sequential vs constrained tasks separately.
 
 4c. TASK JSON FORMAT
 ---------------------
-Each task JSON should include:
+Each task JSON includes:
 {
-  "task_id": "region1_seq_neg_01",
-  "category": "sequential_with_negative_constraints",
-  "instruction": "Approach the tree from the right side, then go to
-    the streetlight, but stay away from the red car until you reach
-    the streetlight.",
-  "initial_pos": [-7500, 848, 396, -177],
-  "constraints_expected": [
-    {"description": "stay away from the red car", "polarity": "negative"}
-  ],
+  "task_id": "above_pergolas",
+  "category": "constrained",
+  "instruction": "Go past all of the pergolas ahead, maintain an altitude above the pergolas.",
+  "initial_pos": [11025, -1170, 230, 178],
   "expected_subgoal_count": 2,
-  "difficulty": "medium",
-  "region": "region_1_residential",
-  "notes": ""
+  "max_steps_per_subgoal": 500,
+  "max_corrections": 20,
+  "diary_check_interval": 10
 }
+
+The "category" field is either "sequential" or "constrained", used by
+aggregate_results.py to produce per-category metric breakdowns.
 
 4d. STARTING POSITION VARIATIONS
 ----------------------------------
@@ -536,13 +548,19 @@ M8. Average Episode Length
 15 tasks x 3 starting variations = 45 episodes per condition
 7 conditions x 45 = 315 total episodes
 
-6c. RANDOMIZATION
-------------------
+6c. RANDOMIZATION AND TASK ORDER
+----------------------------------
 - Starting position variations are fixed across conditions (same
   3 positions per task for all 7 conditions) to enable paired
-  comparison.
-- Task presentation order is randomized per condition to avoid
-  systematic ordering effects.
+  comparison (McNemar's test on matched episodes).
+- Task presentation order is fixed (alphabetical by task_id) and
+  identical across all conditions. Rationale: the simulator fully
+  resets between episodes (teleport + state reset), so there is no
+  drift or carryover between tasks. A fixed order simplifies
+  reproducibility without introducing ordering bias.
+- The simulator state is fully reset between episodes via
+  teleport + stabilization wait. There is no environmental drift
+  or accumulated state across episodes.
 
 6d. MANUAL ANNOTATION
 -----------------------
@@ -552,6 +570,18 @@ For M5 (false positive/negative analysis), manually annotate at least
   - Monitor decisions (complete vs. stopped_short)
   - Whether the decision was correct given the visual evidence
 This can be done post-hoc from saved artifacts.
+
+6e. MANUAL SUCCESS DETERMINATION
+----------------------------------
+For conditions without reliable automated success signals:
+  - C1 (naive): Task success will be determined by manual video review.
+    The experimenter watches recorded episodes and classifies each as
+    success or failure based on whether the instruction was fulfilled.
+  - C3 (open loop): Task success will also be determined by manual
+    video review. Convergence (drone stops moving) is self-fulfilling
+    in C3 and does not indicate true goal achievement.
+  - All other conditions (C0, C2, C4, C5, C6) use the monitor's
+    "monitor_complete" signal as the automated success criterion.
 
 
 7. COMPUTE BUDGET
@@ -625,11 +655,20 @@ available, but VLM API rate limits may be a bottleneck.
 -------------------------
 For each primary metric (M1, M2, M3):
   - Report mean and 95% Wilson confidence interval per condition.
-  - Pairwise comparison: Condition 0 vs. each baseline using Fisher's
-    exact test (for binary outcomes) or McNemar's test (for paired
-    episodes with matched starting positions).
+  - Two complementary statistical tests:
+    (a) Fisher's exact test: unpaired comparison of success counts
+        between C0 and each baseline. Reports odds ratio as effect size.
+    (b) McNemar's test: paired comparison using matched episodes
+        (same task_id = same task + same starting position). Because
+        starting positions are fixed across conditions, each episode
+        in C0 has a natural pair in every other condition. McNemar's
+        is more powerful than Fisher's when the pairing is valid.
+        Uses exact binomial when n_discordant < 25, chi-square
+        approximation otherwise.
   - Significance threshold: p < 0.05 with Bonferroni correction for
     6 pairwise comparisons (adjusted threshold: p < 0.0083).
+  - Both tests are computed by aggregate_results.py and reported in
+    JSON, CSV, and console output.
 
 8b. EFFECT SIZE
 ----------------
@@ -657,7 +696,12 @@ Constraint Enforcement | Yes | No  | No  | No  | No  | No  | No
 
 C4*: Uses single-frame VLM, no diary. Has convergence corrections
      but based on single-frame assessment only.
-Mod: Modified version (C5 = grid only, C6 = text only for global).
+Mod: Modified version (C5 = grid only, C6 = text-only global).
+C6 NOTE: C6 still uses a VLM for the LOCAL prompt (2-frame comparison
+     to generate diary entries). Only the GLOBAL and CONVERGENCE
+     assessments use a text-only LLM. In the paper, label this
+     condition clearly: "Text-Only Global Assessment" rather than
+     simply "Text Only" to avoid implying no VLM is used at all.
 
 
 9. KEY ASSUMPTIONS AND LIMITATIONS
@@ -670,11 +714,12 @@ A1. Low-level UAV safety is handled separately.
     orthogonal to the task-level planning contribution of this work.
     State this as a scope limitation in the paper.
 
-A2. Single simulation environment.
-    All experiments run in DowntownWest. Frame this as evaluating
-    across 3 diverse regions of a realistic suburban environment.
-    Acknowledge single-environment limitation in the paper and
-    suggest real-world validation as future work.
+A2. Simulation-only evaluation.
+    All experiments run across 3 Unreal Engine maps (DowntownWest,
+    Greek_Island, SuburbNeighborhood_Day) providing visual diversity.
+    Per-map results are reported to demonstrate generalization.
+    Acknowledge simulation-only limitation in the paper and suggest
+    real-world validation as future work.
 
 A3. OpenVLA as the fixed low-level policy.
     The system is designed to be policy-agnostic. OpenVLA is one
@@ -771,6 +816,19 @@ Before running the full experiment suite:
 - Report M7 (token overhead) prominently to preempt feasibility
   concerns. Show that monitoring adds <X% wall-clock overhead in
   async mode.
+
+- Report results at three levels of granularity:
+  (a) Aggregate: overall M1/M2/M3 per condition (main results table).
+  (b) Per-category: sequential vs constrained tasks (demonstrates that
+      the LTL advantage comes from constrained tasks specifically).
+  (c) Per-map: results per simulation environment (demonstrates
+      generalization, not overfitting to one environment).
+
+- For C6, use the label "Text-Only Global Assessment" in all paper
+  text and tables. Explicitly note in the methods section that C6's
+  local diary entries are still generated by a VLM (2-frame
+  comparison requires image input); only the global/convergence
+  assessments are text-only.
 
 
 12. IMPLEMENTATION PRIORITY ORDER
