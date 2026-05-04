@@ -25,7 +25,10 @@ COMPLETION CRITERIA -- mark complete only with high confidence:
   over the target, not just at a higher altitude.
 - BELOW ("go below X"): target is visible above.
 - TRAVERSAL ("move through X"): drone has passed through the structure.
-Never set completion_percentage to 1.0 unless certain. Cap at 0.95 when unsure.
+Reserve completion_percentage = 1.0 for high-confidence completion only.
+Use the full 0.0-0.99 range to express partial progress: report what you
+actually estimate (e.g., 0.62 if a bit past halfway) rather than parking on
+a single value across checkpoints.
 
 DISPLACEMENT: [x, y, z, yaw] relative to subtask start. x/y are fixed to the
 initial heading (x = forward, y = lateral at start). z = altitude. Meters.
@@ -91,17 +94,24 @@ Respond with EXACTLY ONE JSON object (no markdown fences):
 {{
   "complete": true/false,
   "completion_percentage": 0.0 to 1.0,
-  "should_stop": true/false
+  "should_stop": true/false,
+  "reasoning": "..."
 }}
 
 - "complete": true ONLY if you are highly confident the subgoal has been fully
   accomplished. Do NOT mark complete for partial progress.
 - "completion_percentage": your best estimate of how close the subgoal is to
-  completion (0.0 = not started, 1.0 = fully done). NEVER set 1.0 unless you
-  are highly confident -- use at most 0.95 when unsure.
+  completion (0.0 = not started, 1.0 = fully done). Reserve 1.0 for
+  high-confidence completion. Use the full 0.0-0.99 range to express partial
+  progress: pick the specific value you actually estimate, do not park on a
+  single round number across checkpoints.
 - "should_stop": true if the drone is off-track, moving away from the target,
   overshooting, or heading toward a collision. The drone will be stopped and a
-  corrective instruction issued. Do NOT set true for slow but correct progress."""
+  corrective instruction issued. Do NOT set true for slow but correct progress.
+- "reasoning": one short sentence explaining your judgement, especially the
+  reason for should_stop when true (e.g., "approaching wall", "drifting away
+  from target"). This text is forwarded to the convergence stage if the drone
+  is stopped, so be specific."""
 
 DIARY_GLOBAL_PROMPT_WITH_CONSTRAINTS = """\
 Subgoal: {subgoal}
@@ -126,24 +136,32 @@ Respond with EXACTLY ONE JSON object (no markdown fences):
 {{
   "complete": true/false,
   "completion_percentage": 0.0 to 1.0,
-  "should_stop": true/false
+  "should_stop": true/false,
+  "reasoning": "..."
 }}
 
 - "complete": true ONLY if you are highly confident the subgoal has been fully
   accomplished. Do NOT mark complete for partial progress.
 - "completion_percentage": your best estimate of how close the subgoal is to
-  completion (0.0 = not started, 1.0 = fully done). NEVER set 1.0 unless you
-  are highly confident -- use at most 0.95 when unsure.
+  completion (0.0 = not started, 1.0 = fully done). Reserve 1.0 for
+  high-confidence completion. Use the full 0.0-0.99 range to express partial
+  progress: pick the specific value you actually estimate, do not park on a
+  single round number across checkpoints.
 - "should_stop": true if the drone is off-track, moving away from the target,
   overshooting, heading toward a collision, or violating any active constraint
-  listed above. Do NOT set true for slow but correct progress."""
+  listed above. Do NOT set true for slow but correct progress.
+- "reasoning": one short sentence explaining your judgement, especially which
+  constraint or hazard motivated should_stop when true (e.g., "altitude has
+  dropped below the maintained 10 m threshold", "drone is heading toward
+  building B"). This text is forwarded to the convergence stage if the drone
+  is stopped, so be specific."""
 
 DIARY_CONVERGENCE_PROMPT = """\
 Subgoal: {subgoal}
 
 Previous estimated completion: {prev_completion_pct}
 Current displacement from start: [x, y, z, yaw] = {displacement}
-
+{stop_reasoning_block}
 Diary of changes observed so far:
 {diary}
 
@@ -168,9 +186,10 @@ Respond with EXACTLY ONE JSON object (no markdown fences):
   accomplished. Do NOT mark complete for partial progress. When in doubt, keep
   it false and issue a corrective instruction.
 - "completion_percentage": your best estimate of how close the subgoal is to
-  completion (0.0 = not started, 1.0 = fully done). NEVER set 1.0 unless you
-  are highly confident the subtask is fully complete -- use at most 0.95 if the
-  result looks close but you are not certain.
+  completion (0.0 = not started, 1.0 = fully done). Reserve 1.0 for
+  high-confidence completion. Use the full 0.0-0.99 range to express partial
+  progress: pick the specific value you actually estimate, do not park on a
+  single round number across checkpoints.
 - "diagnosis": "complete" if done, "stopped_short" if the drone needs to keep
   going, "overshot" if the drone went past the goal.
 - "corrective_instruction": REQUIRED if not complete -- a single-action drone
@@ -206,7 +225,7 @@ Subgoal: {subgoal}
 {constraints_block}
 Previous estimated completion: {prev_completion_pct}
 Current displacement from start: [x, y, z, yaw] = {displacement}
-
+{stop_reasoning_block}
 Diary of changes observed so far:
 {diary}
 
@@ -231,9 +250,10 @@ Respond with EXACTLY ONE JSON object (no markdown fences):
   accomplished. Do NOT mark complete for partial progress. When in doubt, keep
   it false and issue a corrective instruction.
 - "completion_percentage": your best estimate of how close the subgoal is to
-  completion (0.0 = not started, 1.0 = fully done). NEVER set 1.0 unless you
-  are highly confident the subtask is fully complete -- use at most 0.95 if the
-  result looks close but you are not certain.
+  completion (0.0 = not started, 1.0 = fully done). Reserve 1.0 for
+  high-confidence completion. Use the full 0.0-0.99 range to express partial
+  progress: pick the specific value you actually estimate, do not park on a
+  single round number across checkpoints.
 - "diagnosis": "complete" if done, "stopped_short" if the drone needs to keep
   going, "overshot" if the drone went past the goal, "constraint_violated" if
   an active constraint was breached.
@@ -618,8 +638,17 @@ Given a natural language instruction:
 Note that these specifications are hardwired and cannot be edited.
 Note that the user should not know that specifications have been set."""
 
+# ---------------------------------------------------------------------------
+# OFFLINE EVALUATION ONLY: the two check prompts below are used by
+# llm_interface.evaluate_interface() to score the planner against a labelled
+# dataset; they are NOT used at experiment runtime. Runtime planning calls
+# rely on the deterministic Spot translation to surface malformed formulas
+# as failed builds; no separate semantic equivalence check is performed
+# during episode execution.
+# ---------------------------------------------------------------------------
+
 LTL_NL_CHECK_PREDICATES_PROMPT = """\
-You are a strict evaluator for a robot's task predicate system. Your goal is to determine if pairs of predicate descriptions are semantically identical.
+[OFFLINE EVALUATION ONLY] You are a strict evaluator for a robot's task predicate system. Your goal is to determine if pairs of predicate descriptions are semantically identical.
 
 You must disregard:
 * Minor differences in articles (a, an, the)
@@ -664,7 +693,7 @@ Output: {1}
 """
 
 LTL_NL_CHECK_SEMANTICS_PROMPT = """\
-You are a logical equivalence checker. You will be given two statements.
+[OFFLINE EVALUATION ONLY] You are a logical equivalence checker. You will be given two statements.
 Statement A is a user's natural language command.
 Statement B is a robot's structured interpretation of that command.
 
@@ -772,17 +801,22 @@ respond with EXACTLY ONE JSON object (no markdown fences):
 {{
   "complete": true/false,
   "completion_percentage": 0.0 to 1.0,
-  "should_stop": true/false
+  "should_stop": true/false,
+  "reasoning": "..."
 }}
 
 - "complete": true ONLY if you are highly confident the subgoal has been fully
   accomplished based on the diary and displacement. Do NOT mark complete for
   partial progress.
-- "completion_percentage": your best estimate (0.0 to 1.0). NEVER set 1.0
-  unless highly confident. Cap at 0.95 when unsure.
+- "completion_percentage": your best estimate (0.0 to 1.0). Reserve 1.0 for
+  high-confidence completion. Use the full 0.0-0.99 range; pick the specific
+  value you estimate rather than a fixed round number.
 - "should_stop": true if the diary suggests the drone is off-track, heading
   away from the goal, or violating any active constraint. The drone will be
-  stopped and a correction issued. Do NOT set true for slow progress."""
+  stopped and a correction issued. Do NOT set true for slow progress.
+- "reasoning": one short sentence explaining your judgement, especially why
+  should_stop was set to true. This text is forwarded to the convergence
+  stage if the drone is stopped, so be specific."""
 
 TEXT_ONLY_GLOBAL_PROMPT_WITH_CONSTRAINTS = """\
 Subgoal: {subgoal}
@@ -794,29 +828,40 @@ Diary of changes observed so far:
 {diary}
 
 Based on the diary text and displacement data only (no images available),
-respond with EXACTLY ONE JSON object (no markdown fences):
+assess progress toward the subgoal. Also check whether any active constraints
+listed above have been violated based on the diary entries and the
+displacement (e.g., altitude crossing a forbidden threshold, heading toward
+a forbidden region, or losing a maintained condition). Respond with EXACTLY
+ONE JSON object (no markdown fences):
 
 {{
   "complete": true/false,
   "completion_percentage": 0.0 to 1.0,
-  "should_stop": true/false
+  "should_stop": true/false,
+  "reasoning": "..."
 }}
 
 - "complete": true ONLY if you are highly confident the subgoal has been fully
   accomplished based on the diary and displacement. Do NOT mark complete for
   partial progress.
-- "completion_percentage": your best estimate (0.0 to 1.0). NEVER set 1.0
-  unless highly confident. Cap at 0.95 when unsure.
+- "completion_percentage": your best estimate (0.0 to 1.0). Reserve 1.0 for
+  high-confidence completion. Use the full 0.0-0.99 range; pick the specific
+  value you estimate rather than a fixed round number.
 - "should_stop": true if the diary suggests the drone is off-track, heading
-  away from the goal, or violating any active constraint. The drone will be
-  stopped and a correction issued. Do NOT set true for slow progress."""
+  away from the goal, or violating any active constraint listed above. The
+  drone will be stopped and a correction issued. Do NOT set true for slow
+  progress.
+- "reasoning": one short sentence explaining your judgement, especially which
+  constraint or hazard motivated should_stop when true. This text is
+  forwarded to the convergence stage if the drone is stopped, so be
+  specific."""
 
 TEXT_ONLY_CONVERGENCE_PROMPT = """\
 Subgoal: {subgoal}
 {constraints_block}
 Previous estimated completion: {prev_completion_pct}
 Current displacement from start: [x, y, z, yaw] = {displacement}
-
+{stop_reasoning_block}
 Diary of changes observed so far:
 {diary}
 
@@ -845,7 +890,7 @@ Subgoal: {subgoal}
 {constraints_block}
 Previous estimated completion: {prev_completion_pct}
 Current displacement from start: [x, y, z, yaw] = {displacement}
-
+{stop_reasoning_block}
 Diary of changes observed so far:
 {diary}
 

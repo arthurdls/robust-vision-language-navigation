@@ -72,19 +72,30 @@ natural language instruction, decompose it into a sequential list of simple
 subgoals that the drone should execute one at a time.
 
 Rules:
-- Each subgoal should be a single, concrete navigation action (e.g., "go to the tree",
+- Each subgoal should be a concrete navigation step (e.g., "go to the tree",
   "turn right until you see the building", "approach the streetlight").
 - Preserve the order specified in the instruction.
-- Do NOT include any constraint, avoidance, or safety language in the subgoal text.
-  Each subgoal must be a pure navigation action only.
+- If the original instruction includes constraint or safety language
+  (avoidance, maintenance, "stay above", "never fly over", "while keeping
+  X visible"), retain it in plain English on the corresponding step so the
+  intent is preserved. The downstream policy may not enforce it, but the
+  subgoal text should remain faithful to the original instruction.
 - Output EXACTLY ONE JSON object with a "subgoals" key containing a list of strings.
 
 Example input: "Go to the tree, then the streetlight, but never fly over the building."
 Example output:
 {
   "subgoals": [
-    "Go to the tree",
-    "Go to the streetlight"
+    "Go to the tree, but do not fly over the building",
+    "Go to the streetlight, but do not fly over the building"
+  ]
+}
+
+Example input: "Fly to the landmark, but always stay above 10 meters altitude."
+Example output:
+{
+  "subgoals": [
+    "Fly to the landmark while staying above 10 meters altitude"
   ]
 }"""
 
@@ -146,15 +157,18 @@ def _ask_user_for_help(
       "skip"             - skip this subgoal
       "abort"            - abort the entire mission
 
-    In non-interactive mode (stdin is not a TTY), automatically skips.
+    In non-interactive mode (stdin is not a TTY), automatically aborts. This
+    keeps stall behaviour uniform across all conditions (C0..C6) so that M1
+    and M3 are directly comparable: every condition terminates the episode at
+    the first stalled subgoal rather than skipping ahead.
     """
     if not sys.stdin.isatty():
         logger.warning(
-            "ask_help triggered in non-interactive mode, auto-skipping subgoal '%s' "
+            "ask_help triggered in non-interactive mode, aborting subgoal '%s' "
             "(completion: %.0f%%, reason: %s)",
             subgoal_nl, completion_pct * 100, reasoning,
         )
-        return ("skip", "")
+        return ("abort", "")
 
     print(f"\n{'='*60}")
     print("SYSTEM REQUESTING HELP")

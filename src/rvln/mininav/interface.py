@@ -769,7 +769,7 @@ def run_subgoal(
     trajectory_log: List[Dict[str, Any]],
     check_interval_s: Optional[float] = None,
     max_seconds: Optional[float] = None,
-    stall_window: int = 3,
+    stall_window: int = 10,
     stall_threshold: float = 0.05,
     stall_completion_floor: float = 0.8,
     constraints: Optional[List[Any]] = None,

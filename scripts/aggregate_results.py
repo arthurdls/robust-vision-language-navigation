@@ -77,8 +77,17 @@ CONDITION_ORDER = [
     "condition4", "condition5", "condition6",
 ]
 
-# Bonferroni-corrected significance threshold (0.05 / 6 comparisons)
+# Bonferroni-corrected significance threshold (0.05 / 6 comparisons).
+# Applied to the M1 headline test family only; M2 / M3 are reported as
+# secondary analyses without a family-wise correction claim.
 BONFERRONI_THRESHOLD = 0.05 / 6  # ~0.0083
+
+# M4 (supervisor correction rate) is only meaningful for conditions whose
+# pipeline includes the GoalAdherenceMonitor's convergence flow. C1 has no
+# subgoal decomposition; C3 is open-loop with no monitor at all.
+M4_APPLICABLE_CONDITIONS = {
+    "condition0", "condition2", "condition4", "condition5", "condition6",
+}
 
 API_PRICING = {
     "gpt-5.4": {"input": 2.50 / 1_000_000, "output": 10.00 / 1_000_000},
@@ -114,16 +123,29 @@ def wilson_ci(successes: int, total: int, z: float = 1.96) -> tuple[float, float
 def fishers_exact_test(
     c0_successes: int, c0_total: int,
     cx_successes: int, cx_total: int,
+    family: str = "primary",
 ) -> dict[str, Any]:
     """
     Run Fisher's exact test comparing C0 to another condition.
-    Returns dict with p_value, odds_ratio, and significance flag.
+
+    ``family`` controls which significance flag is reported:
+      * ``"primary"`` (default): used for the headline M1 family. Reports
+        ``significant_bonferroni`` against ``BONFERRONI_THRESHOLD = 0.05/6``.
+      * ``"exploratory"``: used for M2 / M3 secondary analyses. Reports
+        the raw p-value and a ``significant_uncorrected`` flag at
+        alpha=0.05; no family-wise correction claim is made because these
+        comparisons are not the headline test.
+
+    Returns dict with p_value, odds_ratio, and the appropriate significance
+    flag.
     """
     if not HAS_SCIPY:
         return {
             "p_value": None,
             "odds_ratio": None,
             "significant_bonferroni": None,
+            "significant_uncorrected": None,
+            "family": family,
             "note": "scipy not installed",
         }
     # Construct 2x2 contingency table
@@ -136,7 +158,13 @@ def fishers_exact_test(
     return {
         "p_value": p_value,
         "odds_ratio": odds_ratio,
-        "significant_bonferroni": p_value < BONFERRONI_THRESHOLD,
+        "family": family,
+        "significant_bonferroni": (
+            p_value < BONFERRONI_THRESHOLD if family == "primary" else None
+        ),
+        "significant_uncorrected": (
+            p_value < 0.05 if family == "exploratory" else None
+        ),
     }
 
 
@@ -148,21 +176,41 @@ def mcnemars_test(
     McNemar's test for paired binary outcomes (matched starting positions).
 
     Each list entry corresponds to the same episode (same task + same starting
-    position) run under two conditions.  Entries that are None (manual review
-    needed) are excluded from the test.
+    position) run under two conditions.  Entries where either outcome is None
+    (manual review still pending) are excluded from the test and counted in
+    ``n_skipped``. When ALL pairs are skipped the result reports
+    ``p_value=None`` with ``n_paired=0``, distinguishing "untestable" from
+    "tested and not significant" in the output.
 
-    Returns dict with statistic, p_value, n_discordant, and significance flag.
+    Returns dict with statistic, p_value, n_discordant, n_skipped, and
+    significance flag.
     """
+    n_total = len(c0_outcomes)
+    n_skipped = sum(
+        1 for o0, ox in zip(c0_outcomes, cx_outcomes)
+        if o0 is None or ox is None
+    )
+    if n_skipped == n_total and n_total > 0:
+        return {
+            "statistic": None,
+            "p_value": None,
+            "n_paired": 0,
+            "n_skipped": n_skipped,
+            "n_discordant": 0,
+            "significant_bonferroni": None,
+            "note": "all pairs skipped (missing annotation); test untestable",
+        }
     if not HAS_SCIPY:
         return {
             "statistic": None,
             "p_value": None,
+            "n_paired": n_total - n_skipped,
+            "n_skipped": n_skipped,
             "n_discordant": None,
             "significant_bonferroni": None,
             "note": "scipy not installed",
         }
 
-    # Build discordant pair counts
     b = 0  # c0 success, cx failure
     c = 0  # c0 failure, cx success
     n_paired = 0
@@ -181,6 +229,7 @@ def mcnemars_test(
             "statistic": 0.0,
             "p_value": 1.0,
             "n_paired": n_paired,
+            "n_skipped": n_skipped,
             "n_discordant": 0,
             "significant_bonferroni": False,
             "note": "no discordant pairs",
@@ -192,6 +241,7 @@ def mcnemars_test(
             "statistic": None,
             "p_value": p_value,
             "n_paired": n_paired,
+            "n_skipped": n_skipped,
             "n_discordant": n_discordant,
             "significant_bonferroni": p_value < BONFERRONI_THRESHOLD,
             "note": "exact binomial (n_discordant < 25)",
@@ -203,8 +253,88 @@ def mcnemars_test(
         "statistic": round(statistic, 4),
         "p_value": p_value,
         "n_paired": n_paired,
+        "n_skipped": n_skipped,
         "n_discordant": n_discordant,
         "significant_bonferroni": p_value < BONFERRONI_THRESHOLD,
+    }
+
+
+def wilcoxon_paired(
+    c0_rates: dict[str, float],
+    cx_rates: dict[str, float],
+) -> dict[str, Any]:
+    """
+    Paired two-sided Wilcoxon signed-rank test on per-episode rates.
+
+    Used for M3 (per-episode subgoal success rate) where the underlying
+    outcomes (subgoal completions) are clustered within episodes and an
+    unpaired Fisher's test would inflate Type I error. Pairs are matched by
+    the run pair key ``(task_id, tuple(initial_pos))``.
+
+    Returns dict with statistic, p_value, n_paired, n_nonzero, n_skipped,
+    and the median paired difference.
+    """
+    pair_keys = sorted(set(c0_rates) & set(cx_rates))
+    n_skipped = (len(c0_rates) + len(cx_rates)) // 2 - len(pair_keys)
+    n_paired = len(pair_keys)
+    if n_paired == 0:
+        return {
+            "statistic": None,
+            "p_value": None,
+            "n_paired": 0,
+            "n_skipped": n_skipped,
+            "n_nonzero": 0,
+            "median_diff": None,
+            "note": "no overlapping pairs",
+        }
+    if not HAS_SCIPY:
+        return {
+            "statistic": None,
+            "p_value": None,
+            "n_paired": n_paired,
+            "n_skipped": n_skipped,
+            "n_nonzero": None,
+            "median_diff": None,
+            "note": "scipy not installed",
+        }
+    diffs = [c0_rates[k] - cx_rates[k] for k in pair_keys]
+    nonzero = [d for d in diffs if d != 0]
+    median_diff = sorted(diffs)[len(diffs) // 2]
+    if not nonzero:
+        return {
+            "statistic": 0.0,
+            "p_value": 1.0,
+            "n_paired": n_paired,
+            "n_skipped": n_skipped,
+            "n_nonzero": 0,
+            "median_diff": round(median_diff, 4),
+            "note": "all paired differences are zero",
+        }
+    try:
+        result = scipy_stats.wilcoxon(
+            [c0_rates[k] for k in pair_keys],
+            [cx_rates[k] for k in pair_keys],
+            zero_method="wilcox", alternative="two-sided",
+        )
+        statistic = float(result.statistic)
+        p_value = float(result.pvalue)
+    except ValueError as e:
+        return {
+            "statistic": None,
+            "p_value": None,
+            "n_paired": n_paired,
+            "n_skipped": n_skipped,
+            "n_nonzero": len(nonzero),
+            "median_diff": round(median_diff, 4),
+            "note": f"wilcoxon failed: {e}",
+        }
+    return {
+        "statistic": round(statistic, 4),
+        "p_value": p_value,
+        "n_paired": n_paired,
+        "n_skipped": n_skipped,
+        "n_nonzero": len(nonzero),
+        "median_diff": round(median_diff, 4),
     }
 
 
@@ -212,42 +342,88 @@ def mcnemars_test(
 # Data loading
 # ---------------------------------------------------------------------------
 
-def find_run_infos(results_dir: str, conditions: list[str] | None = None) -> dict[str, list[dict]]:
+EXPECTED_RUNS_PER_CONDITION = 45  # 15 tasks x 3 starting-position variants
+
+
+def find_run_infos(
+    results_dir: str,
+    conditions: list[str] | None = None,
+    expected_n: int | None = EXPECTED_RUNS_PER_CONDITION,
+    strict: bool = False,
+) -> dict[str, list[dict]]:
     """
     Scan results directory and load all run_info.json files, grouped by condition.
 
     Handles two directory structures:
       - results/conditionN/<map_dir>/<run_name>/run_info.json  (multi-map)
       - results/conditionN/<run_name>/run_info.json            (legacy/flat)
+
+    Filters: aborted (``aborted=True``) and incomplete (``completed=False``)
+    runs are excluded so half-finished or crashed episodes don't pollute the
+    metrics. When ``expected_n`` is set, a count mismatch triggers a warning
+    (or a hard error under ``strict=True``) so missing cells are visible
+    rather than silently shrinking the denominator.
     """
     results_path = Path(results_dir)
     runs_by_condition: dict[str, list[dict]] = defaultdict(list)
+    skip_counts: dict[str, dict[str, int]] = defaultdict(lambda: {
+        "aborted": 0, "incomplete": 0, "load_error": 0,
+    })
 
     for cond_dir in sorted(results_path.iterdir()):
         if not cond_dir.is_dir():
             continue
         cond_name = cond_dir.name
-        # Skip non-condition directories (like "old")
         if not cond_name.startswith("condition"):
             continue
         if conditions and cond_name not in conditions:
             continue
 
-        # Walk to find run_info.json files
         for run_info_path in cond_dir.rglob("run_info.json"):
             try:
                 with open(run_info_path, "r") as f:
                     data = json.load(f)
-                # Attach the file path for reference
-                data["_source_path"] = str(run_info_path)
-                # Check for companion constraint_analysis.json
-                constraint_path = run_info_path.parent / "constraint_analysis.json"
-                if constraint_path.exists():
-                    with open(constraint_path, "r") as f:
-                        data["_constraint_analysis"] = json.load(f)
-                runs_by_condition[cond_name].append(data)
             except (json.JSONDecodeError, OSError) as e:
                 print(f"  [WARN] Could not load {run_info_path}: {e}", file=sys.stderr)
+                skip_counts[cond_name]["load_error"] += 1
+                continue
+            if data.get("aborted", False):
+                skip_counts[cond_name]["aborted"] += 1
+                continue
+            if not data.get("completed", False):
+                skip_counts[cond_name]["incomplete"] += 1
+                continue
+            data["_source_path"] = str(run_info_path)
+            constraint_path = run_info_path.parent / "constraint_analysis.json"
+            if constraint_path.exists():
+                try:
+                    with open(constraint_path, "r") as f:
+                        data["_constraint_analysis"] = json.load(f)
+                except (json.JSONDecodeError, OSError) as e:
+                    print(f"  [WARN] Could not load {constraint_path}: {e}",
+                          file=sys.stderr)
+            runs_by_condition[cond_name].append(data)
+
+    # Visibility on filtered / missing cells.
+    for cond_name in sorted({*runs_by_condition.keys(), *skip_counts.keys()}):
+        n = len(runs_by_condition.get(cond_name, []))
+        sk = skip_counts[cond_name]
+        skipped_total = sk["aborted"] + sk["incomplete"] + sk["load_error"]
+        if skipped_total:
+            print(
+                f"  [INFO] {cond_name}: kept {n}, skipped "
+                f"{sk['aborted']} aborted, {sk['incomplete']} incomplete, "
+                f"{sk['load_error']} load_error",
+                file=sys.stderr,
+            )
+        if expected_n is not None and n != expected_n:
+            msg = (
+                f"{cond_name}: expected {expected_n} completed runs, "
+                f"found {n} (skipped {skipped_total})"
+            )
+            if strict:
+                raise RuntimeError(msg)
+            print(f"  [WARN] {msg}", file=sys.stderr)
 
     return dict(runs_by_condition)
 
@@ -297,12 +473,25 @@ def is_task_success(run: dict) -> bool | None:
     return False
 
 
-def is_constraint_adhered(run: dict) -> bool | None:
+def is_constraint_adhered(run: dict, require_manual: bool = False) -> bool | None:
     """
-    Check constraint adherence for an episode.
-    Uses constraint_analysis.json if available, otherwise falls back to
-    any_constraint_violated field in run_info.
-    Returns None when constraints were not checked at runtime (needs post-hoc).
+    Check constraint adherence (M2) for an episode.
+
+    Per the experimental design (Section 6f), the official M2 source is a
+    *manual* video review for ALL 7 conditions, stored as
+    ``constraint_analysis.json`` next to the run's ``run_info.json``. The
+    runtime monitor's ``any_constraint_violated`` flag is logged for
+    diagnostic comparison but is not the headline source.
+
+    Behaviour:
+      * ``require_manual=True`` (used under --strict): only honour
+        ``_constraint_analysis``. Return ``None`` whenever the manual
+        annotation is missing, so missing-annotation cells are visible in
+        the report rather than silently filled in by the runtime flag.
+      * ``require_manual=False`` (default): fall back to the runtime
+        ``any_constraint_violated`` flag and per-subgoal counters. Useful
+        for early development before annotations exist; do NOT publish
+        these numbers without flagging the fallback.
     """
     ca = run.get("_constraint_analysis")
     if ca:
@@ -310,6 +499,9 @@ def is_constraint_adhered(run: dict) -> bool | None:
             return not ca["any_constraint_violated"]
         if "constraint_adherence" in ca:
             return bool(ca["constraint_adherence"])
+
+    if require_manual:
+        return None
 
     acv = run.get("any_constraint_violated")
     if acv is not None:
@@ -359,8 +551,16 @@ def compute_subgoal_success_rate(run: dict) -> float | None:
 def compute_correction_rate(run: dict) -> dict[str, int] | None:
     """
     Compute supervisor correction metrics.
+
+    A *rescue* requires (a) at least one convergence event during the
+    subgoal and (b) the subgoal to ultimately finish as ``monitor_complete``.
+    Other terminal stop reasons (``max_steps``, ``ask_help``, ``abort``,
+    ``skipped``, ``convergence_error``) indicate the supervisor failed to
+    rescue the subgoal and contribute zero rescued convergences. The final
+    convergence in a successful chain is the one that yielded completion;
+    only the earlier ``convergence_count - 1`` events count as rescues.
+
     Returns dict with total_convergences, rescued_convergences, corrections_used.
-    Rescued = convergence events that did NOT end the subgoal (i.e., supervisor intervened).
     """
     subgoal_summaries = run.get("subgoal_summaries", [])
     if not subgoal_summaries:
@@ -373,22 +573,20 @@ def compute_correction_rate(run: dict) -> dict[str, int] | None:
     for sg in subgoal_summaries:
         corrections = sg.get("corrections_used", 0)
         total_corrections += corrections
-        # Count convergence events in vlm_call_records
         records = sg.get("vlm_call_records", [])
-        convergence_count = sum(1 for r in records if r.get("label", "").startswith("convergence"))
+        convergence_count = sum(
+            1 for r in records if r.get("label", "").startswith("convergence")
+        )
         total_convergences += convergence_count
-        # If the subgoal eventually completed (monitor_complete) but had convergences,
-        # those early convergences were "rescued" by the supervisor
         stop = sg.get("stop_reason", "")
         if stop == "monitor_complete" and convergence_count > 0:
-            # The final convergence led to completion; earlier ones were rescued
+            # The final convergence ended in completion; earlier ones were
+            # genuine rescues (corrective command issued, drone resumed
+            # progress, eventually completed).
             rescued_convergences += max(0, convergence_count - 1)
-        elif stop != "monitor_complete" and stop != "convergence":
-            # All convergences were rescued (task ended for another reason)
-            rescued_convergences += convergence_count
-        elif stop == "max_steps" and convergence_count > 0:
-            # All convergences were rescued but task still timed out
-            rescued_convergences += convergence_count
+        # Any other stop reason: zero rescues. Even if there were
+        # convergence events, they did not lead to completion, so they are
+        # failed-rescue attempts, not rescues.
 
     return {
         "total_convergences": total_convergences,
@@ -546,7 +744,9 @@ def compute_api_cost(run: dict) -> dict:
 # Aggregation
 # ---------------------------------------------------------------------------
 
-def aggregate_condition(condition: str, runs: list[dict]) -> dict[str, Any]:
+def aggregate_condition(
+    condition: str, runs: list[dict], require_manual_m2: bool = False,
+) -> dict[str, Any]:
     """Compute all metrics for a single condition."""
     n = len(runs)
     if n == 0:
@@ -571,7 +771,7 @@ def aggregate_condition(condition: str, runs: list[dict]) -> dict[str, Any]:
     constraint_adhered = 0
     constraint_determined = 0
     for run in runs:
-        result = is_constraint_adhered(run)
+        result = is_constraint_adhered(run, require_manual=require_manual_m2)
         if result is not None:
             constraint_determined += 1
             if result:
@@ -601,18 +801,28 @@ def aggregate_condition(condition: str, runs: list[dict]) -> dict[str, Any]:
 
     m3_rate, m3_ci_low, m3_ci_high = wilson_ci(successful_subgoals, total_subgoals)
 
-    # M4: Supervisor Correction Rate
+    # M4: Supervisor Correction Rate (gated to applicable conditions only).
+    # M4 is only meaningful for conditions that include the supervisor /
+    # convergence-correction loop. C1 has no decomposition, C3 is open-loop;
+    # both are excluded so they don't contribute spurious zero-denominators
+    # or zero-numerators to the headline rate.
     total_convergences = 0
     total_rescued = 0
     total_corrections = 0
-    for run in runs:
-        cr = compute_correction_rate(run)
-        if cr:
-            total_convergences += cr["total_convergences"]
-            total_rescued += cr["rescued_convergences"]
-            total_corrections += cr["total_corrections"]
+    if condition in M4_APPLICABLE_CONDITIONS:
+        for run in runs:
+            cr = compute_correction_rate(run)
+            if cr:
+                total_convergences += cr["total_convergences"]
+                total_rescued += cr["rescued_convergences"]
+                total_corrections += cr["total_corrections"]
 
-    m4_rate = total_rescued / total_convergences if total_convergences > 0 else None
+    if condition not in M4_APPLICABLE_CONDITIONS:
+        m4_rate = None
+    elif total_convergences > 0:
+        m4_rate = total_rescued / total_convergences
+    else:
+        m4_rate = None
 
     # M6: Latency
     all_rtts = []
@@ -698,6 +908,16 @@ def aggregate_condition(condition: str, runs: list[dict]) -> dict[str, Any]:
             "wilson_ci_lower": round(m3_ci_low, 4),
             "wilson_ci_upper": round(m3_ci_high, 4),
             "mean_per_episode": round(sum(subgoal_rates) / len(subgoal_rates), 4) if subgoal_rates else None,
+            # Per-episode rates keyed by (task_id, initial_pos) for paired
+            # tests downstream. Episodes without a determinable rate are
+            # omitted; the pair key matches _run_pair_key().
+            "per_episode_rates": {
+                _run_pair_key(run): rate
+                for run, rate in zip(runs, [
+                    compute_subgoal_success_rate(r) for r in runs
+                ])
+                if rate is not None
+            },
         },
         "M4_correction_rate": {
             "total_premature_convergences": total_convergences,
@@ -744,7 +964,10 @@ def aggregate_condition(condition: str, runs: list[dict]) -> dict[str, Any]:
     }
 
 
-def aggregate_by_category(runs_by_condition: dict[str, list[dict]]) -> dict[str, dict[str, dict]]:
+def aggregate_by_category(
+    runs_by_condition: dict[str, list[dict]],
+    require_manual_m2: bool = False,
+) -> dict[str, dict[str, dict]]:
     """
     Group episodes by task category and compute M1/M2/M3 for each category
     within each condition.
@@ -785,7 +1008,7 @@ def aggregate_by_category(runs_by_condition: dict[str, list[dict]]) -> dict[str,
             constraint_adhered = 0
             constraint_determined = 0
             for run in cat_runs:
-                res = is_constraint_adhered(run)
+                res = is_constraint_adhered(run, require_manual=require_manual_m2)
                 if res is not None:
                     constraint_determined += 1
                     if res:
@@ -837,11 +1060,46 @@ def aggregate_by_category(runs_by_condition: dict[str, list[dict]]) -> dict[str,
     return result
 
 
-def aggregate_by_map(runs_by_condition: dict[str, list[dict]]) -> dict[str, dict[str, dict]]:
+_ENV_ID_TO_TASK_DIR = {
+    "UnrealTrack-DowntownWest-ContinuousColor-v0": "downtown_west",
+    "UnrealTrack-Greek_Island-ContinuousColor-v0": "greek_island",
+    "UnrealTrack-SuburbNeighborhood_Day-ContinuousColor-v0": "suburb_neighborhood_day",
+}
+
+
+def _normalize_map_name(run: dict) -> str:
+    """Return a canonical task_dir_name for a run.
+
+    env_id strings (e.g. ``UnrealTrack-Greek_Island-ContinuousColor-v0``) and
+    on-disk path components (``greek_island``) are mapped to the same
+    canonical label so per-map breakdowns aren't split across naming styles.
+    """
+    env_id = run.get("env_id", "") or ""
+    if env_id in _ENV_ID_TO_TASK_DIR:
+        return _ENV_ID_TO_TASK_DIR[env_id]
+    source = run.get("_source_path", "")
+    parts = Path(source).parts
+    for i, p in enumerate(parts):
+        if p.startswith("condition"):
+            if i + 1 < len(parts) and not parts[i + 1].startswith("c"):
+                return parts[i + 1]
+            break
+    if env_id:
+        return env_id.lower()
+    return "unknown"
+
+
+def aggregate_by_map(
+    runs_by_condition: dict[str, list[dict]],
+    require_manual_m2: bool = False,
+) -> dict[str, dict[str, dict]]:
     """
     Group episodes by map and compute M1/M2/M3 for each map within each
-    condition.  Map is inferred from the run's source path (e.g.
-    results/condition0/greek_island/...) or the run's env_id field.
+    condition.
+
+    Map labels are normalised to the task_dir_name (e.g. ``greek_island``)
+    via :func:`_normalize_map_name` so env_id strings and on-disk path
+    components don't produce duplicate buckets.
 
     Returns: {condition: {map_name: {M1, M2, M3 metrics}}}.
     """
@@ -854,17 +1112,7 @@ def aggregate_by_map(runs_by_condition: dict[str, list[dict]]) -> dict[str, dict
 
         by_map: dict[str, list[dict]] = defaultdict(list)
         for run in runs:
-            map_name = run.get("env_id", "")
-            if not map_name:
-                source = run.get("_source_path", "")
-                parts = Path(source).parts
-                for i, p in enumerate(parts):
-                    if p.startswith("condition"):
-                        if i + 1 < len(parts) and not parts[i + 1].startswith("c"):
-                            map_name = parts[i + 1]
-                        break
-            if not map_name:
-                map_name = "unknown"
+            map_name = _normalize_map_name(run)
             by_map[map_name].append(run)
 
         cond_maps = {}
@@ -884,7 +1132,7 @@ def aggregate_by_map(runs_by_condition: dict[str, list[dict]]) -> dict[str, dict
             constraint_adhered = 0
             constraint_determined = 0
             for run in map_runs:
-                res = is_constraint_adhered(run)
+                res = is_constraint_adhered(run, require_manual=require_manual_m2)
                 if res is not None:
                     constraint_determined += 1
                     if res:
@@ -930,6 +1178,100 @@ def aggregate_by_map(runs_by_condition: dict[str, list[dict]]) -> dict[str, dict
             }
 
         result[cond] = cond_maps
+
+    return result
+
+
+def aggregate_by_map_and_category(
+    runs_by_condition: dict[str, list[dict]],
+    require_manual_m2: bool = False,
+) -> dict[str, dict[str, dict[str, dict]]]:
+    """
+    Cross-tabulate per-map AND per-category. Returns
+    ``{condition: {map: {category: {n, M1, M2, M3}}}}``.
+
+    Motivation: in the current task design, Greek Island is ~80% constrained
+    and Suburb Neighborhood is ~80% sequential, so the marginal per-map and
+    per-category breakdowns are confounded. Reporting the joint cell is the
+    cleanest way to disentangle "LTL helps on constrained tasks" from "LTL
+    helps in Greek Island". The paper should lead with this cross-tab.
+    """
+    result: dict[str, dict[str, dict[str, dict]]] = {}
+
+    for cond in CONDITION_ORDER:
+        runs = runs_by_condition.get(cond, [])
+        if not runs:
+            continue
+
+        cells: dict[str, dict[str, list[dict]]] = defaultdict(
+            lambda: defaultdict(list),
+        )
+        for run in runs:
+            map_name = _normalize_map_name(run)
+            category = run.get("task", {}).get("category", "uncategorized")
+            cells[map_name][category].append(run)
+
+        cond_out: dict[str, dict[str, dict]] = {}
+        for map_name in sorted(cells):
+            map_out: dict[str, dict] = {}
+            for category in sorted(cells[map_name]):
+                cell_runs = cells[map_name][category]
+
+                m1_succ = m1_det = 0
+                for run in cell_runs:
+                    res = is_task_success(run)
+                    if res is not None:
+                        m1_det += 1
+                        if res:
+                            m1_succ += 1
+                m1_rate, m1_lo, m1_hi = wilson_ci(m1_succ, m1_det)
+
+                m2_succ = m2_det = 0
+                for run in cell_runs:
+                    res = is_constraint_adhered(run, require_manual=require_manual_m2)
+                    if res is not None:
+                        m2_det += 1
+                        if res:
+                            m2_succ += 1
+                m2_rate, m2_lo, m2_hi = wilson_ci(m2_succ, m2_det)
+
+                m3_succ = m3_total = 0
+                for run in cell_runs:
+                    c = run.get("condition", "")
+                    if "condition3" in c or "open_loop" in c:
+                        continue
+                    for sg in run.get("subgoal_summaries", []):
+                        m3_total += 1
+                        if sg.get("stop_reason", "") == "monitor_complete":
+                            m3_succ += 1
+                m3_rate, m3_lo, m3_hi = wilson_ci(m3_succ, m3_total)
+
+                map_out[category] = {
+                    "n_episodes": len(cell_runs),
+                    "M1_task_success": {
+                        "successes": m1_succ,
+                        "determined": m1_det,
+                        "rate": round(m1_rate, 4),
+                        "wilson_ci_lower": round(m1_lo, 4),
+                        "wilson_ci_upper": round(m1_hi, 4),
+                    },
+                    "M2_constraint_adherence": {
+                        "adhered": m2_succ,
+                        "determined": m2_det,
+                        "rate": round(m2_rate, 4),
+                        "wilson_ci_lower": round(m2_lo, 4),
+                        "wilson_ci_upper": round(m2_hi, 4),
+                    },
+                    "M3_subgoal_success": {
+                        "successful_subgoals": m3_succ,
+                        "total_subgoals": m3_total,
+                        "rate": round(m3_rate, 4),
+                        "wilson_ci_lower": round(m3_lo, 4),
+                        "wilson_ci_upper": round(m3_hi, 4),
+                    },
+                }
+            cond_out[map_name] = map_out
+        result[cond] = cond_out
 
     return result
 
@@ -983,12 +1325,18 @@ def aggregate_by_subgoal_position(
     return result
 
 
-def _run_pair_key(run: dict) -> tuple:
-    """Unique key for pairing runs across conditions: (task_id, initial_pos)."""
+def _run_pair_key(run: dict) -> str:
+    """Unique JSON-serialisable key for pairing runs across conditions.
+
+    Format: ``"<task_id>|<x>,<y>,<z>,<yaw>"``. Same task_id + same initial
+    position implies the same pair across conditions (starting positions are
+    fixed across conditions per the experimental design).
+    """
     task = run.get("task", {})
-    tid = task.get("task_id", "")
-    pos = tuple(task.get("initial_pos", []))
-    return (tid, pos)
+    tid = str(task.get("task_id", ""))
+    pos = task.get("initial_pos", []) or []
+    pos_str = ",".join(f"{float(p):.4f}" for p in pos)
+    return f"{tid}|{pos_str}"
 
 
 def compute_paired_mcnemar_tests(
@@ -1041,8 +1389,15 @@ def compute_pairwise_tests(
     condition_metrics: dict[str, dict],
 ) -> dict[str, dict]:
     """
-    Compute Fisher's exact test for C0 vs each other condition,
-    for M1, M2, and M3.
+    Compute pairwise tests for C0 vs each other condition.
+
+    Significance reporting:
+      * M1 (task success) is the headline test family. Bonferroni-corrected
+        at 0.05/6 (six C0-vs-baseline comparisons).
+      * M2 (constraint adherence) and M3 (per-episode subgoal success rate)
+        are secondary / exploratory. Reported with raw p-values at alpha=0.05;
+        no family-wise correction claim. M3 uses a paired Wilcoxon test
+        (clustering-aware) instead of an unpaired Fisher test.
     """
     comparisons = {}
     c0 = condition_metrics.get("condition0")
@@ -1056,31 +1411,39 @@ def compute_pairwise_tests(
 
         cond_comparisons = {}
 
-        # M1
+        # M1: primary headline test (Bonferroni-corrected).
         c0_m1 = c0["M1_task_success"]
         cx_m1 = cx["M1_task_success"]
         if c0_m1["determined"] > 0 and cx_m1["determined"] > 0:
             cond_comparisons["M1_task_success"] = fishers_exact_test(
                 c0_m1["successes"], c0_m1["determined"],
                 cx_m1["successes"], cx_m1["determined"],
+                family="primary",
             )
 
-        # M2
+        # M2: exploratory (no family-wise correction).
         c0_m2 = c0["M2_constraint_adherence"]
         cx_m2 = cx["M2_constraint_adherence"]
         if c0_m2["determined"] > 0 and cx_m2["determined"] > 0:
             cond_comparisons["M2_constraint_adherence"] = fishers_exact_test(
                 c0_m2["adhered"], c0_m2["determined"],
                 cx_m2["adhered"], cx_m2["determined"],
+                family="exploratory",
             )
 
-        # M3
+        # M3: paired Wilcoxon signed-rank test on per-episode subgoal-success
+        # rates. Fisher's exact test would treat each subgoal as i.i.d.
+        # Bernoulli, but subgoals are clustered within episodes (failures
+        # cascade once one subgoal fails) and the per-condition denominator
+        # depends on early-stopping behaviour, so the independence assumption
+        # is violated. Wilcoxon pairs each episode by (task_id, initial_pos)
+        # so the within-episode clustering is absorbed into the pair.
         c0_m3 = c0["M3_subgoal_success"]
         cx_m3 = cx["M3_subgoal_success"]
         if c0_m3["total_subgoals"] > 0 and cx_m3["total_subgoals"] > 0:
-            cond_comparisons["M3_subgoal_success"] = fishers_exact_test(
-                c0_m3["successful_subgoals"], c0_m3["total_subgoals"],
-                cx_m3["successful_subgoals"], cx_m3["total_subgoals"],
+            cond_comparisons["M3_subgoal_success"] = wilcoxon_paired(
+                c0_m3.get("per_episode_rates", {}),
+                cx_m3.get("per_episode_rates", {}),
             )
 
         comparisons[f"C0_vs_{cond}"] = cond_comparisons
@@ -1184,20 +1547,39 @@ def print_summary_table(condition_metrics: dict[str, dict], pairwise: dict[str, 
     # Pairwise comparisons
     if pairwise:
         print("-" * 100)
-        print(f"Statistical Comparisons (C0 vs Baselines, Bonferroni threshold: p < {BONFERRONI_THRESHOLD:.4f}):")
-        print(f"{'Comparison':<22} {'Metric':<20} {'p-value':>10} {'OR':>8} {'Sig?':>6}")
+        print(
+            f"Statistical Comparisons (C0 vs Baselines). "
+            f"M1 = primary headline test, Bonferroni-corrected at "
+            f"p < {BONFERRONI_THRESHOLD:.4f} (0.05/6). "
+            f"M2 / M3 = exploratory secondary analyses, raw p at alpha=0.05."
+        )
+        print(f"{'Comparison':<22} {'Metric':<22} {'Family':<12} {'p-value':>10} {'Effect':>10} {'Sig?':>6}")
         print("-" * 100)
         for comp_name, comp_data in pairwise.items():
             for metric_name, test_result in comp_data.items():
                 p_val = test_result.get("p_value")
                 odds = test_result.get("odds_ratio")
-                sig = test_result.get("significant_bonferroni")
-
+                family = test_result.get("family", "primary")
+                if family == "primary":
+                    sig = test_result.get("significant_bonferroni")
+                else:
+                    sig = test_result.get("significant_uncorrected")
+                # M3 uses Wilcoxon, which reports median_diff instead of OR.
+                effect = test_result.get(
+                    "median_diff", odds if odds is not None else None,
+                )
                 p_str = f"{p_val:.4f}" if p_val is not None else "N/A"
-                or_str = f"{odds:.2f}" if odds is not None and odds != float("inf") else "inf" if odds == float("inf") else "N/A"
+                if effect is None:
+                    effect_str = "N/A"
+                elif effect == float("inf"):
+                    effect_str = "inf"
+                else:
+                    effect_str = f"{effect:.3f}"
                 sig_str = "***" if sig else ""
-
-                print(f"{comp_name:<22} {metric_name:<20} {p_str:>10} {or_str:>8} {sig_str:>6}")
+                print(
+                    f"{comp_name:<22} {metric_name:<22} {family:<12} "
+                    f"{p_str:>10} {effect_str:>10} {sig_str:>6}"
+                )
         print()
 
     # Notes
@@ -1207,8 +1589,10 @@ def print_summary_table(condition_metrics: dict[str, dict], pairwise: dict[str, 
     print("  - C1 (naive): no subgoals; task success requires manual video review.")
     print("  - C3 (open loop): convergence is self-fulfilling; task success requires manual video review.")
     print("  - M3: C1 and C3 excluded from subgoal success (no reliable automated signal).")
+    print("  - M3 statistical test: paired Wilcoxon signed-rank on per-episode rates.")
     print("  - M5 (qualitative): Requires manual video annotation, not computed here.")
-    print(f"  - Bonferroni correction applied for 6 pairwise comparisons (alpha = {BONFERRONI_THRESHOLD:.4f}).")
+    print(f"  - Bonferroni correction applied to M1 family only (6 comparisons, alpha = {BONFERRONI_THRESHOLD:.4f}).")
+    print("  - M2 / M3 reported with raw p-values; no family-wise correction claim.")
     if not HAS_SCIPY:
         print("  - [WARNING] scipy not installed. Statistical tests were skipped.")
     print(sep)
@@ -1340,6 +1724,70 @@ def print_map_table(map_metrics: dict[str, dict[str, dict]]):
     print()
 
 
+def print_map_x_category_table(
+    map_x_category: dict[str, dict[str, dict[str, dict]]],
+):
+    """Per-map x per-category cross-tab table (the headline figure)."""
+    sep = "=" * 120
+    print()
+    print(sep)
+    print(f"{'Per-Map x Per-Category Breakdown (recommended headline table)':^120}")
+    print(sep)
+    print()
+    print("  Reading guide: cells in the same map should be compared across")
+    print("  categories to gauge LTL's contribution holding the environment fixed.")
+    print()
+
+    all_maps: set[str] = set()
+    all_categories: set[str] = set()
+    for cond_data in map_x_category.values():
+        for map_name, by_cat in cond_data.items():
+            all_maps.add(map_name)
+            all_categories.update(by_cat.keys())
+
+    for map_name in sorted(all_maps):
+        for category in sorted(all_categories):
+            any_data = any(
+                map_x_category.get(cond, {}).get(map_name, {}).get(category)
+                for cond in CONDITION_ORDER
+            )
+            if not any_data:
+                continue
+            print(f"Map: {map_name}   Category: {category}")
+            header = (
+                f"  {'Condition':<28} {'N':>4} "
+                f"{'M1 (Task)':>12} {'M1 CI':>20} "
+                f"{'M2 (Const)':>12} {'M3 (Subg)':>12}"
+            )
+            print(header)
+            print("  " + "-" * 90)
+            for cond in CONDITION_ORDER:
+                cell = map_x_category.get(cond, {}).get(map_name, {}).get(category)
+                if not cell:
+                    continue
+                name = CONDITION_NAMES.get(cond, cond)
+                n = cell["n_episodes"]
+                m1 = cell["M1_task_success"]
+                m2 = cell["M2_constraint_adherence"]
+                m3 = cell["M3_subgoal_success"]
+                m1_str = f"{m1['rate']:.2%}" if m1["determined"] > 0 else "N/A"
+                m1_ci = (
+                    f"[{m1['wilson_ci_lower']:.3f}, {m1['wilson_ci_upper']:.3f}]"
+                    if m1["determined"] > 0 else "N/A"
+                )
+                m2_str = f"{m2['rate']:.2%}" if m2["determined"] > 0 else "N/A"
+                m3_str = f"{m3['rate']:.2%}" if m3["total_subgoals"] > 0 else "N/A"
+                small_n = " (n<10)" if n < 10 else ""
+                print(
+                    f"  {name:<28} {n:>4} "
+                    f"{m1_str:>12} {m1_ci:>20} "
+                    f"{m2_str:>12} {m3_str:>12}{small_n}"
+                )
+            print()
+    print(sep)
+    print()
+
+
 def print_mcnemar_table(mcnemar_results: dict[str, dict]):
     """Print McNemar's test results for paired comparisons."""
     if not mcnemar_results:
@@ -1406,6 +1854,7 @@ def write_json_output(
     output_path: Path,
     category_metrics: dict[str, dict[str, dict]] | None = None,
     map_metrics: dict[str, dict[str, dict]] | None = None,
+    map_x_category: dict[str, dict[str, dict[str, dict]]] | None = None,
     mcnemar_results: dict[str, dict] | None = None,
     subgoal_position: dict[str, dict[int, dict]] | None = None,
 ):
@@ -1414,6 +1863,9 @@ def write_json_output(
         "metadata": {
             "script": "aggregate_results.py",
             "bonferroni_threshold": BONFERRONI_THRESHOLD,
+            "bonferroni_family": "M1 only (6 C0-vs-baseline comparisons)",
+            "m2_m3_significance": "exploratory (raw p-value at alpha=0.05; "
+                                  "no family-wise correction claim)",
             "scipy_available": HAS_SCIPY,
         },
         "conditions": condition_metrics,
@@ -1423,6 +1875,8 @@ def write_json_output(
         output["category_breakdown"] = category_metrics
     if map_metrics:
         output["map_breakdown"] = map_metrics
+    if map_x_category:
+        output["map_x_category_breakdown"] = map_x_category
     if mcnemar_results:
         output["mcnemar_paired_tests"] = mcnemar_results
     if subgoal_position:
@@ -1581,7 +2035,16 @@ def main():
     parser.add_argument(
         "--strict",
         action="store_true",
-        help="Exit with code 1 if any runs are missing required annotations",
+        help="Exit with code 1 if any runs are missing required annotations "
+             "OR if any condition has fewer than --expected-n completed runs.",
+    )
+    parser.add_argument(
+        "--expected-n",
+        type=int,
+        default=EXPECTED_RUNS_PER_CONDITION,
+        help=f"Expected completed runs per condition (default: "
+             f"{EXPECTED_RUNS_PER_CONDITION} = 15 tasks x 3 variants). "
+             "Set to 0 to disable the check.",
     )
     args = parser.parse_args()
 
@@ -1592,7 +2055,11 @@ def main():
     print()
 
     # Load all runs
-    runs_by_condition = find_run_infos(results_dir, args.conditions)
+    expected_n = args.expected_n if args.expected_n > 0 else None
+    runs_by_condition = find_run_infos(
+        results_dir, args.conditions,
+        expected_n=expected_n, strict=args.strict,
+    )
 
     if not runs_by_condition:
         print("No results found. Check --results_dir path.", file=sys.stderr)
@@ -1608,6 +2075,14 @@ def main():
     print()
 
     # ---- Annotation validation ----
+    # Three flavours of annotation are required for a fully reproducible run:
+    #   (a) C1 and C3 task_success: manual video-review verdict (M1 source).
+    #   (b) Every constrained-task episode (all 7 conditions) needs a
+    #       manual ``any_constraint_violated`` flag in constraint_analysis.json
+    #       so M2 is computed from the official source rather than the
+    #       runtime monitor flag.
+    #   (c) Each constrained task JSON should declare ``constraints_expected``
+    #       so the annotator knows which constraints to look for.
     missing_annotations: list[dict] = []
     for cond in ["condition1", "condition3"]:
         for run in runs_by_condition.get(cond, []):
@@ -1621,13 +2096,21 @@ def main():
     for cond, runs in runs_by_condition.items():
         for run in runs:
             task = run.get("task", {})
-            if task.get("category") == "constrained":
+            category = task.get("category")
+            if category == "constrained":
                 ce = task.get("constraints_expected")
                 if not ce or not isinstance(ce, list) or len(ce) == 0:
                     missing_annotations.append({
                         "condition": cond,
                         "path": run["_source_path"],
                         "missing": "constraints_expected in task JSON",
+                    })
+                ca = run.get("_constraint_analysis")
+                if not ca or "any_constraint_violated" not in ca:
+                    missing_annotations.append({
+                        "condition": cond,
+                        "path": run["_source_path"],
+                        "missing": "any_constraint_violated in constraint_analysis.json (manual M2 review)",
                     })
 
     if missing_annotations:
@@ -1645,12 +2128,20 @@ def main():
             print("Exiting due to --strict flag.", file=sys.stderr)
             sys.exit(1)
 
+    # Under --strict, M2 must come from the manual constraint_analysis.json
+    # files; the runtime any_constraint_violated flag is suppressed. Missing
+    # annotation cells will appear as "determined=0" rather than being
+    # back-filled by the runtime monitor's flag.
+    require_manual_m2 = bool(args.strict)
+
     # Compute per-condition metrics
     condition_metrics = {}
     for cond in CONDITION_ORDER:
         runs = runs_by_condition.get(cond, [])
         if runs:
-            condition_metrics[cond] = aggregate_condition(cond, runs)
+            condition_metrics[cond] = aggregate_condition(
+                cond, runs, require_manual_m2=require_manual_m2,
+            )
 
     # Compute pairwise statistical tests
     pairwise = compute_pairwise_tests(condition_metrics)
@@ -1659,10 +2150,21 @@ def main():
     mcnemar_results = compute_paired_mcnemar_tests(runs_by_condition)
 
     # Compute per-category breakdown (sequential vs constrained)
-    category_metrics = aggregate_by_category(runs_by_condition)
+    category_metrics = aggregate_by_category(
+        runs_by_condition, require_manual_m2=require_manual_m2,
+    )
 
     # Compute per-map breakdown (generalization across environments)
-    map_metrics = aggregate_by_map(runs_by_condition)
+    map_metrics = aggregate_by_map(
+        runs_by_condition, require_manual_m2=require_manual_m2,
+    )
+
+    # Compute per-map x per-category cross-tab (lead with this in the paper:
+    # the marginal per-map and per-category tables are confounded because
+    # task-category distribution is uneven across maps).
+    map_x_category = aggregate_by_map_and_category(
+        runs_by_condition, require_manual_m2=require_manual_m2,
+    )
 
     # Compute subgoal position breakdown
     subgoal_position = aggregate_by_subgoal_position(runs_by_condition)
@@ -1672,6 +2174,7 @@ def main():
     print_mcnemar_table(mcnemar_results)
     print_category_table(category_metrics)
     print_map_table(map_metrics)
+    print_map_x_category_table(map_x_category)
     print_subgoal_position_table(subgoal_position)
 
     # Write files
@@ -1680,6 +2183,7 @@ def main():
         condition_metrics, pairwise, output_path / "experiment_summary.json",
         category_metrics=category_metrics,
         map_metrics=map_metrics,
+        map_x_category=map_x_category,
         mcnemar_results=mcnemar_results,
         subgoal_position=subgoal_position,
     )

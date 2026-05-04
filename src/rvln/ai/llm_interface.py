@@ -9,15 +9,19 @@ conda install -c conda-forge spot
 Tasks to complete:
     Break down into action and object for each predicate
 """
+import hashlib
 import json
 import logging
+import os
 import time
-from typing import Any, Dict, List
+from pathlib import Path
+from typing import Any, Dict, List, Optional
 try:
     import spot
 except ImportError:
     spot = None
 from ..config import DEFAULT_LLM_MODEL
+from ..paths import FORMULA_CACHE_DIR
 from .prompts import (
     LTL_NL_SYSTEM_PROMPT,
     LTL_NL_EXAMPLES_PROMPT,
@@ -27,6 +31,95 @@ from .prompts import (
 )
 from .utils.llm_providers import LLMFactory
 from .utils.parsing import parse_ltl_nl, extract_json
+
+logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Formula cache
+# ---------------------------------------------------------------------------
+#
+# The LTL planner is re-instantiated for every episode, but the same NL
+# instruction produces the same formula deterministically only when the LLM
+# is well-behaved. To keep the formula stable across episodes (especially
+# across the 3 starting-position variants of each task), we cache the
+# planner LLM output on disk under cached_formulas/{hash}.json.
+#
+# The cache key includes the model name and the prompt-text version (a
+# digest of the system prompts) so that prompt revisions invalidate stale
+# entries automatically. The cache is committed to git for reproducibility.
+#
+# Disable via environment variable RVLN_IGNORE_FORMULA_CACHE=1 or by passing
+# ``ignore_cache=True`` to ``make_natural_language_request``.
+
+_PROMPT_VERSION_CACHE: Optional[str] = None
+
+
+def _prompt_version() -> str:
+    global _PROMPT_VERSION_CACHE
+    if _PROMPT_VERSION_CACHE is not None:
+        return _PROMPT_VERSION_CACHE
+    h = hashlib.sha1()
+    for prompt in (
+        LTL_NL_SYSTEM_PROMPT,
+        LTL_NL_EXAMPLES_PROMPT,
+        LTL_NL_RESTATED_TASK_PROMPT,
+    ):
+        h.update(prompt.encode("utf-8"))
+    _PROMPT_VERSION_CACHE = h.hexdigest()[:12]
+    return _PROMPT_VERSION_CACHE
+
+
+def _formula_cache_key(instruction: str, model: str) -> str:
+    payload = json.dumps({
+        "model": model,
+        "prompt_version": _prompt_version(),
+        "instruction": instruction.strip(),
+    }, sort_keys=True)
+    return hashlib.sha1(payload.encode("utf-8")).hexdigest()
+
+
+def _formula_cache_path(instruction: str, model: str) -> Path:
+    return FORMULA_CACHE_DIR / f"{_formula_cache_key(instruction, model)}.json"
+
+
+def _load_cached_formula(instruction: str, model: str) -> Optional[Dict[str, Any]]:
+    if os.environ.get("RVLN_IGNORE_FORMULA_CACHE") == "1":
+        return None
+    path = _formula_cache_path(instruction, model)
+    if not path.exists():
+        return None
+    try:
+        with open(path, "r") as f:
+            entry = json.load(f)
+    except Exception as e:
+        logger.warning("Failed to read formula cache %s: %s", path, e)
+        return None
+    if not isinstance(entry, dict):
+        return None
+    if "ltl_nl_formula" not in entry or "pi_predicates" not in entry:
+        return None
+    return entry
+
+
+def _save_cached_formula(
+    instruction: str, model: str, formula: Dict[str, Any], raw_response: str,
+) -> None:
+    FORMULA_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    path = _formula_cache_path(instruction, model)
+    payload = {
+        "model": model,
+        "prompt_version": _prompt_version(),
+        "instruction": instruction.strip(),
+        "ltl_nl_formula": formula.get("ltl_nl_formula", ""),
+        "pi_predicates": formula.get("pi_predicates", {}),
+        "raw_response": raw_response,
+    }
+    try:
+        with open(path, "w") as f:
+            json.dump(payload, f, indent=2, sort_keys=True)
+    except Exception as e:
+        logger.warning("Failed to write formula cache %s: %s", path, e)
 
 # Configure logging
 # logging.basicConfig(level=logging.INFO)
@@ -67,11 +160,16 @@ class LLMUserInterface():
         self._ltl_is_confirmed = False
         self.llm_call_records: List[Dict[str, Any]] = []
 
-    def make_natural_language_request(self, request: str) -> str:
+    def make_natural_language_request(
+        self, request: str, ignore_cache: bool = False,
+    ) -> str:
         """Makes a natural language request to the robot.
 
         Args:
             request: The natural language request the robot should satisfy
+            ignore_cache: If True, skip the on-disk formula cache and always
+                call the LLM. Default False reuses any cached formula for
+                this (model, prompt-version, instruction) tuple.
 
         Returns:
             The LLM response to the natural language request. If the request is valid,
@@ -80,6 +178,24 @@ class LLMUserInterface():
             a valid response.
         """
         self.reset_to_baseline_context()
+
+        cached = None if ignore_cache else _load_cached_formula(request, self._model)
+        if cached is not None:
+            self.ltl_nl_formula = {
+                "ltl_nl_formula": cached["ltl_nl_formula"],
+                "pi_predicates": cached["pi_predicates"],
+            }
+            self.llm_call_records.append({
+                "label": "ltl_nl_planning_cached",
+                "rtt_s": 0.0,
+                "model": cached.get("model", self._model),
+                "input_tokens": 0,
+                "output_tokens": 0,
+            })
+            response_text = cached.get("raw_response", "")
+            self._history.append({"role": "user", "content": request})
+            self._history.append({"role": "assistant", "content": response_text})
+            return self.ltl_nl_to_string()
 
         self._history.append({
                 "role": "user",
@@ -108,6 +224,10 @@ class LLMUserInterface():
                 "role": "assistant",
                 "content": response_text,
             })
+
+        if not ignore_cache and isinstance(ltl_nl, dict):
+            _save_cached_formula(request, self._model, ltl_nl, response_text)
+
         return self.ltl_nl_to_string()
 
     def ltl_nl_to_string(self) -> str:

@@ -55,6 +55,7 @@ from rvln.config import (
 from rvln.eval.subgoal_runner import SubgoalConfig, run_subgoal
 from rvln.eval.task_utils import (
     get_completed_task_ids,
+    make_ask_help_callback,
     resolve_eval_tasks,
     sanitize_run_label,
 )
@@ -158,10 +159,16 @@ def run_grid_only_control_loop(
             subgoal_dir=subgoal_dir, frame_offset=total_frame_count,
             trajectory_log=trajectory_log,
             constraints=active_constraints,
+            ask_help_callback=make_ask_help_callback(),
         )
 
         total_frame_count += subgoal_result["total_steps"]
         subgoal_summaries.append(subgoal_result)
+
+        sr = subgoal_result["stop_reason"]
+        if sr == "abort":
+            logger.info("Episode aborted at subgoal '%s'.", current_subgoal)
+            break
 
         planner.advance_state(current_subgoal)
 

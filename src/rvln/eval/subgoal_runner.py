@@ -60,17 +60,22 @@ EXACTLY ONE JSON object (no markdown fences):
 {{
   "complete": true/false,
   "completion_percentage": 0.0 to 1.0,
-  "should_stop": true/false
+  "should_stop": true/false,
+  "reasoning": "..."
 }}
 
 - "complete": true ONLY if you are highly confident the subgoal has been fully
   accomplished. Do NOT mark complete for partial progress.
 - "completion_percentage": your best estimate of how close the subgoal is to
-  completion (0.0 = not started, 1.0 = fully done). NEVER set 1.0 unless you
-  are highly confident. Cap at 0.95 when unsure.
+  completion (0.0 = not started, 1.0 = fully done). Reserve 1.0 for
+  high-confidence completion. Use the full 0.0-0.99 range; pick the specific
+  value you estimate rather than parking on a single round number.
 - "should_stop": true if the drone appears off-track or heading toward a
   collision. The drone will be stopped and a corrective instruction issued.
-  Do NOT set true for slow progress."""
+  Do NOT set true for slow progress.
+- "reasoning": one short sentence explaining your judgement, especially why
+  should_stop was set to true. This text is forwarded to the convergence
+  stage if the drone is stopped, so be specific."""
 
 GRID_ONLY_GLOBAL_PROMPT_CONSTRAINTS = """\
 Subgoal: {subgoal}
@@ -86,24 +91,30 @@ EXACTLY ONE JSON object (no markdown fences):
 {{
   "complete": true/false,
   "completion_percentage": 0.0 to 1.0,
-  "should_stop": true/false
+  "should_stop": true/false,
+  "reasoning": "..."
 }}
 
 - "complete": true ONLY if you are highly confident the subgoal has been fully
   accomplished. Do NOT mark complete for partial progress.
 - "completion_percentage": your best estimate of how close the subgoal is to
-  completion (0.0 = not started, 1.0 = fully done). NEVER set 1.0 unless you
-  are highly confident. Cap at 0.95 when unsure.
+  completion (0.0 = not started, 1.0 = fully done). Reserve 1.0 for
+  high-confidence completion. Use the full 0.0-0.99 range; pick the specific
+  value you estimate rather than parking on a single round number.
 - "should_stop": true if the drone appears off-track, heading toward a
   collision, or violating any active constraint listed above. The drone will
   be stopped and a corrective instruction issued.
-  Do NOT set true for slow progress."""
+  Do NOT set true for slow progress.
+- "reasoning": one short sentence explaining your judgement, especially which
+  constraint or hazard motivated should_stop when true. This text is
+  forwarded to the convergence stage if the drone is stopped, so be
+  specific."""
 
 GRID_ONLY_CONVERGENCE_PROMPT = """\
 Subgoal: {subgoal}
 
 Previous estimated completion: {prev_completion_pct}
-
+{stop_reasoning_block}
 The drone has stopped moving. The grid shows up to the 9 most recent sampled
 frames (left to right, top to bottom, in temporal order).
 
@@ -130,7 +141,7 @@ GRID_ONLY_CONVERGENCE_PROMPT_CONSTRAINTS = """\
 Subgoal: {subgoal}
 {constraints_block}
 Previous estimated completion: {prev_completion_pct}
-
+{stop_reasoning_block}
 The drone has stopped moving. The grid shows up to the 9 most recent sampled
 frames (left to right, top to bottom, in temporal order).
 
@@ -171,15 +182,20 @@ Respond with EXACTLY ONE JSON object (no markdown fences):
 {{
   "complete": true/false,
   "completion_percentage": 0.0 to 1.0,
-  "should_stop": true/false
+  "should_stop": true/false,
+  "reasoning": "..."
 }}
 
 - "complete": true ONLY if you are highly confident the subgoal has been fully
   accomplished based on the current view.
 - "completion_percentage": your best estimate (0.0 = not started, 1.0 = done).
-  NEVER set 1.0 unless highly confident. Cap at 0.95 when unsure.
+  Reserve 1.0 for high-confidence completion. Use the full 0.0-0.99 range;
+  pick the specific value you estimate rather than parking on a single value.
 - "should_stop": true if the drone appears off-track or heading toward a
-  collision. The drone will be stopped and a correction issued."""
+  collision. The drone will be stopped and a correction issued.
+- "reasoning": one short sentence explaining your judgement, especially why
+  should_stop was set to true. This text is forwarded to the convergence
+  stage if the drone is stopped, so be specific."""
 
 SINGLE_FRAME_GLOBAL_PROMPT_CONSTRAINTS = """\
 Subgoal: {subgoal}
@@ -194,22 +210,28 @@ Respond with EXACTLY ONE JSON object (no markdown fences):
 {{
   "complete": true/false,
   "completion_percentage": 0.0 to 1.0,
-  "should_stop": true/false
+  "should_stop": true/false,
+  "reasoning": "..."
 }}
 
 - "complete": true ONLY if you are highly confident the subgoal has been fully
   accomplished based on the current view.
 - "completion_percentage": your best estimate (0.0 = not started, 1.0 = done).
-  NEVER set 1.0 unless highly confident. Cap at 0.95 when unsure.
+  Reserve 1.0 for high-confidence completion. Use the full 0.0-0.99 range;
+  pick the specific value you estimate rather than parking on a single value.
 - "should_stop": true if the drone appears off-track, heading toward a
   collision, or violating any active constraint. The drone will be stopped
-  and a correction issued."""
+  and a correction issued.
+- "reasoning": one short sentence explaining your judgement, especially which
+  constraint or hazard motivated should_stop when true. This text is
+  forwarded to the convergence stage if the drone is stopped, so be
+  specific."""
 
 SINGLE_FRAME_CONVERGENCE_PROMPT = """\
 Subgoal: {subgoal}
 
 Previous estimated completion: {prev_completion_pct}
-
+{stop_reasoning_block}
 The drone has stopped moving. Based on the current camera view, is the subgoal
 complete? If not, did it stop short or overshoot?
 
@@ -231,7 +253,7 @@ SINGLE_FRAME_CONVERGENCE_PROMPT_CONSTRAINTS = """\
 Subgoal: {subgoal}
 {constraints_block}
 Previous estimated completion: {prev_completion_pct}
-
+{stop_reasoning_block}
 The drone has stopped moving. Based on the current camera view, is the subgoal
 complete? If not, did it stop short or overshoot?
 
@@ -361,6 +383,8 @@ def run_subgoal(
     if config.monitor_mode == "text_only":
         extra_kwargs["global_backend"] = "text_llm"
         extra_kwargs["global_model"] = llm_model
+    if config.monitor_mode == "single_frame":
+        extra_kwargs["single_frame_mode"] = True
 
     monitor: Optional[GoalAdherenceMonitor] = None
     if use_monitor:

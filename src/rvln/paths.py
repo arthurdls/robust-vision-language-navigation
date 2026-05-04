@@ -39,6 +39,11 @@ UAV_FLOW_EVAL = BATCH_RUN_CWD  # alias used by scripts that chdir before running
 WEIGHTS_DIR = REPO_ROOT / "weights"
 RESULTS_DIR = REPO_ROOT / "results"
 
+# LTL formula cache: content-addressed by (model, instruction) hash. Committed
+# to git so experiments are reproducible across reruns and across the three
+# starting-position variants of each task.
+FORMULA_CACHE_DIR = REPO_ROOT / "cached_formulas"
+
 # Task directories
 TASKS_DIR = REPO_ROOT / "tasks"
 SHARED_TASKS_DIR = TASKS_DIR  # tasks/<map_name>/<task>.json

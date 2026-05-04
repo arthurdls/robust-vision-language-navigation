@@ -29,9 +29,9 @@ DEFAULT_DIARY_CHECK_INTERVAL_S = 1.0
 
 # Shared
 DEFAULT_MAX_CORRECTIONS = 20
-DEFAULT_STALL_WINDOW = 3
+DEFAULT_STALL_WINDOW = 10
 DEFAULT_STALL_THRESHOLD = 0.05
-DEFAULT_STALL_COMPLETION_FLOOR = 0.8
+DEFAULT_STALL_COMPLETION_FLOOR = 0.5
 
 # ---------------------------------------------------------------------------
 # Movement convergence thresholds

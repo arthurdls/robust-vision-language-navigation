@@ -150,21 +150,68 @@ class LTLSymbolicPlanner:
             if info.polarity == "positive"
         }
 
+    def _active_positive_constraint_indices(self, state: Optional[int] = None) -> set[int]:
+        """Indices of positive constraints that are still enforced at ``state``.
+
+        Scoped positive constraints (``p U q``) are released once their
+        right-hand side q has fired: from that point on the automaton has
+        outgoing edges that allow p to be FALSE. Forcing every positive
+        predicate TRUE in goal-check BDDs would incorrectly exclude those
+        edges and cause goal advancement to fail.
+
+        A positive constraint at index i is "active" at state s if making
+        p_i FALSE (with all OTHER positive predicates TRUE) leaves no valid
+        outgoing edge from s. If at least one edge accepts p_i = FALSE, the
+        constraint has been released at this state.
+        """
+        if state is None:
+            state = self.current_automaton_state
+        if not self.constraint_predicates or self.automaton is None:
+            return set()
+        all_positive = self._positive_constraint_indices()
+        active: set[int] = set()
+        for idx in all_positive:
+            try:
+                violation_bdd = self._build_bdd(all_positive - {idx})
+            except ValueError:
+                continue
+            has_any_edge = any(
+                (violation_bdd & edge.cond) != self._bdd_false
+                for edge in self.automaton.out(state)
+            )
+            if not has_any_edge:
+                active.add(idx)
+        return active
+
     def _get_bdd_for_single_task(self, active_p_idx: int):
         """BDD: only the given predicate TRUE, everything else FALSE."""
         return self._build_bdd({active_p_idx})
 
-    def _get_bdd_goal_check(self, goal_p_idx: int):
-        """BDD: goal predicate TRUE, positive constraints TRUE, rest FALSE."""
-        return self._build_bdd({goal_p_idx} | self._positive_constraint_indices())
+    def _get_bdd_goal_check(
+        self, goal_p_idx: int, state: Optional[int] = None,
+    ):
+        """BDD: goal predicate TRUE, ACTIVE positive constraints TRUE, rest FALSE.
+
+        Uses ``_active_positive_constraint_indices(state)`` rather than every
+        statically-classified positive constraint, so that goal advancement
+        works correctly past the release point of a scoped maintenance
+        constraint (``p U q``).
+        """
+        return self._build_bdd(
+            {goal_p_idx} | self._active_positive_constraint_indices(state)
+        )
 
     def _get_bdd_constraint_violation(self, key: str):
         """BDD representing the violation state for a constraint.
 
-        Negative: predicate TRUE (violation), positive constraints TRUE
-        (satisfied so they don't mask the check), everything else FALSE.
-        Positive: predicate FALSE (violation), other positive constraints
+        Negative: predicate TRUE (violation), every other positive constraint
+        TRUE (so they don't mask the check), everything else FALSE.
+        Positive: predicate FALSE (violation), every other positive constraint
         TRUE (satisfied), everything else FALSE.
+
+        Uses the static set of positive constraints, not the per-state active
+        set, to match the probe semantics in
+        ``_active_positive_constraint_indices`` and avoid recursive lookups.
         """
         info = self.constraint_predicates[key]
         target_idx = _predicate_key_to_index(key)
@@ -173,7 +220,7 @@ class LTLSymbolicPlanner:
         if info.polarity == "negative":
             return self._build_bdd({target_idx} | positive)
         else:
-            return self._build_bdd((positive - {target_idx}))
+            return self._build_bdd(positive - {target_idx})
 
     # ------------------------------------------------------------------
     # Automaton management
@@ -407,6 +454,26 @@ class LTLSymbolicPlanner:
         if kind in (spot.op_F, spot.op_U, spot.op_G):
             self._walk_classify(node, out, set())
             return
+        # Disjunction / implication / xor under G describe a *compound*
+        # maintenance condition (e.g., G(p1 | p2) means "at all times at
+        # least one of p1, p2 holds"). Splitting into independent positive
+        # constraints would be strictly stronger than the formula and
+        # would force every disjunct TRUE in goal-check BDDs, blocking
+        # legitimate forward edges. The Spot automaton already encodes
+        # the disjunction in its edge conditions; do not duplicate the
+        # constraint in our prompt-side classification, and warn so we
+        # notice if the LLM ever generates such a form.
+        if kind in (spot.op_Or, spot.op_Implies, spot.op_Xor):
+            print(
+                "[LTL Planner] Warning: compound maintenance constraint "
+                f"under G ({node}) is not decomposed into per-AP positive "
+                "constraints. Enforcement relies on the Spot automaton "
+                "edge conditions only; the goal-adherence monitor will not "
+                "see these APs as MAINTAIN items in its prompt."
+            )
+            return
+        # Conjunction or any other operator: recurse so each conjunct can
+        # be classified independently (G(p1 & p2) -> two positive constraints).
         for i in range(node.size()):
             self._classify_under_g(node[i], out)
 
