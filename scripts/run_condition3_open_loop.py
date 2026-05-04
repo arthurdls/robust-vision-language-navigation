@@ -420,7 +420,7 @@ def main():
     parser.add_argument("--sim_port", type=int, default=DEFAULT_SIM_PORT)
     parser.add_argument("--sim_api_port", type=int, default=DEFAULT_SIM_API_PORT)
     parser.add_argument("--llm_model", default=DEFAULT_LLM_MODEL)
-    parser.add_argument("--converter_model", default=DEFAULT_VLM_MODEL)
+    parser.add_argument("--converter_model", default=DEFAULT_LLM_MODEL)
     parser.add_argument("--max-steps-per-subgoal", type=int, default=DEFAULT_MAX_STEPS_PER_SUBGOAL)
     parser.add_argument("-o", "--results_dir", default=str(CONDITION3_RESULTS_DIR))
     parser.add_argument("--save-mp4", action="store_true")

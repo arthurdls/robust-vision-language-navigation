@@ -15,7 +15,7 @@ import time
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
-from ..config import DEFAULT_VLM_MODEL
+from ..config import DEFAULT_LLM_MODEL
 from .prompts import SUBGOAL_CONVERSION_PROMPT as CONVERSION_SYSTEM_PROMPT
 from .utils.llm_providers import BaseLLM, LLMFactory
 
@@ -35,7 +35,7 @@ class SubgoalConverter:
     stopping conditions and extracts the core physical action.
     """
 
-    def __init__(self, model: str = DEFAULT_VLM_MODEL):
+    def __init__(self, model: str = DEFAULT_LLM_MODEL):
         self._model = model
         self._llm: BaseLLM = self._make_llm(model)
         self.llm_call_records: List[Dict[str, Any]] = []
