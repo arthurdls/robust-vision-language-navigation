@@ -273,6 +273,13 @@ def main():
             "task_dir_name": map_info.task_dir_name,
         })
 
+        from rvln.sim.sim_server import run_server
+        api_thread = threading.Thread(
+            target=run_server, args=(args.api_port,), daemon=True,
+        )
+        api_thread.start()
+        print(f"Sim API server started on port {args.api_port}.")
+
         from rvln.sim.sim_server import init_env
         print("Auto-initializing gym environment...")
         init_result = init_env(
@@ -281,13 +288,6 @@ def main():
             seed=args.seed,
         )
         print(f"Gym env ready: {init_result['status']}, drone_cam={init_result['drone_cam_id']}")
-
-        from rvln.sim.sim_server import run_server
-        api_thread = threading.Thread(
-            target=run_server, args=(args.api_port,), daemon=True,
-        )
-        api_thread.start()
-        print(f"Sim API server started on port {args.api_port}.")
 
         print(f"\nOn the control machine, run:")
         print(f"  python scripts/start_server.py")
