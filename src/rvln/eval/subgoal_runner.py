@@ -601,6 +601,14 @@ def run_subgoal(
         total_steps = step + 1
 
         # --- Convergence detection ---
+        # Note: checkpoints (monitor.on_frame above) still fire during
+        # corrective instruction execution, but they evaluate the *subgoal*,
+        # not the corrective micro-command. The convergence guard below
+        # (steps_since_correction >= check_interval) is the only mechanism
+        # that distinguishes correction-phase from normal execution: it
+        # suppresses the small-motion convergence detector to let the new
+        # instruction take effect. See the "Correction-awareness gap"
+        # section in goal_adherence_monitor.py for details.
         converged = False
         if not use_async:
             if monitor and result is not None and result.action == "force_converge":
