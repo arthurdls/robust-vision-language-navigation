@@ -176,10 +176,10 @@ def resolve_eval_tasks(
 
 
 def _apply_overrides(task: dict, args, overrides: Dict[str, str]) -> None:
-    """Apply CLI argument overrides to a task dict (only if arg value is truthy)."""
+    """Apply CLI argument overrides to a task dict."""
     for key, attr in overrides.items():
         val = getattr(args, attr, None)
-        if val:
+        if val is not None:
             task[key] = val
 
 
