@@ -362,6 +362,19 @@ Language (NL) to define complex, multi-step tasks for robots.
         * * **Chain Example**: 'A then B then C' (`pi_1`, `pi_2`, `pi_3`)
         * * **Logic**: We need '`pi_1` before `pi_2`' AND '`pi_2` before `pi_3`'.
         * * **Formula**: `F pi_3 & (!pi_2 U pi_1) & (!pi_3 U pi_2)`
+        * * **Chain completeness rule**: Every adjacent pair of goals in the
+        *   intended sequence MUST be connected by a `!pi_later U pi_earlier`
+        *   clause. A maintenance constraint `(pi_X U pi_Y)` says "maintain X
+        *   until Y" but does NOT place Y in the sequence. If Y has predecessor
+        *   goals, you still need `!pi_Y U pi_prev` to connect it into the chain.
+        *   Without this link, the automaton can satisfy Y immediately, skipping
+        *   all predecessor goals.
+        * * **Example**: 'Do A, then maintain B until C, then do D.'
+        *   * `pi_1`=A, `pi_2`=B (constraint), `pi_3`=C, `pi_4`=D
+        *   * WRONG: `F pi_4 & (!pi_4 U pi_3) & (pi_2 U pi_3)`
+        *     (pi_3 has no backward link, so A is skipped)
+        *   * CORRECT: `F pi_4 & (!pi_4 U pi_3) & (!pi_3 U pi_1) & (pi_2 U pi_3)`
+        *     (`!pi_3 U pi_1` connects C after A in the chain)
         * ---
         * ### Constraints (G, Negative and Positive Predicates)
         * Some predicates represent CONDITIONS TO ENFORCE rather than goals to achieve.
@@ -572,6 +585,18 @@ Assistant:
         "pi_3": "River visible in frame"
     },
     "ltl_nl_formula": "F pi_2 & (!pi_2 U pi_1) & (pi_3 U pi_1)"
+}
+
+User: 'Go to A, then keep the sensor active until you reach B, then deliver the package to C.'
+Assistant:
+{
+    "pi_predicates": {
+        "pi_1": "Go to A",
+        "pi_2": "Sensor is active",
+        "pi_3": "Reach B",
+        "pi_4": "Deliver the package to C"
+    },
+    "ltl_nl_formula": "F pi_4 & (!pi_4 U pi_3) & (!pi_3 U pi_1) & (pi_2 U pi_3)"
 }
 
 User: 'Navigate to the bridge, always stay above the treeline, and never fly over the highway.'
