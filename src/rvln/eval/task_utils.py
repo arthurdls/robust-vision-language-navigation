@@ -228,3 +228,34 @@ def sanitize_run_label(text: str, max_len: int = 40, fallback: str = "task") -> 
     clean = text.lower().replace(" ", "_")
     safe = "".join(c for c in clean if c.isalnum() or c == "_")
     return safe[:max_len] or fallback
+
+
+def make_ask_help_callback(interactive_handler=None):
+    """Build an ask_help callback with uniform abort-on-stall semantics.
+
+    Behaviour: when stdin is not a TTY (the default during batch evaluation),
+    every ask_help triggers a hard abort. Episodes therefore terminate at the
+    first stalled subgoal, which makes M1/M3 directly comparable across all
+    seven conditions (no condition gets to skip past a stall and continue).
+
+    When stdin is a TTY, the optional ``interactive_handler`` is used so a
+    human operator can still choose correction / skip / abort. Pass None for
+    a fully non-interactive abort callback.
+    """
+    import sys
+
+    def _callback(subgoal_nl, completion_pct, current_instruction, reasoning=""):
+        if not sys.stdin.isatty():
+            logger.warning(
+                "ask_help triggered (non-interactive), aborting subgoal '%s' "
+                "(completion: %.0f%%, reason: %s)",
+                subgoal_nl, completion_pct * 100, reasoning,
+            )
+            return ("abort", "")
+        if interactive_handler is None:
+            return ("abort", "")
+        return interactive_handler(
+            subgoal_nl, completion_pct, current_instruction, reasoning,
+        )
+
+    return _callback

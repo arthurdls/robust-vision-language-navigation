@@ -88,7 +88,7 @@ LTL Planner (LLM -> Spot automaton -> constraint classification)
     |
     v  subgoal: "approach the red building"
     |  constraints: [AVOID: "Flying over the highway"]
-SubgoalConverter (LLM -> short OpenVLA command + OOD check)
+SubgoalConverter (LLM -> short OpenVLA command)
     |
     v  command: "fly toward building"
 OpenVLA Server (VLA model, returns drone actions)

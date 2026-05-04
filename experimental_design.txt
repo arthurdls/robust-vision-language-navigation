@@ -18,9 +18,8 @@ Key components:
     Spot translates to deterministic monitor automaton. State machine
     advances through subgoals as each is confirmed complete.
   - SubgoalConverter: Rewrites planner predicates into short OpenVLA
-    instructions. Strips visual detection conditions ("until you see X"),
-    converts spatial proximity ("until near X") to approach commands,
-    flags out-of-distribution instructions.
+    instructions. Strips visual detection conditions ("until you see X")
+    and converts spatial proximity ("until near X") to approach commands.
   - GoalAdherenceMonitor: Periodic VLM checkpoints during execution.
     Local prompt: 2-frame comparison ("what changed?").
     Global prompt: sampled 3x3 grid + text diary + displacement +
@@ -39,7 +38,7 @@ Default parameters (from config.py):
   - Max steps per subgoal: 500
   - Diary check interval: every 10 frames
   - Max corrections per subgoal: 20
-  - Stall window: 3 checkpoints
+  - Stall window: 10 checkpoints
   - Stall threshold: 0.05 (completion spread)
   - Convergence: position delta < 3.0 cm AND yaw delta < 1.0 deg
     for 10 consecutive steps

@@ -60,7 +60,13 @@ from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
 import numpy as np
 
-from ..config import DEFAULT_MAX_CORRECTIONS, DEFAULT_VLM_MODEL
+from ..config import (
+    DEFAULT_MAX_CORRECTIONS,
+    DEFAULT_STALL_COMPLETION_FLOOR,
+    DEFAULT_STALL_THRESHOLD,
+    DEFAULT_STALL_WINDOW,
+    DEFAULT_VLM_MODEL,
+)
 from .prompts import (
     DIARY_SYSTEM_PROMPT as GENERAL_SYSTEM_PROMPT,
     DIARY_LOCAL_PROMPT as LOCAL_PROMPT_TEMPLATE,
@@ -157,13 +163,14 @@ class GoalAdherenceMonitor:
         artifacts_dir: Optional[Path] = None,
         max_corrections: int = DEFAULT_MAX_CORRECTIONS,
         check_interval_s: Optional[float] = None,
-        stall_window: int = 3,
-        stall_threshold: float = 0.05,
-        stall_completion_floor: float = 0.8,
+        stall_window: int = DEFAULT_STALL_WINDOW,
+        stall_threshold: float = DEFAULT_STALL_THRESHOLD,
+        stall_completion_floor: float = DEFAULT_STALL_COMPLETION_FLOOR,
         constraints: Optional[List[Any]] = None,
         negative_constraints: Optional[List[str]] = None,
         global_backend: Literal["vlm_grid", "text_llm"] = "vlm_grid",
         global_model: Optional[str] = None,
+        single_frame_mode: bool = False,
     ):
         self._subgoal = subgoal
         self._check_interval = check_interval
@@ -173,6 +180,11 @@ class GoalAdherenceMonitor:
         self._constraints: List[Any] = list(
             constraints or negative_constraints or []
         )
+
+        # Single-frame ablation: skip local 2-frame VLM call, send only the
+        # current frame to global/convergence VLM, do not maintain a diary.
+        # Used by Condition 4 to test the value of temporal context.
+        self._single_frame_mode: bool = single_frame_mode
 
         # Text-only global backend configuration
         self._global_backend: Literal["vlm_grid", "text_llm"] = global_backend
@@ -201,6 +213,8 @@ class GoalAdherenceMonitor:
         self._stall_completion_floor = stall_completion_floor
         self._completion_history: List[float] = []
         self._temp_dir: Optional[str] = None
+
+        self._last_should_stop_reasoning: Optional[str] = None
 
         self._lock = threading.Lock()
         self._stop_event = threading.Event()
@@ -354,18 +368,24 @@ class GoalAdherenceMonitor:
 
         disp_str = self._format_displacement()
         diary_blob = "\n".join(self._diary) if self._diary else "(no diary entries yet)"
+        stop_reason = self._consume_stop_reasoning()
 
         if self._global_backend == "text_llm":
-            return self._run_text_only_convergence(diary_blob, disp_str)
+            return self._run_text_only_convergence(diary_blob, disp_str, stop_reason)
 
-        prompt = self._format_convergence_prompt(diary_blob, disp_str)
+        prompt = self._format_convergence_prompt(diary_blob, disp_str, stop_reason)
 
-        sampled = sample_frames_every_n(self._frame_paths, self._check_interval)
-        if not sampled or sampled[-1] != path:
-            sampled.append(path)
-        sampled = sampled[-self.MAX_GLOBAL_FRAMES:]
+        if self._single_frame_mode:
+            # Single-frame ablation: convergence VLM sees only the current
+            # frame, mirroring the checkpoint behaviour.
+            grid = build_frame_grid([path])
+        else:
+            sampled = sample_frames_every_n(self._frame_paths, self._check_interval)
+            if not sampled or sampled[-1] != path:
+                sampled.append(path)
+            sampled = sampled[-self.MAX_GLOBAL_FRAMES:]
 
-        grid = build_frame_grid(sampled)
+            grid = build_frame_grid(sampled)
         response = self._timed_query_vlm(
             grid, prompt, "convergence",
             system_prompt=GENERAL_SYSTEM_PROMPT,
@@ -388,8 +408,20 @@ class GoalAdherenceMonitor:
             parsed = self._parse_json_response(response)
             if parsed is None:
                 self._parse_failures += 1
-                raise RuntimeError(
-                    f"Convergence JSON parse failed after retry. Raw: {response[:200]}"
+                logger.error(
+                    "Convergence JSON parse failed after retry, treating as "
+                    "stopped_short with no corrective instruction. Raw: %s",
+                    response[:200],
+                )
+                return DiaryCheckResult(
+                    action="stop",
+                    new_instruction="",
+                    reasoning=(
+                        "convergence_parse_failure: VLM JSON unparseable after "
+                        f"retry. Raw: {response[:200]}"
+                    ),
+                    diary_entry="",
+                    completion_pct=self._last_completion_pct,
                 )
 
         pct = float(parsed.get("completion_percentage", self._last_completion_pct))
@@ -433,8 +465,20 @@ class GoalAdherenceMonitor:
                 )
             corrective = ((parsed_retry or {}).get("corrective_instruction") or "").strip()
             if not corrective:
-                raise RuntimeError(
-                    f"Convergence retry returned no corrective instruction. Raw: {response[:200]}"
+                logger.warning(
+                    "Convergence retry returned no corrective instruction; "
+                    "stopping subgoal with convergence_no_command. Raw: %s",
+                    response[:200],
+                )
+                return DiaryCheckResult(
+                    action="stop",
+                    new_instruction="",
+                    reasoning=(
+                        f"convergence_no_corrective: VLM did not return a "
+                        f"corrective instruction after retry. Raw: {response[:200]}"
+                    ),
+                    diary_entry="",
+                    completion_pct=pct,
                 )
 
         self._corrections_used += 1
@@ -446,7 +490,9 @@ class GoalAdherenceMonitor:
             completion_pct=pct,
         )
 
-    def _run_text_only_convergence(self, diary_blob: str, disp_str: str) -> DiaryCheckResult:
+    def _run_text_only_convergence(
+        self, diary_blob: str, disp_str: str, stop_reason: Optional[str] = None,
+    ) -> DiaryCheckResult:
         """Run text-only convergence check (no image grid)."""
         if self._constraints:
             prompt = TEXT_ONLY_CONVERGENCE_PROMPT_TEMPLATE_CONSTRAINTS.format(
@@ -455,6 +501,7 @@ class GoalAdherenceMonitor:
                 prev_completion_pct=self._last_completion_pct,
                 displacement=disp_str,
                 constraints_block=self._constraints_block(),
+                stop_reasoning_block=self._stop_reasoning_block(stop_reason),
             )
         else:
             prompt = TEXT_ONLY_CONVERGENCE_PROMPT_TEMPLATE.format(
@@ -463,6 +510,7 @@ class GoalAdherenceMonitor:
                 prev_completion_pct=self._last_completion_pct,
                 displacement=disp_str,
                 constraints_block="",
+                stop_reasoning_block=self._stop_reasoning_block(stop_reason),
             )
 
         messages = [
@@ -506,8 +554,19 @@ class GoalAdherenceMonitor:
             parsed = self._parse_json_response(response)
             if parsed is None:
                 self._parse_failures += 1
-                raise RuntimeError(
-                    f"Text-only convergence parse failed after retry. Raw: {response[:200]}"
+                logger.error(
+                    "Text-only convergence parse failed after retry; "
+                    "stopping subgoal. Raw: %s", response[:200],
+                )
+                return DiaryCheckResult(
+                    action="stop",
+                    new_instruction="",
+                    reasoning=(
+                        "text_only_convergence_parse_failure: VLM JSON "
+                        f"unparseable after retry. Raw: {response[:200]}"
+                    ),
+                    diary_entry="",
+                    completion_pct=self._last_completion_pct,
                 )
 
         pct = float(parsed.get("completion_percentage", self._last_completion_pct))
@@ -556,8 +615,20 @@ class GoalAdherenceMonitor:
                 )
             corrective = ((parsed_retry or {}).get("corrective_instruction") or "").strip()
             if not corrective:
-                raise RuntimeError(
-                    f"Text-only convergence retry: no corrective instruction. Raw: {response[:200]}"
+                logger.warning(
+                    "Text-only convergence retry: no corrective instruction; "
+                    "stopping subgoal. Raw: %s", response[:200],
+                )
+                return DiaryCheckResult(
+                    action="stop",
+                    new_instruction="",
+                    reasoning=(
+                        "text_only_convergence_no_corrective: VLM did not "
+                        f"return a corrective instruction after retry. "
+                        f"Raw: {response[:200]}"
+                    ),
+                    diary_entry="",
+                    completion_pct=pct,
                 )
 
         self._corrections_used += 1
@@ -681,7 +752,30 @@ class GoalAdherenceMonitor:
             displacement=disp_str,
         )
 
-    def _format_convergence_prompt(self, diary_blob: str, disp_str: str) -> str:
+    @staticmethod
+    def _stop_reasoning_block(reason: Optional[str]) -> str:
+        """Single-line context describing why the drone was stopped.
+
+        Forwarded into convergence prompts so the convergence VLM does not have
+        to re-derive why the drone was stopped (e.g., it can carry forward
+        "altitude dropped below 10 m" instead of re-evaluating from scratch).
+        Returns an empty string for natural drone-stops (no should_stop).
+        """
+        text = (reason or "").strip()
+        if not text:
+            return ""
+        return f"The monitor stopped the drone because: {text}\n"
+
+    def _consume_stop_reasoning(self) -> str:
+        """Pop the most recent should_stop reasoning so it applies to one
+        convergence cycle only and is not carried into the next one."""
+        reason = self._last_should_stop_reasoning or ""
+        self._last_should_stop_reasoning = None
+        return reason
+
+    def _format_convergence_prompt(
+        self, diary_blob: str, disp_str: str, stop_reason: Optional[str] = None,
+    ) -> str:
         if self._constraints:
             return CONVERGENCE_PROMPT_TEMPLATE_CONSTRAINTS.format(
                 subgoal=self._subgoal,
@@ -689,12 +783,14 @@ class GoalAdherenceMonitor:
                 prev_completion_pct=self._last_completion_pct,
                 displacement=disp_str,
                 constraints_block=self._constraints_block(),
+                stop_reasoning_block=self._stop_reasoning_block(stop_reason),
             )
         return CONVERGENCE_PROMPT_TEMPLATE.format(
             subgoal=self._subgoal,
             diary=diary_blob,
             prev_completion_pct=self._last_completion_pct,
             displacement=disp_str,
+            stop_reasoning_block=self._stop_reasoning_block(stop_reason),
         )
 
     def _is_stalled(self) -> bool:
@@ -736,15 +832,24 @@ class GoalAdherenceMonitor:
         curr_path = self._frame_paths[step - 1]
 
         # --- Local query: what changed (always uses VLM with images) ---
-        grid_two = build_frame_grid([prev_path, curr_path])
-        prompt_local = LOCAL_PROMPT_TEMPLATE.format(subgoal=self._subgoal)
-        change_text = self._timed_query_vlm(
-            grid_two, prompt_local, "local_checkpoint",
-            system_prompt=GENERAL_SYSTEM_PROMPT,
-        )
-        disp_str = self._format_displacement()
-        diary_entry = f"Steps {step - n}-{step} {disp_str}: {change_text}"
-        self._diary.append(diary_entry)
+        # Skipped in single_frame_mode (Condition 4) to genuinely remove
+        # temporal context: no diary entries are generated.
+        if self._single_frame_mode:
+            change_text = ""
+            grid_two = None
+            prompt_local = ""
+            disp_str = self._format_displacement()
+            diary_entry = ""
+        else:
+            grid_two = build_frame_grid([prev_path, curr_path])
+            prompt_local = LOCAL_PROMPT_TEMPLATE.format(subgoal=self._subgoal)
+            change_text = self._timed_query_vlm(
+                grid_two, prompt_local, "local_checkpoint",
+                system_prompt=GENERAL_SYSTEM_PROMPT,
+            )
+            disp_str = self._format_displacement()
+            diary_entry = f"Steps {step - n}-{step} {disp_str}: {change_text}"
+            self._diary.append(diary_entry)
 
         # --- Global query: assess progress ---
         diary_blob = "\n".join(self._diary)
@@ -752,6 +857,16 @@ class GoalAdherenceMonitor:
         if self._global_backend == "text_llm":
             response_global = self._run_text_only_global(diary_blob, disp_str, step)
             grid_global = None
+        elif self._single_frame_mode:
+            # Single-frame ablation: send ONLY the current frame, not a
+            # 9-frame grid. Use the SINGLE_FRAME_GLOBAL_PROMPT templates
+            # patched in by subgoal_runner._patch_monitor_prompts.
+            grid_global = build_frame_grid([curr_path])
+            prompt_global = self._format_global_prompt(diary_blob, disp_str)
+            response_global = self._timed_query_vlm(
+                grid_global, prompt_global, "global_checkpoint",
+                system_prompt=GENERAL_SYSTEM_PROMPT,
+            )
         else:
             sampled = sample_frames_every_n(self._frame_paths, n)
             if not sampled:
@@ -787,9 +902,17 @@ class GoalAdherenceMonitor:
                 parsed = self._parse_json_response(response_global)
                 if parsed is None:
                     self._parse_failures += 1
-                    raise RuntimeError(
-                        f"Checkpoint {step} JSON parse failed after retry. Raw: {response_global[:200]}"
+                    logger.error(
+                        "Checkpoint %d JSON parse failed after retry; "
+                        "treating as continue with prior completion. Raw: %s",
+                        step, response_global[:200],
                     )
+                    parsed = {
+                        "complete": False,
+                        "completion_percentage": self._last_completion_pct,
+                        "should_stop": False,
+                        "reasoning": "parse_failure_fallback",
+                    }
 
         if self._global_backend == "text_llm":
             parsed = self._parse_json_response(response_global)
@@ -803,9 +926,17 @@ class GoalAdherenceMonitor:
                 parsed = self._parse_json_response(response_global)
                 if parsed is None:
                     self._parse_failures += 1
-                    raise RuntimeError(
-                        f"Text-only checkpoint {step} JSON parse failed after retry. Raw: {response_global[:200]}"
+                    logger.error(
+                        "Text-only checkpoint %d JSON parse failed after "
+                        "retry; treating as continue with prior completion. "
+                        "Raw: %s", step, response_global[:200],
                     )
+                    parsed = {
+                        "complete": False,
+                        "completion_percentage": self._last_completion_pct,
+                        "should_stop": False,
+                        "reasoning": "parse_failure_fallback",
+                    }
 
         if grid_global is not None:
             self._save_checkpoint_artifact(
@@ -897,36 +1028,44 @@ class GoalAdherenceMonitor:
             frame_paths_snap = list(self._frame_paths)
             frame_timestamps_snap = list(self._frame_timestamps)
 
-        # --- Local query: what changed ---
-        grid_two = build_frame_grid([prev_path, curr_path])
-        prompt_local = LOCAL_PROMPT_TEMPLATE.format(subgoal=self._subgoal)
-        change_text = self._timed_query_vlm(
-            grid_two, prompt_local, "local_checkpoint_async",
-            system_prompt=GENERAL_SYSTEM_PROMPT,
-        )
-        # Use displacement snapshot for the diary entry
+        # --- Local query: what changed (skipped in single_frame_mode) ---
         d = displacement
         disp_str = (
             f"[x: {d[0] / 100:.2f} m, y: {d[1] / 100:.2f} m, "
             f"z: {d[2] / 100:.2f} m, yaw: {d[3]:.1f}\u00b0]"
         )
-        diary_entry = f"Steps ~{step} {disp_str}: {change_text}"
-        self._diary.append(diary_entry)
+        if self._single_frame_mode:
+            grid_two = None
+            prompt_local = ""
+            change_text = ""
+            diary_entry = ""
+        else:
+            grid_two = build_frame_grid([prev_path, curr_path])
+            prompt_local = LOCAL_PROMPT_TEMPLATE.format(subgoal=self._subgoal)
+            change_text = self._timed_query_vlm(
+                grid_two, prompt_local, "local_checkpoint_async",
+                system_prompt=GENERAL_SYSTEM_PROMPT,
+            )
+            diary_entry = f"Steps ~{step} {disp_str}: {change_text}"
+            self._diary.append(diary_entry)
 
         # --- Global query: assess progress ---
-        sampled = self._sample_frames_by_time(frame_paths_snap, frame_timestamps_snap)
-        if not sampled:
-            return DiaryCheckResult(
-                action="continue",
-                new_instruction="",
-                reasoning="No sampled frames for global grid.",
-                diary_entry=diary_entry,
-                completion_pct=self._last_completion_pct,
-            )
+        if self._single_frame_mode:
+            grid_global = build_frame_grid([curr_path])
+        else:
+            sampled = self._sample_frames_by_time(frame_paths_snap, frame_timestamps_snap)
+            if not sampled:
+                return DiaryCheckResult(
+                    action="continue",
+                    new_instruction="",
+                    reasoning="No sampled frames for global grid.",
+                    diary_entry=diary_entry,
+                    completion_pct=self._last_completion_pct,
+                )
 
-        sampled = sampled[-self.MAX_GLOBAL_FRAMES:]
+            sampled = sampled[-self.MAX_GLOBAL_FRAMES:]
 
-        grid_global = build_frame_grid(sampled)
+            grid_global = build_frame_grid(sampled)
         diary_blob = "\n".join(self._diary)
         prompt_global = self._format_global_prompt(diary_blob, disp_str)
 
@@ -949,10 +1088,17 @@ class GoalAdherenceMonitor:
             parsed = self._parse_json_response(response_global)
             if parsed is None:
                 self._parse_failures += 1
-                raise RuntimeError(
-                    f"Async checkpoint ~{step} JSON parse failed after retry. "
-                    f"Raw: {response_global[:200]}"
+                logger.error(
+                    "Async checkpoint ~%d JSON parse failed after retry; "
+                    "treating as continue with prior completion. Raw: %s",
+                    step, response_global[:200],
                 )
+                parsed = {
+                    "complete": False,
+                    "completion_percentage": self._last_completion_pct,
+                    "should_stop": False,
+                    "reasoning": "parse_failure_fallback",
+                }
 
         self._save_checkpoint_artifact(
             step, grid_two, grid_global,
@@ -1002,17 +1148,21 @@ class GoalAdherenceMonitor:
         self._last_displacement = list(displacement)
         disp_str = self._format_displacement()
         diary_blob = "\n".join(self._diary) if self._diary else "(no diary entries yet)"
-        prompt = self._format_convergence_prompt(diary_blob, disp_str)
+        stop_reason = self._consume_stop_reasoning()
+        prompt = self._format_convergence_prompt(diary_blob, disp_str, stop_reason)
 
-        with self._lock:
-            frame_paths_snap = list(self._frame_paths)
-            frame_timestamps_snap = list(self._frame_timestamps)
-        sampled = self._sample_frames_by_time(frame_paths_snap, frame_timestamps_snap)
-        if not sampled or sampled[-1] != frame_path:
-            sampled.append(frame_path)
-        sampled = sampled[-self.MAX_GLOBAL_FRAMES:]
+        if self._single_frame_mode:
+            grid = build_frame_grid([frame_path])
+        else:
+            with self._lock:
+                frame_paths_snap = list(self._frame_paths)
+                frame_timestamps_snap = list(self._frame_timestamps)
+            sampled = self._sample_frames_by_time(frame_paths_snap, frame_timestamps_snap)
+            if not sampled or sampled[-1] != frame_path:
+                sampled.append(frame_path)
+            sampled = sampled[-self.MAX_GLOBAL_FRAMES:]
 
-        grid = build_frame_grid(sampled)
+            grid = build_frame_grid(sampled)
         response = self._timed_query_vlm(
             grid, prompt, "convergence_async",
             system_prompt=GENERAL_SYSTEM_PROMPT,
@@ -1035,8 +1185,19 @@ class GoalAdherenceMonitor:
             parsed = self._parse_json_response(response)
             if parsed is None:
                 self._parse_failures += 1
-                raise RuntimeError(
-                    f"Async convergence JSON parse failed after retry. Raw: {response[:200]}"
+                logger.error(
+                    "Async convergence JSON parse failed after retry; "
+                    "stopping subgoal. Raw: %s", response[:200],
+                )
+                return DiaryCheckResult(
+                    action="stop",
+                    new_instruction="",
+                    reasoning=(
+                        "async_convergence_parse_failure: VLM JSON "
+                        f"unparseable after retry. Raw: {response[:200]}"
+                    ),
+                    diary_entry="",
+                    completion_pct=self._last_completion_pct,
                 )
 
         pct = float(parsed.get("completion_percentage", self._last_completion_pct))
@@ -1080,9 +1241,19 @@ class GoalAdherenceMonitor:
                 )
             corrective = ((parsed_retry or {}).get("corrective_instruction") or "").strip()
             if not corrective:
-                raise RuntimeError(
-                    f"Async convergence retry returned no corrective instruction. "
-                    f"Raw: {response[:200]}"
+                logger.warning(
+                    "Async convergence retry returned no corrective instruction; "
+                    "stopping subgoal. Raw: %s", response[:200],
+                )
+                return DiaryCheckResult(
+                    action="stop",
+                    new_instruction="",
+                    reasoning=(
+                        "async_convergence_no_corrective: VLM did not return "
+                        f"a corrective instruction after retry. Raw: {response[:200]}"
+                    ),
+                    diary_entry="",
+                    completion_pct=pct,
                 )
 
         self._corrections_used += 1
@@ -1147,26 +1318,38 @@ class GoalAdherenceMonitor:
         if parsed is None:
             parsed = self._parse_json_response(response)
             if parsed is None:
-                raise RuntimeError(
-                    f"Global response JSON parse failed. Raw: {response[:200]}"
+                self._parse_failures += 1
+                logger.warning(
+                    "Global response parse failed inside _parse_global_response; "
+                    "falling back to continue. Raw: %s", response[:200],
                 )
+                parsed = {
+                    "complete": False,
+                    "completion_percentage": self._last_completion_pct,
+                    "should_stop": False,
+                    "reasoning": "parse_failure_fallback",
+                }
         pct = float(parsed.get("completion_percentage", self._last_completion_pct))
         pct = max(0.0, min(1.0, pct))
+        model_reasoning = str(parsed.get("reasoning", "") or "").strip()
 
         if parsed.get("complete", False):
             return DiaryCheckResult(
                 action="force_converge",
                 new_instruction="",
-                reasoning=f"Checkpoint thinks complete — verifying at convergence. Raw: {response}",
+                reasoning=f"Checkpoint thinks complete, verifying at convergence. Reasoning: {model_reasoning} Raw: {response}",
                 diary_entry=diary_entry,
                 completion_pct=pct,
             )
 
         if parsed.get("should_stop", False):
+            self._last_should_stop_reasoning = (
+                model_reasoning or "monitor flagged off-track or hazard"
+            )
             return DiaryCheckResult(
                 action="force_converge",
                 new_instruction="",
-                reasoning=f"Stop requested for correction. Raw: {response}",
+                reasoning=f"Stop requested for correction. Reasoning: {model_reasoning} Raw: {response}",
                 diary_entry=diary_entry,
                 completion_pct=pct,
             )
@@ -1174,7 +1357,7 @@ class GoalAdherenceMonitor:
         return DiaryCheckResult(
             action="continue",
             new_instruction="",
-            reasoning=f"On track ({pct:.0%}). Raw: {response}",
+            reasoning=f"On track ({pct:.0%}). Reasoning: {model_reasoning} Raw: {response}",
             diary_entry=diary_entry,
             completion_pct=pct,
         )
@@ -1240,10 +1423,14 @@ class GoalAdherenceMonitor:
             return
         cp_dir = self._artifacts_dir / f"checkpoint_{step:04d}"
         cp_dir.mkdir(parents=True, exist_ok=True)
-        grid_local.save(cp_dir / "grid_local.png")
-        grid_global.save(cp_dir / "grid_global.png")
-        (cp_dir / "prompt_local.txt").write_text(prompt_local)
-        (cp_dir / "response_local.txt").write_text(response_local)
+        if grid_local is not None:
+            grid_local.save(cp_dir / "grid_local.png")
+        if grid_global is not None:
+            grid_global.save(cp_dir / "grid_global.png")
+        if prompt_local:
+            (cp_dir / "prompt_local.txt").write_text(prompt_local)
+        if response_local:
+            (cp_dir / "response_local.txt").write_text(response_local)
         (cp_dir / "prompt_global.txt").write_text(prompt_global)
         (cp_dir / "response_global.txt").write_text(response_global)
         diary_blob = "\n".join(self._diary)
@@ -1256,10 +1443,18 @@ class GoalAdherenceMonitor:
             return
         conv_dir = self._artifacts_dir / f"convergence_{self._corrections_used:03d}"
         conv_dir.mkdir(parents=True, exist_ok=True)
-        (conv_dir / "prompt.txt").write_text(f"{GENERAL_SYSTEM_PROMPT}\n\n{prompt}")
-        (conv_dir / "response.txt").write_text(response)
+        # Multiple VLM calls can occur within one convergence event (initial
+        # query, parse-failure retry, missing-instruction retry). Append a
+        # zero-padded suffix so retries don't clobber each other.
+        retry_idx = 0
+        while (conv_dir / f"prompt_{retry_idx:02d}.txt").exists():
+            retry_idx += 1
+        (conv_dir / f"prompt_{retry_idx:02d}.txt").write_text(
+            f"{GENERAL_SYSTEM_PROMPT}\n\n{prompt}"
+        )
+        (conv_dir / f"response_{retry_idx:02d}.txt").write_text(response)
         diary_blob = "\n".join(self._diary)
         (conv_dir / "diary.txt").write_text(diary_blob)
         if grid is not None:
-            grid.save(conv_dir / "grid_convergence.png")
+            grid.save(conv_dir / f"grid_convergence_{retry_idx:02d}.png")
 

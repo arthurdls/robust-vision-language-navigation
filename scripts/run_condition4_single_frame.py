@@ -2,12 +2,17 @@
 """
 Condition 4: Single-Frame Monitor (No Temporal Context).
 
-Uses the full LTL planner and SubgoalConverter. At each checkpoint interval,
-sends ONLY the current camera frame and the subgoal text to the VLM. No diary
-history, no image grid, no displacement data, no completion percentage tracking.
+Uses the full LTL planner and SubgoalConverter. The GoalAdherenceMonitor runs
+in single_frame mode: at each checkpoint and on convergence the VLM sees only
+the current camera frame plus the subgoal text. The local 2-frame VLM call is
+skipped, no diary entries are produced, and no 9-frame grid is sent to the
+global prompt. Stall detection still runs against the completion-percentage
+history reported by the single-frame VLM.
 
-On convergence, uses the same single-frame query to decide complete vs.
-stopped_short and issue corrections.
+This is implemented as a thin wrapper around the shared subgoal_runner. The
+SINGLE_FRAME_GLOBAL / CONVERGENCE prompt templates are patched in by
+``_patch_monitor_prompts("single_frame")`` and the monitor is constructed with
+``single_frame_mode=True``.
 
 OpenVLA server must be running: python scripts/start_server.py
 
@@ -20,15 +25,12 @@ Usage (from repo root):
 import argparse
 import json
 import logging
-import math
 import os
 import sys
 import time
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
-
-from PIL import Image
 
 _SRC = Path(__file__).resolve().parent.parent / "src"
 if _SRC.is_dir() and str(_SRC) not in sys.path:
@@ -50,8 +52,10 @@ from rvln.config import (
     DEFAULT_TIME_DILATION,
     DEFAULT_VLM_MODEL,
 )
+from rvln.eval.subgoal_runner import SubgoalConfig, run_subgoal
 from rvln.eval.task_utils import (
     get_completed_task_ids,
+    make_ask_help_callback,
     resolve_eval_tasks,
     sanitize_run_label,
 )
@@ -61,379 +65,18 @@ from rvln.paths import (
     UAV_FLOW_EVAL,
 )
 from rvln.sim.env_setup import (
-    apply_action_poses,
     import_batch_module,
     interactive_camera_select,
     load_env_vars,
     normalize_initial_pos,
     parse_position,
-    relative_pose_to_world,
-    set_drone_cam_and_get_image,
     setup_sim_env,
-    state_for_openvla,
 )
 
 SHARED_TASKS_DIR = REPO_ROOT / "tasks"
 CONDITION4_RESULTS_DIR = REPO_ROOT / "results" / "condition4"
 
 logger = logging.getLogger(__name__)
-
-
-# ---------------------------------------------------------------------------
-# Single-frame VLM prompts (no temporal context)
-# ---------------------------------------------------------------------------
-
-SINGLE_FRAME_SYSTEM_PROMPT = """\
-You are a completion monitor for an autonomous drone executing a single subgoal.
-You see a single frame from the drone's first-person camera (no history).
-Assess whether the subgoal is complete based on this one frame alone."""
-
-SINGLE_FRAME_CHECK_PROMPT = """\
-Subgoal: {subgoal}
-{constraints_block}
-Look at this single frame from the drone's first-person camera.
-Is the drone currently at the goal described by the subgoal?
-
-Respond with EXACTLY ONE JSON object (no markdown fences):
-
-{{
-  "complete": true/false,
-  "completion_percentage": 0.0 to 1.0,
-  "should_stop": true/false
-}}
-
-- "complete": true ONLY if the subgoal has been fully accomplished based on
-  this single frame.
-- "completion_percentage": your best estimate of progress (0.0 to 1.0).
-  NEVER set 1.0 unless highly confident. Cap at 0.95 when unsure.
-- "should_stop": true if the drone appears off-track, heading toward a
-  collision, or violating any active constraint listed above. The drone will
-  be stopped and a corrective instruction issued."""
-
-SINGLE_FRAME_CONVERGENCE_PROMPT = """\
-Subgoal: {subgoal}
-{constraints_block}
-The drone has stopped moving. Look at this single frame from the drone's camera.
-Is the subgoal complete? If not, what single corrective command should be issued?
-
-Respond with EXACTLY ONE JSON object (no markdown fences):
-
-{{
-  "complete": true/false,
-  "completion_percentage": 0.0 to 1.0,
-  "diagnosis": "stopped_short" or "overshot" or "complete" or "constraint_violated",
-  "corrective_instruction": "..." or null
-}}
-
-- "complete": true ONLY if you are highly confident the subgoal is done.
-- "diagnosis": "complete" if done, "stopped_short" if the drone needs to
-  keep going, "overshot" if the drone went past the goal, "constraint_violated"
-  if an active constraint was breached.
-- "corrective_instruction": REQUIRED if not complete. A single-action drone
-  command to fix the biggest gap. If a constraint was violated, restore
-  compliance: move away from a forbidden region for avoidance constraints,
-  or restore the required condition for maintenance constraints (e.g.,
-  "ascend 2 meters"). null only if complete."""
-
-
-# ---------------------------------------------------------------------------
-# Single-frame monitor helper
-# ---------------------------------------------------------------------------
-
-def _parse_json_response(response: str) -> Optional[dict]:
-    text = response.strip()
-    if text.startswith("```"):
-        lines = text.split("\n")
-        lines = [l for l in lines if not l.strip().startswith("```")]
-        text = "\n".join(lines).strip()
-    try:
-        return json.loads(text)
-    except json.JSONDecodeError:
-        start = text.find("{")
-        end = text.rfind("}")
-        if start != -1 and end != -1 and end > start:
-            try:
-                return json.loads(text[start:end + 1])
-            except json.JSONDecodeError:
-                pass
-    return None
-
-
-def _format_constraints_block(constraints) -> str:
-    if not constraints:
-        return ""
-    lines = ["Active constraints (must be maintained throughout):"]
-    for c in constraints:
-        if hasattr(c, "polarity"):
-            label = "AVOID" if c.polarity == "negative" else "MAINTAIN"
-            lines.append(f"  - {label}: {c.description}")
-        else:
-            lines.append(f"  - {c}")
-    lines.append("")
-    return "\n".join(lines)
-
-
-def _query_single_frame(frame_path: Path, prompt: str, llm, label: str = "single_frame_check"):
-    """Send a single frame + prompt to the VLM. Returns (response_text, call_record)."""
-    import time as _time
-    from rvln.ai.utils.vision import query_vlm, build_frame_grid
-    grid = build_frame_grid([frame_path])
-    t0 = _time.time()
-    response = query_vlm(grid, prompt, llm=llm, system_prompt=SINGLE_FRAME_SYSTEM_PROMPT)
-    rtt = _time.time() - t0
-    usage = llm.last_usage
-    call_record = {
-        "label": label,
-        "rtt_s": round(rtt, 3),
-        "model": usage.get("model", ""),
-        "input_tokens": usage.get("input_tokens", 0),
-        "output_tokens": usage.get("output_tokens", 0),
-    }
-    return response, call_record
-
-
-# ---------------------------------------------------------------------------
-# Per-subgoal control loop with single-frame VLM checks
-# ---------------------------------------------------------------------------
-
-def _run_subgoal(
-    env, batch, server_url, subgoal_nl, monitor_model, llm_model, check_interval,
-    max_steps, max_corrections, origin_x, origin_y, origin_z, origin_yaw,
-    drone_cam_id, frames_dir, subgoal_dir, frame_offset, trajectory_log,
-    constraints=None,
-):
-    from rvln.ai.subgoal_converter import SubgoalConverter
-    from rvln.ai.utils.llm_providers import LLMFactory
-
-    subgoal_dir.mkdir(parents=True, exist_ok=True)
-
-    converter = SubgoalConverter(model=llm_model)
-    conversion = converter.convert(subgoal_nl)
-    converted_instruction = conversion.instruction
-    current_instruction = converted_instruction
-
-    llm = LLMFactory.create("openai", model=monitor_model)
-
-    current_pose = [0.0, 0.0, 0.0, 0.0]
-    openvla_pose_origin = [0.0, 0.0, 0.0, 0.0]
-    last_pose = None
-    small_count = 0
-    constraints_block = _format_constraints_block(constraints)
-    override_history = []
-    corrections_used = 0
-    vlm_calls = 0
-    vlm_call_records = list(converter.llm_call_records)
-    last_correction_step = -check_interval
-    stop_reason = "max_steps"
-    total_steps = 0
-    constraint_violation_count = 0
-
-    batch.reset_model(server_url)
-    step = 0
-
-    while step < max_steps:
-        image = set_drone_cam_and_get_image(env, drone_cam_id)
-        if image is None:
-            stop_reason = "no_image"
-            total_steps = step
-            break
-
-        global_frame_idx = frame_offset + step
-        frame_path = frames_dir / f"frame_{global_frame_idx:06d}.png"
-        try:
-            import cv2
-            cv2.imwrite(str(frame_path), image)
-        except Exception:
-            pass
-
-        # Single-frame VLM check at checkpoint intervals
-        if step > 0 and step % check_interval == 0:
-            prompt = SINGLE_FRAME_CHECK_PROMPT.format(
-                subgoal=subgoal_nl, constraints_block=constraints_block,
-            )
-            try:
-                response_text, call_rec = _query_single_frame(
-                    frame_path, prompt, llm, label="single_frame_check",
-                )
-                call_rec["step"] = step
-                vlm_call_records.append(call_rec)
-                vlm_calls += 1
-                parsed = _parse_json_response(response_text)
-                if parsed is not None:
-                    if parsed.get("complete", False):
-                        logger.info("Single-frame check: complete at step %d", step)
-                        stop_reason = "monitor_complete"
-                        total_steps = step
-                        break
-                    if parsed.get("should_stop", False):
-                        logger.info("Single-frame check: should_stop at step %d", step)
-                        small_count = batch.ACTION_SMALL_STEPS
-            except Exception as e:
-                logger.error("Single-frame check failed at step %d: %s", step, e)
-
-        openvla_pose = [c - o for c, o in zip(current_pose, openvla_pose_origin)]
-        response = batch.send_prediction_request(
-            image=Image.fromarray(image),
-            proprio=state_for_openvla(openvla_pose),
-            instr=current_instruction.strip().lower(),
-            server_url=server_url,
-        )
-
-        if response is None:
-            stop_reason = "no_response"
-            total_steps = step
-            break
-
-        action_poses = response.get("action")
-        if not isinstance(action_poses, list) or len(action_poses) == 0:
-            stop_reason = "empty_action"
-            total_steps = step
-            break
-
-        if any(o != 0.0 for o in openvla_pose_origin):
-            yaw_origin_rad = math.radians(openvla_pose_origin[3])
-            reframed_poses = []
-            for pose in action_poses:
-                if isinstance(pose, (list, tuple)) and len(pose) >= 4:
-                    reframed_poses.append([
-                        float(pose[0]) + openvla_pose_origin[0],
-                        float(pose[1]) + openvla_pose_origin[1],
-                        float(pose[2]) + openvla_pose_origin[2],
-                        float(pose[3]) + yaw_origin_rad,
-                    ])
-                else:
-                    reframed_poses.append(pose)
-            action_poses = reframed_poses
-
-        try:
-            new_image, current_pose, steps_added = apply_action_poses(
-                env, action_poses, origin_x, origin_y, origin_z, origin_yaw,
-                trajectory_log=trajectory_log, sleep_s=0.1, drone_cam_id=drone_cam_id,
-            )
-        except Exception as e:
-            logger.error("Error executing action at step %d: %s", step, e)
-            stop_reason = "action_error"
-            total_steps = step
-            break
-
-        total_steps = step + 1
-
-        # Convergence detection
-        converged = False
-        steps_since_correction = step - last_correction_step
-        if last_pose is not None and steps_since_correction >= check_interval:
-            diffs = [abs(a - b) for a, b in zip(current_pose, last_pose)]
-            if all(d < ACTION_SMALL_DELTA_POS for d in diffs[:3]) and diffs[3] < ACTION_SMALL_DELTA_YAW:
-                small_count += 1
-            else:
-                small_count = 0
-            if small_count >= batch.ACTION_SMALL_STEPS:
-                converged = True
-        last_pose = list(current_pose)
-
-        if converged:
-            conv_frame = set_drone_cam_and_get_image(env, drone_cam_id)
-            conv_path = frame_path
-            if conv_frame is not None:
-                conv_path = frames_dir / f"frame_conv_{global_frame_idx:06d}.png"
-                try:
-                    import cv2
-                    cv2.imwrite(str(conv_path), conv_frame)
-                except Exception:
-                    conv_path = frame_path
-
-            if corrections_used >= max_corrections:
-                logger.warning("Max corrections (%d) exhausted.", max_corrections)
-                stop_reason = "max_corrections"
-                break
-
-            prompt = SINGLE_FRAME_CONVERGENCE_PROMPT.format(
-                subgoal=subgoal_nl, constraints_block=constraints_block,
-            )
-            try:
-                response_text, call_rec = _query_single_frame(
-                    conv_path, prompt, llm, label="single_frame_convergence",
-                )
-                call_rec["step"] = step
-                vlm_call_records.append(call_rec)
-                vlm_calls += 1
-                parsed = _parse_json_response(response_text)
-            except Exception as e:
-                logger.error("Single-frame convergence failed: %s", e)
-                stop_reason = "convergence_error"
-                break
-
-            if parsed is None:
-                logger.warning("Unparseable convergence response, stopping.")
-                stop_reason = "parse_error"
-                break
-
-            if parsed.get("diagnosis") == "constraint_violated":
-                constraint_violation_count += 1
-                override_history.append({
-                    "step": step,
-                    "type": "constraint_violation",
-                })
-
-            if parsed.get("complete", False) or parsed.get("diagnosis") == "complete":
-                logger.info("Single-frame convergence: complete at step %d", step)
-                stop_reason = "monitor_complete"
-                break
-
-            corrective = parsed.get("corrective_instruction") or ""
-            if corrective:
-                corrections_used += 1
-                override_history.append({
-                    "step": step,
-                    "type": f"convergence_{parsed.get('diagnosis', 'unknown')}",
-                    "old_instruction": current_instruction,
-                    "new_instruction": corrective,
-                })
-                current_instruction = corrective
-                last_correction_step = step
-                openvla_pose_origin = list(current_pose)
-                small_count = 0
-                last_pose = None
-                batch.reset_model(server_url)
-            else:
-                logger.info("Convergence at step %d (no corrective command).", step)
-                stop_reason = "convergence_no_command"
-                break
-
-        step += 1
-    else:
-        stop_reason = "max_steps"
-        total_steps = max_steps
-
-    subgoal_summary = {
-        "subgoal": subgoal_nl,
-        "converted_instruction": converted_instruction,
-        "override_history": override_history,
-        "corrections_used": corrections_used,
-        "vlm_call_count": vlm_calls,
-        "vlm_call_records": vlm_call_records,
-        "stop_reason": stop_reason,
-        "total_steps": total_steps,
-        "constraint_violation_count": constraint_violation_count,
-    }
-    with open(subgoal_dir / "subgoal_summary.json", "w") as f:
-        json.dump(subgoal_summary, f, indent=2)
-
-    next_origin_x, next_origin_y, next_origin_z, next_origin_yaw = relative_pose_to_world(
-        origin_x, origin_y, origin_z, origin_yaw, current_pose,
-    )
-
-    return {
-        "subgoal": subgoal_nl,
-        "converted_instruction": converted_instruction,
-        "total_steps": total_steps,
-        "stop_reason": stop_reason,
-        "corrections_used": corrections_used,
-        "vlm_call_count": vlm_calls,
-        "vlm_call_records": vlm_call_records,
-        "constraint_violation_count": constraint_violation_count,
-        "next_origin": [next_origin_x, next_origin_y, next_origin_z, next_origin_yaw],
-    }
 
 
 # ---------------------------------------------------------------------------
@@ -495,21 +138,33 @@ def run_single_frame_control_loop(
 
         logger.info("--- Subgoal %d: '%s' ---", subgoal_index, current_subgoal)
 
-        subgoal_result = _run_subgoal(
+        sg_config = SubgoalConfig(
+            monitor_mode="single_frame",
+            use_constraints=True,
+            check_interval=check_interval,
+            max_steps=max_steps_per_subgoal,
+            max_corrections=max_corrections,
+        )
+        subgoal_result = run_subgoal(
             env=env, batch=batch, server_url=server_url,
             subgoal_nl=current_subgoal, monitor_model=monitor_model, llm_model=llm_model,
-            check_interval=check_interval, max_steps=max_steps_per_subgoal,
-            max_corrections=max_corrections,
+            config=sg_config,
             origin_x=origin_x, origin_y=origin_y,
             origin_z=origin_z, origin_yaw=origin_yaw,
             drone_cam_id=drone_cam_id, frames_dir=frames_dir,
             subgoal_dir=subgoal_dir, frame_offset=total_frame_count,
             trajectory_log=trajectory_log,
             constraints=active_constraints,
+            ask_help_callback=make_ask_help_callback(),
         )
 
         total_frame_count += subgoal_result["total_steps"]
         subgoal_summaries.append(subgoal_result)
+
+        sr = subgoal_result["stop_reason"]
+        if sr == "abort":
+            logger.info("Episode aborted at subgoal '%s'.", current_subgoal)
+            break
 
         planner.advance_state(current_subgoal)
 
@@ -538,9 +193,6 @@ def run_single_frame_control_loop(
         all_vlm_records.extend(s.get("vlm_call_records", []))
     total_input_tokens = sum(r.get("input_tokens", 0) for r in all_vlm_records)
     total_output_tokens = sum(r.get("output_tokens", 0) for r in all_vlm_records)
-    any_constraint_violated = any(
-        s.get("constraint_violation_count", 0) > 0 for s in subgoal_summaries
-    )
     end_dt = datetime.fromisoformat(end_ts)
     start_dt = datetime.fromisoformat(start_ts)
     wall_clock_seconds = (end_dt - start_dt).total_seconds()
@@ -581,7 +233,6 @@ def run_single_frame_control_loop(
         "total_input_tokens": total_input_tokens,
         "total_output_tokens": total_output_tokens,
         "vlm_call_records": all_vlm_records,
-        "any_constraint_violated": any_constraint_violated,
         "playback_mp4": str(playback_mp4) if playback_mp4 else None,
         "start_time": start_ts,
         "end_time": end_ts,
@@ -648,7 +299,11 @@ def main():
     map_info = env.get_map_info()
     results_base = Path(args.results_dir) / map_info.task_dir_name
     results_base.mkdir(parents=True, exist_ok=True)
-    tasks = resolve_eval_tasks(args, map_info, SHARED_TASKS_DIR, overrides={"max_steps_per_subgoal": "max_steps_per_subgoal", "diary_check_interval": "diary_check_interval", "max_corrections": "max_corrections"})
+    tasks = resolve_eval_tasks(args, map_info, SHARED_TASKS_DIR, overrides={
+        "max_steps_per_subgoal": "max_steps_per_subgoal",
+        "diary_check_interval": "diary_check_interval",
+        "max_corrections": "max_corrections",
+    })
 
     try:
         drone_cam_id = env.drone_cam_id

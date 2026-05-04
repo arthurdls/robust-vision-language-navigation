@@ -122,15 +122,18 @@ def _ask_user_for_help(
       "skip"             - skip this subgoal
       "abort"            - abort the entire mission
 
-    In non-interactive mode (stdin is not a TTY), automatically skips.
+    In non-interactive mode (stdin is not a TTY), automatically aborts. This
+    keeps stall behaviour uniform across all conditions (C0..C6) so that M1
+    and M3 are directly comparable: every condition terminates the episode at
+    the first stalled subgoal rather than skipping ahead.
     """
     if not sys.stdin.isatty():
         logger.warning(
-            "ask_help triggered in non-interactive mode, auto-skipping subgoal '%s' "
+            "ask_help triggered in non-interactive mode, aborting subgoal '%s' "
             "(completion: %.0f%%, reason: %s)",
             subgoal_nl, completion_pct * 100, reasoning,
         )
-        return ("skip", "")
+        return ("abort", "")
 
     print(f"\n{'='*60}")
     print("SYSTEM REQUESTING HELP")
