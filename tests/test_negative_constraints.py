@@ -76,13 +76,11 @@ def test_constraint_violation_force_converges(mock_sample, mock_grid, mock_vlm):
     mock_sample.return_value = m._frame_paths[-4:]
     mock_vlm.side_effect = [
         "Drone moved closer to building B.",
-        '{"complete": false, "completion_percentage": 0.3, "on_track": false, '
-        '"should_stop": false, "constraint_violated": true}',
+        '{"complete": false, "completion_percentage": 0.3, "should_stop": true}',
     ]
 
     result = m._run_checkpoint()
     assert result.action == "force_converge"
-    assert "constraint" in result.reasoning.lower()
 
 
 @patch("rvln.ai.goal_adherence_monitor.query_vlm")
@@ -100,8 +98,7 @@ def test_no_violation_continues(mock_sample, mock_grid, mock_vlm):
     mock_sample.return_value = m._frame_paths[-4:]
     mock_vlm.side_effect = [
         "Drone moved toward the tree, building B not visible.",
-        '{"complete": false, "completion_percentage": 0.4, "on_track": true, '
-        '"should_stop": false, "constraint_violated": false}',
+        '{"complete": false, "completion_percentage": 0.4, "should_stop": false}',
     ]
 
     result = m._run_checkpoint()
@@ -111,8 +108,8 @@ def test_no_violation_continues(mock_sample, mock_grid, mock_vlm):
 @patch("rvln.ai.goal_adherence_monitor.query_vlm")
 @patch("rvln.ai.goal_adherence_monitor.build_frame_grid")
 @patch("rvln.ai.goal_adherence_monitor.sample_frames_every_n")
-def test_no_violation_field_without_constraints(mock_sample, mock_grid, mock_vlm):
-    """Without constraints, missing constraint_violated field is fine."""
+def test_no_constraint_field_without_constraints(mock_sample, mock_grid, mock_vlm):
+    """Without constraints, should_stop=false means continue."""
     m = _make_monitor()
     m._frame_paths = [Path(f"/tmp/f{i}.png") for i in range(4)]
     m._frame_timestamps = [float(i) for i in range(4)]
@@ -145,13 +142,11 @@ def test_positive_constraint_violation_force_converges(mock_sample, mock_grid, m
     mock_sample.return_value = m._frame_paths[-4:]
     mock_vlm.side_effect = [
         "Drone descended below 10 meters.",
-        '{"complete": false, "completion_percentage": 0.3, "on_track": false, '
-        '"should_stop": false, "constraint_violated": true}',
+        '{"complete": false, "completion_percentage": 0.3, "should_stop": true}',
     ]
 
     result = m._run_checkpoint()
     assert result.action == "force_converge"
-    assert "constraint" in result.reasoning.lower()
 
 
 # ---------------------------------------------------------------------------

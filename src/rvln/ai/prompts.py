@@ -126,8 +126,7 @@ Respond with EXACTLY ONE JSON object (no markdown fences):
 {{
   "complete": true/false,
   "completion_percentage": 0.0 to 1.0,
-  "should_stop": true/false,
-  "constraint_violated": true/false
+  "should_stop": true/false
 }}
 
 - "complete": true ONLY if you are highly confident the subgoal has been fully
@@ -136,12 +135,8 @@ Respond with EXACTLY ONE JSON object (no markdown fences):
   completion (0.0 = not started, 1.0 = fully done). NEVER set 1.0 unless you
   are highly confident -- use at most 0.95 when unsure.
 - "should_stop": true if the drone is off-track, moving away from the target,
-  overshooting, or heading toward a collision. The drone will be stopped and a
-  corrective instruction issued. Do NOT set true for slow but correct progress.
-- "constraint_violated": true if any active constraint listed above has been
-  violated or is about to be violated based on the visual evidence and diary.
-  If true, also set "should_stop" to true. false if no constraints are listed
-  or none have been violated."""
+  overshooting, heading toward a collision, or violating any active constraint
+  listed above. Do NOT set true for slow but correct progress."""
 
 DIARY_CONVERGENCE_PROMPT = """\
 Subgoal: {subgoal}
@@ -777,8 +772,7 @@ respond with EXACTLY ONE JSON object (no markdown fences):
 {{
   "complete": true/false,
   "completion_percentage": 0.0 to 1.0,
-  "should_stop": true/false,
-  "constraint_violated": true/false
+  "should_stop": true/false
 }}
 
 - "complete": true ONLY if you are highly confident the subgoal has been fully
@@ -786,11 +780,9 @@ respond with EXACTLY ONE JSON object (no markdown fences):
   partial progress.
 - "completion_percentage": your best estimate (0.0 to 1.0). NEVER set 1.0
   unless highly confident. Cap at 0.95 when unsure.
-- "should_stop": true if the diary suggests the drone is off-track or heading
-  away from the goal. The drone will be stopped and a correction issued.
-  Do NOT set true for slow progress.
-- "constraint_violated": true if the diary or displacement suggests a
-  constraint violation. false if no constraints are listed."""
+- "should_stop": true if the diary suggests the drone is off-track, heading
+  away from the goal, or violating any active constraint. The drone will be
+  stopped and a correction issued. Do NOT set true for slow progress."""
 
 TEXT_ONLY_GLOBAL_PROMPT_WITH_CONSTRAINTS = """\
 Subgoal: {subgoal}
@@ -807,8 +799,7 @@ respond with EXACTLY ONE JSON object (no markdown fences):
 {{
   "complete": true/false,
   "completion_percentage": 0.0 to 1.0,
-  "should_stop": true/false,
-  "constraint_violated": true/false
+  "should_stop": true/false
 }}
 
 - "complete": true ONLY if you are highly confident the subgoal has been fully
@@ -816,11 +807,9 @@ respond with EXACTLY ONE JSON object (no markdown fences):
   partial progress.
 - "completion_percentage": your best estimate (0.0 to 1.0). NEVER set 1.0
   unless highly confident. Cap at 0.95 when unsure.
-- "should_stop": true if the diary suggests the drone is off-track or heading
-  away from the goal. The drone will be stopped and a correction issued.
-  Do NOT set true for slow progress.
-- "constraint_violated": true if the diary or displacement suggests a
-  constraint violation. false if no constraints are listed."""
+- "should_stop": true if the diary suggests the drone is off-track, heading
+  away from the goal, or violating any active constraint. The drone will be
+  stopped and a correction issued. Do NOT set true for slow progress."""
 
 TEXT_ONLY_CONVERGENCE_PROMPT = """\
 Subgoal: {subgoal}

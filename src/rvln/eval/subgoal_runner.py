@@ -86,8 +86,7 @@ EXACTLY ONE JSON object (no markdown fences):
 {{
   "complete": true/false,
   "completion_percentage": 0.0 to 1.0,
-  "should_stop": true/false,
-  "constraint_violated": true/false
+  "should_stop": true/false
 }}
 
 - "complete": true ONLY if you are highly confident the subgoal has been fully
@@ -95,11 +94,10 @@ EXACTLY ONE JSON object (no markdown fences):
 - "completion_percentage": your best estimate of how close the subgoal is to
   completion (0.0 = not started, 1.0 = fully done). NEVER set 1.0 unless you
   are highly confident. Cap at 0.95 when unsure.
-- "should_stop": true if the drone appears off-track or heading toward a
-  collision. The drone will be stopped and a corrective instruction issued.
-  Do NOT set true for slow progress.
-- "constraint_violated": true if any active constraint listed above has been
-  violated. false if no constraints are listed or none have been violated."""
+- "should_stop": true if the drone appears off-track, heading toward a
+  collision, or violating any active constraint listed above. The drone will
+  be stopped and a corrective instruction issued.
+  Do NOT set true for slow progress."""
 
 GRID_ONLY_CONVERGENCE_PROMPT = """\
 Subgoal: {subgoal}
@@ -196,17 +194,16 @@ Respond with EXACTLY ONE JSON object (no markdown fences):
 {{
   "complete": true/false,
   "completion_percentage": 0.0 to 1.0,
-  "should_stop": true/false,
-  "constraint_violated": true/false
+  "should_stop": true/false
 }}
 
 - "complete": true ONLY if you are highly confident the subgoal has been fully
   accomplished based on the current view.
 - "completion_percentage": your best estimate (0.0 = not started, 1.0 = done).
   NEVER set 1.0 unless highly confident. Cap at 0.95 when unsure.
-- "should_stop": true if the drone appears off-track or heading toward a
-  collision. The drone will be stopped and a correction issued.
-- "constraint_violated": true if any active constraint appears violated."""
+- "should_stop": true if the drone appears off-track, heading toward a
+  collision, or violating any active constraint. The drone will be stopped
+  and a correction issued."""
 
 SINGLE_FRAME_CONVERGENCE_PROMPT = """\
 Subgoal: {subgoal}
@@ -504,7 +501,6 @@ def run_subgoal(
                         "step": step,
                         "type": "force_converge",
                         "reasoning": async_result.reasoning,
-                        "constraint_violated": async_result.constraint_violated,
                     })
                     async_force_converge = True
 
@@ -546,7 +542,6 @@ def run_subgoal(
                         "step": step,
                         "type": "force_converge",
                         "reasoning": result.reasoning,
-                        "constraint_violated": result.constraint_violated,
                     })
 
         openvla_pose = [c - o for c, o in zip(current_pose, openvla_pose_origin)]
@@ -710,11 +705,6 @@ def run_subgoal(
         all_vlm_call_records = list(monitor.vlm_rtts)
     all_vlm_call_records += list(converter.llm_call_records)
 
-    constraint_violation_count = sum(
-        1 for o in override_history
-        if o.get("constraint_violated", False)
-    )
-
     diary_summary = {
         "subgoal": subgoal_nl,
         "converted_instruction": converted_instruction,
@@ -754,8 +744,6 @@ def run_subgoal(
         "vlm_call_records": all_vlm_call_records,
         "next_origin": [next_origin_x, next_origin_y, next_origin_z, next_origin_yaw],
         "constraints": _serialize_constraints(effective_constraints),
-        "constraint_violation_count": constraint_violation_count,
-        "any_constraint_violated": constraint_violation_count > 0 if config.use_constraints else None,
         "parse_failures": monitor.parse_failures if monitor else 0,
         "replan_instruction": replan_instruction,
     }

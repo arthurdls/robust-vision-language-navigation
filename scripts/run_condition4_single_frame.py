@@ -99,18 +99,16 @@ Respond with EXACTLY ONE JSON object (no markdown fences):
 {{
   "complete": true/false,
   "completion_percentage": 0.0 to 1.0,
-  "should_stop": true/false,
-  "constraint_violated": true/false
+  "should_stop": true/false
 }}
 
 - "complete": true ONLY if the subgoal has been fully accomplished based on
   this single frame.
 - "completion_percentage": your best estimate of progress (0.0 to 1.0).
   NEVER set 1.0 unless highly confident. Cap at 0.95 when unsure.
-- "should_stop": true if the drone appears off-track or heading toward a
-  collision. The drone will be stopped and a corrective instruction issued.
-- "constraint_violated": true if any active constraint listed above appears
-  violated in this frame. false if no constraints are listed or none violated."""
+- "should_stop": true if the drone appears off-track, heading toward a
+  collision, or violating any active constraint listed above. The drone will
+  be stopped and a corrective instruction issued."""
 
 SINGLE_FRAME_CONVERGENCE_PROMPT = """\
 Subgoal: {subgoal}
@@ -262,13 +260,6 @@ def _run_subgoal(
                 vlm_calls += 1
                 parsed = _parse_json_response(response_text)
                 if parsed is not None:
-                    if parsed.get("constraint_violated", False):
-                        constraint_violation_count += 1
-                        override_history.append({
-                            "step": step,
-                            "type": "constraint_violation",
-                            "constraint_violated": True,
-                        })
                     if parsed.get("complete", False):
                         logger.info("Single-frame check: complete at step %d", step)
                         stop_reason = "monitor_complete"

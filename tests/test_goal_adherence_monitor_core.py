@@ -112,27 +112,16 @@ class TestParseGlobalResponse:
         )
         assert result.action == "force_converge"
 
-    def test_constraint_violated_with_constraints_triggers_force_converge(self):
+    def test_should_stop_with_constraints_triggers_force_converge(self):
         from rvln.ai.ltl_planner import ConstraintInfo
         m = self._make_monitor_for_global(constraints=[
             ConstraintInfo(description="Near building B", polarity="negative"),
         ])
         result = m._parse_global_response(
-            '{"complete": false, "completion_percentage": 0.3, "on_track": false, '
-            '"should_stop": false, "constraint_violated": true}',
+            '{"complete": false, "completion_percentage": 0.3, "should_stop": true}',
             "diary entry",
         )
         assert result.action == "force_converge"
-        assert "constraint" in result.reasoning.lower()
-
-    def test_constraint_violated_without_constraints_continues(self):
-        m = self._make_monitor_for_global()
-        result = m._parse_global_response(
-            '{"complete": false, "completion_percentage": 0.4, "on_track": true, '
-            '"should_stop": false, "constraint_violated": true}',
-            "diary entry",
-        )
-        assert result.action == "continue"
 
     def test_normal_progress_continues(self):
         m = self._make_monitor_for_global()
@@ -157,19 +146,14 @@ class TestParseGlobalResponse:
         )
         assert result2.completion_pct == 0.0
 
-    def test_priority_constraint_before_complete(self):
-        """Constraint violation should take priority even if complete is also true."""
-        from rvln.ai.ltl_planner import ConstraintInfo
-        m = self._make_monitor_for_global(constraints=[
-            ConstraintInfo(description="Near building B", polarity="negative"),
-        ])
+    def test_complete_and_should_stop_both_trigger_force_converge(self):
+        """Both complete and should_stop lead to force_converge for verification."""
+        m = self._make_monitor_for_global()
         result = m._parse_global_response(
-            '{"complete": true, "completion_percentage": 0.95, "on_track": true, '
-            '"should_stop": false, "constraint_violated": true}',
+            '{"complete": true, "completion_percentage": 0.95, "should_stop": true}',
             "diary entry",
         )
         assert result.action == "force_converge"
-        assert "constraint" in result.reasoning.lower()
 
 
 # -------------------------------------------------------------------------
@@ -235,7 +219,6 @@ class TestOnConvergence:
             "completion_percentage": 0.95,
             "diagnosis": "complete",
             "corrective_instruction": None,
-            "constraint_violated": False,
         })
 
         result = m.on_convergence(Path("/tmp/f3.png"), displacement=[100.0, 0.0, 0.0, 0.0])
@@ -254,7 +237,6 @@ class TestOnConvergence:
             "completion_percentage": 0.4,
             "diagnosis": "stopped_short",
             "corrective_instruction": "move forward toward the tree",
-            "constraint_violated": False,
         })
 
         result = m.on_convergence(Path("/tmp/f3.png"), displacement=[50.0, 0.0, 0.0, 0.0])
@@ -274,7 +256,6 @@ class TestOnConvergence:
             "completion_percentage": 0.3,
             "diagnosis": "stopped_short",
             "corrective_instruction": "keep going",
-            "constraint_violated": False,
         })
 
         assert m._corrections_used == 0
@@ -305,7 +286,6 @@ class TestOnConvergence:
             "completion_percentage": 0.90,
             "diagnosis": "complete",
             "corrective_instruction": None,
-            "constraint_violated": False,
         })
 
         result = m.on_convergence(Path("/tmp/f3.png"))
