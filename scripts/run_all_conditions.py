@@ -64,6 +64,7 @@ from rvln.eval.task_utils import (
 )
 from rvln.maps import SUPPORTED_MAPS
 from rvln.paths import BATCH_SCRIPT, REPO_ROOT, UAV_FLOW_EVAL
+from requests.exceptions import ReadTimeout, ConnectionError as RequestsConnectionError
 from rvln.sim.env_setup import (
     import_batch_module,
     load_env_vars,
@@ -232,6 +233,30 @@ def _import_control_loop(condition: int):
     return getattr(mod, func_name)
 
 
+def _restart_sim(sim_manager: SimManager, map_info, args, batch):
+    """Restart the simulator and return a fresh env connection."""
+    logger.info("  Restarting simulator to recover from timeout...")
+    sim_manager.stop()
+    time.sleep(5)
+    sim_manager.start(
+        map_info,
+        sim_port=args.sim_port,
+        api_port=args.sim_api_port,
+        time_dilation=args.time_dilation,
+        seed=args.seed,
+        startup_timeout=args.startup_timeout,
+    )
+    env = setup_sim_env(
+        int(args.time_dilation), int(args.seed), batch,
+        sim_host=args.sim_host, sim_api_port=args.sim_api_port,
+    )
+    logger.info("  Simulator restarted successfully.")
+    return env
+
+
+MAX_CONSECUTIVE_TIMEOUTS = 2
+
+
 def _run_condition_tasks(
     condition: int,
     tasks: List[Dict[str, Any]],
@@ -240,27 +265,33 @@ def _run_condition_tasks(
     server_url: str,
     map_info,
     args,
+    sim_manager: SimManager,
 ):
     control_loop = _import_control_loop(condition)
     results_dir = Path(args.results_dir) / f"condition{condition}" / map_info.task_dir_name
     results_dir.mkdir(parents=True, exist_ok=True)
     prefix = CONDITION_PREFIXES[condition]
     drone_cam_id = env.drone_cam_id
+    consecutive_timeouts = 0
 
     completed_ids = get_completed_task_ids(results_dir)
     if completed_ids:
         logger.info("  Found %d completed task(s) in %s", len(completed_ids), results_dir)
 
-    for idx, task in enumerate(tasks):
+    idx = 0
+    while idx < len(tasks):
+        task = tasks[idx]
         task_id = task.get("task_id", "")
         if task_id and task_id in completed_ids:
             logger.info("  Skipping already completed task: %s", task_id)
+            idx += 1
             continue
 
         logger.info(
             "  Task %d/%d: '%s'",
             idx + 1, len(tasks), task["instruction"][:80],
         )
+
         ts = datetime.now().strftime("%Y_%m_%d_%H_%M_%S")
         task_label = task.get("task_id") or sanitize_run_label(task["instruction"], max_len=30)
         run_name = f"{prefix}__{task_label}__{ts}"
@@ -323,6 +354,7 @@ def _run_condition_tasks(
                     vlm_model=args.vlm_model,
                 )
 
+            consecutive_timeouts = 0
             logger.info(
                 "  Run saved to %s (steps=%s, stop=%s)",
                 run_dir,
@@ -332,8 +364,26 @@ def _run_condition_tasks(
         except KeyboardInterrupt:
             logger.info("  Task interrupted.")
             raise
+        except (ReadTimeout, RequestsConnectionError) as e:
+            consecutive_timeouts += 1
+            logger.error("  Task failed (timeout %d/%d): %s",
+                         consecutive_timeouts, MAX_CONSECUTIVE_TIMEOUTS, e)
+            if consecutive_timeouts >= MAX_CONSECUTIVE_TIMEOUTS:
+                logger.warning("  %d consecutive timeouts, restarting simulator...",
+                               consecutive_timeouts)
+                try:
+                    env = _restart_sim(sim_manager, map_info, args, batch)
+                    drone_cam_id = env.drone_cam_id
+                    consecutive_timeouts = 0
+                    continue  # retry same task without advancing idx
+                except Exception as restart_err:
+                    logger.error("  Simulator restart failed: %s", restart_err)
+                    raise
         except Exception as e:
+            consecutive_timeouts = 0
             logger.error("  Task failed: %s", e, exc_info=True)
+
+        idx += 1
 
 
 def _resolve_maps(map_arg: Optional[str]) -> List:
@@ -358,6 +408,7 @@ def _run_map(
     batch,
     server_url: str,
     env,
+    sim_manager: SimManager,
 ):
     """Run all conditions for a single map on an already-connected env."""
     tasks = discover_tasks(REPO_ROOT / "tasks" / map_info.task_dir_name)
@@ -384,6 +435,7 @@ def _run_map(
             server_url=server_url,
             map_info=map_info,
             args=args,
+            sim_manager=sim_manager,
         )
 
         logger.info("===== Condition %d finished =====\n", cond)
@@ -482,7 +534,7 @@ def main():
                 logger.info("Connected to simulator: map=%s", map_info.name)
                 logger.info("Conditions to run: %s", conditions)
 
-                _run_map(map_info, conditions, args, batch, server_url, env)
+                _run_map(map_info, conditions, args, batch, server_url, env, sim_manager)
 
             finally:
                 sim_manager.stop()
