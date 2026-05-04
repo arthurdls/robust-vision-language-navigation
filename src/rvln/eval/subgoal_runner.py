@@ -157,121 +157,6 @@ Respond with EXACTLY ONE JSON object (no markdown fences):
   command. null only if complete.
 - "constraint_violated": true if any active constraint has been violated."""
 
-TEXT_ONLY_GLOBAL_PROMPT = """\
-Subgoal: {subgoal}
-
-Previous estimated completion: {prev_completion_pct}
-Current displacement from start: [x, y, z, yaw] = {displacement}
-
-Diary of changes observed so far:
-{diary}
-
-Based on the diary entries and displacement data, respond with EXACTLY ONE
-JSON object (no markdown fences):
-
-{{
-  "complete": true/false,
-  "completion_percentage": 0.0 to 1.0,
-  "should_stop": true/false
-}}
-
-- "complete": true ONLY if you are highly confident the subgoal has been fully
-  accomplished based on the diary and displacement evidence.
-- "completion_percentage": your best estimate of how close the subgoal is to
-  completion (0.0 = not started, 1.0 = fully done). NEVER set 1.0 unless you
-  are highly confident. Cap at 0.95 when unsure.
-- "should_stop": true if the diary suggests the drone is off-track or heading
-  away from the goal. The drone will be stopped and a correction issued.
-  Do NOT set true for slow progress."""
-
-TEXT_ONLY_GLOBAL_PROMPT_CONSTRAINTS = """\
-Subgoal: {subgoal}
-{constraints_block}
-Previous estimated completion: {prev_completion_pct}
-Current displacement from start: [x, y, z, yaw] = {displacement}
-
-Diary of changes observed so far:
-{diary}
-
-Based on the diary entries and displacement data, respond with EXACTLY ONE
-JSON object (no markdown fences):
-
-{{
-  "complete": true/false,
-  "completion_percentage": 0.0 to 1.0,
-  "should_stop": true/false,
-  "constraint_violated": true/false
-}}
-
-- "complete": true ONLY if you are highly confident the subgoal has been fully
-  accomplished based on the diary and displacement evidence.
-- "completion_percentage": your best estimate of how close the subgoal is to
-  completion (0.0 = not started, 1.0 = fully done). NEVER set 1.0 unless you
-  are highly confident. Cap at 0.95 when unsure.
-- "should_stop": true if the diary suggests the drone is off-track or heading
-  away from the goal. The drone will be stopped and a correction issued.
-  Do NOT set true for slow progress.
-- "constraint_violated": true if the diary or displacement suggests a
-  constraint violation. false if no constraints are listed."""
-
-TEXT_ONLY_CONVERGENCE_PROMPT = """\
-Subgoal: {subgoal}
-
-Previous estimated completion: {prev_completion_pct}
-Current displacement from start: [x, y, z, yaw] = {displacement}
-
-Diary of changes observed so far:
-{diary}
-
-The drone has stopped moving. Based on the diary and displacement, is the
-subgoal complete? If not, did the drone stop short or overshoot?
-
-Respond with EXACTLY ONE JSON object (no markdown fences):
-
-{{
-  "complete": true/false,
-  "completion_percentage": 0.0 to 1.0,
-  "diagnosis": "stopped_short" or "overshot" or "complete",
-  "corrective_instruction": "..." or null
-}}
-
-- "complete": true ONLY if you are highly confident the subgoal has been fully
-  accomplished.
-- "diagnosis": "complete" if done, "stopped_short" if the drone needs to keep
-  going, "overshot" if the drone went past the goal.
-- "corrective_instruction": REQUIRED if not complete. A single-action drone
-  command. null only if complete."""
-
-TEXT_ONLY_CONVERGENCE_PROMPT_CONSTRAINTS = """\
-Subgoal: {subgoal}
-{constraints_block}
-Previous estimated completion: {prev_completion_pct}
-Current displacement from start: [x, y, z, yaw] = {displacement}
-
-Diary of changes observed so far:
-{diary}
-
-The drone has stopped moving. Based on the diary and displacement, is the
-subgoal complete? If not, did the drone stop short or overshoot?
-
-Respond with EXACTLY ONE JSON object (no markdown fences):
-
-{{
-  "complete": true/false,
-  "completion_percentage": 0.0 to 1.0,
-  "diagnosis": "stopped_short" or "overshot" or "complete" or "constraint_violated",
-  "corrective_instruction": "..." or null,
-  "constraint_violated": true/false
-}}
-
-- "complete": true ONLY if you are highly confident the subgoal has been fully
-  accomplished.
-- "diagnosis": "complete" if done, "stopped_short" if the drone needs to keep
-  going, "overshot" if the drone went past the goal.
-- "corrective_instruction": REQUIRED if not complete. A single-action drone
-  command. null only if complete.
-- "constraint_violated": true if any constraint was violated."""
-
 SINGLE_FRAME_GLOBAL_PROMPT = """\
 Subgoal: {subgoal}
 
@@ -376,11 +261,6 @@ def _patch_monitor_prompts(mode: MonitorMode) -> None:
         gam.GLOBAL_PROMPT_TEMPLATE_CONSTRAINTS = GRID_ONLY_GLOBAL_PROMPT_CONSTRAINTS
         gam.CONVERGENCE_PROMPT_TEMPLATE = GRID_ONLY_CONVERGENCE_PROMPT
         gam.CONVERGENCE_PROMPT_TEMPLATE_CONSTRAINTS = GRID_ONLY_CONVERGENCE_PROMPT_CONSTRAINTS
-    elif mode == "text_only":
-        gam.GLOBAL_PROMPT_TEMPLATE = TEXT_ONLY_GLOBAL_PROMPT
-        gam.GLOBAL_PROMPT_TEMPLATE_CONSTRAINTS = TEXT_ONLY_GLOBAL_PROMPT_CONSTRAINTS
-        gam.CONVERGENCE_PROMPT_TEMPLATE = TEXT_ONLY_CONVERGENCE_PROMPT
-        gam.CONVERGENCE_PROMPT_TEMPLATE_CONSTRAINTS = TEXT_ONLY_CONVERGENCE_PROMPT_CONSTRAINTS
     elif mode == "single_frame":
         gam.GLOBAL_PROMPT_TEMPLATE = SINGLE_FRAME_GLOBAL_PROMPT
         gam.GLOBAL_PROMPT_TEMPLATE_CONSTRAINTS = SINGLE_FRAME_GLOBAL_PROMPT_CONSTRAINTS
@@ -444,7 +324,7 @@ def run_subgoal(
         state_for_openvla,
     )
 
-    if config.monitor_mode != "full":
+    if config.monitor_mode not in ("full", "text_only"):
         _patch_monitor_prompts(config.monitor_mode)
 
     effective_constraints = constraints if config.use_constraints else None
@@ -462,6 +342,11 @@ def run_subgoal(
 
     use_monitor = config.monitor_mode != "none"
 
+    extra_kwargs: Dict[str, Any] = {}
+    if config.monitor_mode == "text_only":
+        extra_kwargs["global_backend"] = "text_llm"
+        extra_kwargs["global_model"] = llm_model
+
     monitor: Optional[GoalAdherenceMonitor] = None
     if use_monitor:
         monitor = GoalAdherenceMonitor(
@@ -472,6 +357,7 @@ def run_subgoal(
             max_corrections=config.max_corrections,
             check_interval_s=config.check_interval_s,
             constraints=effective_constraints,
+            **extra_kwargs,
         )
 
     current_pose: List[float] = [0.0, 0.0, 0.0, 0.0]
@@ -554,6 +440,7 @@ def run_subgoal(
                     max_corrections=config.max_corrections,
                     check_interval_s=config.check_interval_s,
                     constraints=effective_constraints,
+                    **extra_kwargs,
                 )
             openvla_pose_origin = list(current_pose)
             small_count = 0
