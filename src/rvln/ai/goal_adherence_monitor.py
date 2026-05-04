@@ -29,6 +29,23 @@ Key behaviours:
     unless highly confident, cap at 0.95 when uncertain) and proactive
     correction (flag overshoot early, prefer small corrections over large
     late ones).
+
+Correction-awareness gap:
+  Periodic checkpoints (on_frame / _run_checkpoint) continue to run during
+  corrective instruction execution, but they always evaluate against the
+  *subgoal* (e.g. "fly to the red building"), not the active corrective
+  micro-command (e.g. "move forward 2 meters"). The monitor has no concept
+  of "correction mode": it cannot tell whether a correction is working,
+  overshooting, or making things worse at the correction level. The only
+  correction-specific evaluation happens at the *next* convergence, when
+  on_convergence runs the full diagnostic prompt again.
+
+  Temporal bounds: in sync mode (frame-based), up to check_interval - 1
+  steps of blind execution after a correction before the next checkpoint.
+  In async mode (time-based), up to check_interval_s seconds. Convergence
+  detection is also suppressed for check_interval steps (sync) or
+  check_interval_s seconds (async) after a correction to let the new
+  instruction take effect before the small-motion detector kicks in.
 """
 
 import json
