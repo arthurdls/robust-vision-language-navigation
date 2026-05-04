@@ -21,7 +21,12 @@ logger = logging.getLogger(__name__)
 
 
 def get_completed_task_ids(results_dir: Path) -> set:
-    """Scan a results directory for completed task IDs (runs with run_info.json)."""
+    """Scan a results directory for successfully completed task IDs.
+
+    A run is considered complete only if its run_info.json exists AND the run
+    was not aborted or otherwise marked incomplete.  Runs that were interrupted,
+    crashed, or explicitly aborted are excluded so the orchestrator retries them.
+    """
     completed = set()
     if not results_dir.is_dir():
         return completed
@@ -34,6 +39,10 @@ def get_completed_task_ids(results_dir: Path) -> set:
         try:
             with open(run_info_path, "r") as f:
                 run_info = json.load(f)
+            if run_info.get("aborted", False):
+                continue
+            if not run_info.get("completed", False):
+                continue
             task_id = run_info.get("task", {}).get("task_id", "")
             if task_id:
                 completed.add(task_id)

@@ -199,6 +199,7 @@ def run_naive_control_loop(
     wall_clock_seconds = (end_dt - start_dt).total_seconds()
 
     run_info: Dict[str, Any] = {
+        "completed": True,
         "condition": "condition1_naive",
         "task": task,
         "seed": seed,
