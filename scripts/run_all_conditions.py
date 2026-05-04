@@ -27,6 +27,7 @@ Usage (remote, orchestrator on one machine, simulator on another):
 """
 
 import argparse
+import fnmatch
 import logging
 import os
 import signal
@@ -371,6 +372,36 @@ def _resolve_maps(map_arg: Optional[str]) -> List:
     return [matching]
 
 
+def _resolve_hold_ids(
+    hold_patterns: Optional[List[str]],
+    tasks: List[Dict[str, Any]],
+    map_label: str,
+) -> set:
+    """Expand --hold glob patterns against discovered task_ids for a map.
+
+    Warns about patterns that match no task_ids on this map.
+    """
+    if not hold_patterns:
+        return set()
+    available = {t.get("task_id", "") for t in tasks if t.get("task_id")}
+    held: set = set()
+    for pattern in hold_patterns:
+        matches = set(fnmatch.filter(available, pattern))
+        if not matches:
+            logger.warning(
+                "  --hold pattern %r matched no task_ids in map '%s'",
+                pattern, map_label,
+            )
+            continue
+        held.update(matches)
+    if held:
+        logger.info(
+            "  Holding %d task(s) for map '%s': %s",
+            len(held), map_label, ", ".join(sorted(held)),
+        )
+    return held
+
+
 def _run_map(
     map_info,
     conditions: List[int],
@@ -392,6 +423,8 @@ def _run_map(
         logger.warning("No tasks found in tasks/%s/, skipping map.", map_info.task_dir_name)
         return
     logger.info("Found %d shared task(s) for map '%s'", len(tasks), map_info.task_dir_name)
+
+    held_ids = _resolve_hold_ids(getattr(args, "hold", None), tasks, map_info.task_dir_name)
 
     variant_groups = group_tasks_by_variant(tasks)
     valid_conditions = [c for c in conditions if c in CONDITION_MODULES]
@@ -427,6 +460,10 @@ def _run_map(
 
         for task in variant_tasks:
             task_id = task.get("task_id", "")
+
+            if task_id and task_id in held_ids:
+                logger.info("  Holding (skipping all conditions): %s", task_id)
+                continue
 
             for cond in valid_conditions:
                 state = cond_state[cond]
@@ -502,6 +539,10 @@ def main():
                         help="Map task_dir_name (e.g. greek_island). Omit to run all maps.")
     parser.add_argument("--conditions", type=str, default=None,
                         help="Comma-separated condition numbers to run (default: all 0-6)")
+    parser.add_argument("--hold", nargs="+", default=None, metavar="PATTERN",
+                        help="Task IDs (or fnmatch glob patterns, e.g. '*pergola*') "
+                             "to skip across all conditions. Multiple patterns may be "
+                             "given space-separated.")
     parser.add_argument("-t", "--time_dilation", type=int, default=DEFAULT_TIME_DILATION)
     parser.add_argument("-s", "--seed", type=int, default=DEFAULT_SEED)
     parser.add_argument("-p", "--server_port", type=int, default=DEFAULT_SERVER_PORT)
