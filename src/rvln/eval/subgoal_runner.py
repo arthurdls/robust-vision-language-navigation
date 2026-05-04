@@ -145,8 +145,7 @@ Respond with EXACTLY ONE JSON object (no markdown fences):
   "complete": true/false,
   "completion_percentage": 0.0 to 1.0,
   "diagnosis": "stopped_short" or "overshot" or "complete" or "constraint_violated",
-  "corrective_instruction": "..." or null,
-  "constraint_violated": true/false
+  "corrective_instruction": "..." or null
 }}
 
 - "complete": true ONLY if you are highly confident the subgoal has been fully
@@ -159,8 +158,7 @@ Respond with EXACTLY ONE JSON object (no markdown fences):
   restore compliance: move away from a forbidden region for avoidance
   constraints, or restore the required condition for maintenance constraints
   (e.g., "ascend 2 meters" to regain an altitude constraint).
-  null only if complete.
-- "constraint_violated": true if any active constraint has been violated."""
+  null only if complete."""
 
 SINGLE_FRAME_GLOBAL_PROMPT = """\
 Subgoal: {subgoal}
@@ -246,8 +244,7 @@ Respond with EXACTLY ONE JSON object (no markdown fences):
   "complete": true/false,
   "completion_percentage": 0.0 to 1.0,
   "diagnosis": "stopped_short" or "overshot" or "complete" or "constraint_violated",
-  "corrective_instruction": "..." or null,
-  "constraint_violated": true/false
+  "corrective_instruction": "..." or null
 }}
 
 - "complete": true ONLY if you are highly confident.
@@ -256,8 +253,7 @@ Respond with EXACTLY ONE JSON object (no markdown fences):
 - "corrective_instruction": REQUIRED if not complete. A single-action command.
   If a constraint was violated, restore compliance: move away from a forbidden
   region for avoidance constraints, or restore the required condition for
-  maintenance constraints (e.g., "ascend 2 meters").
-- "constraint_violated": true if any constraint appears violated."""
+  maintenance constraints (e.g., "ascend 2 meters")."""
 
 
 def _patch_monitor_prompts(mode: MonitorMode) -> None:
