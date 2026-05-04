@@ -68,9 +68,9 @@ class TestCondition0FullSystem:
         names = _all_names(_parse_tree("run_integration.py"))
         assert "LTLSymbolicPlanner" in names
 
-    def test_uses_goal_adherence_monitor(self):
-        names = _all_names(_parse_tree("run_integration.py"))
-        assert "GoalAdherenceMonitor" in names
+    def test_uses_full_monitor_mode(self):
+        source = _read_source("run_integration.py")
+        assert 'monitor_mode="full"' in source
 
     def test_passes_constraints_to_run_subgoal(self):
         source = _read_source("run_integration.py")
@@ -131,9 +131,9 @@ class TestCondition2LLMPlanner:
         source = _read_source("run_condition2_llm_planner.py")
         assert "import spot" not in source
 
-    def test_uses_goal_adherence_monitor(self):
-        names = _all_names(_parse_tree("run_condition2_llm_planner.py"))
-        assert "GoalAdherenceMonitor" in names
+    def test_uses_full_monitor_mode(self):
+        source = _read_source("run_condition2_llm_planner.py")
+        assert 'monitor_mode="full"' in source
 
     def test_no_constraint_enforcement(self):
         """C2 should not pass constraints to the monitor."""
@@ -191,8 +191,9 @@ class TestCondition4SingleFrame:
         assert "LTLSymbolicPlanner" in names
 
     def test_no_goal_adherence_monitor(self):
-        names = _all_names(_parse_tree("run_condition4_single_frame.py"))
-        assert "GoalAdherenceMonitor" not in names
+        """C4 uses its own single-frame loop, not GoalAdherenceMonitor."""
+        calls = _all_call_names(_parse_tree("run_condition4_single_frame.py"))
+        assert "GoalAdherenceMonitor" not in calls
 
     def test_has_single_frame_prompts(self):
         source = _read_source("run_condition4_single_frame.py")
@@ -211,9 +212,10 @@ class TestCondition4SingleFrame:
                             assert "{diary}" not in prompt_text.value
                             assert "{displacement}" not in prompt_text.value
 
-    def test_no_constraints(self):
+    def test_passes_constraints(self):
+        """C4 uses LTL constraints for single-frame VLM checks."""
         source = _read_source("run_condition4_single_frame.py")
-        assert "get_active_constraints" not in source
+        assert "get_active_constraints" in source
 
     def test_condition_label(self):
         source = _read_source("run_condition4_single_frame.py")
@@ -229,43 +231,9 @@ class TestCondition5GridOnly:
         names = _all_names(_parse_tree("run_condition5_grid_only.py"))
         assert "LTLSymbolicPlanner" in names
 
-    def test_uses_goal_adherence_monitor(self):
-        names = _all_names(_parse_tree("run_condition5_grid_only.py"))
-        assert "GoalAdherenceMonitor" in names
-
-    def test_grid_only_global_prompt_no_diary_text(self):
-        """The patched global prompt must not contain {diary} or {displacement}."""
+    def test_uses_grid_only_monitor_mode(self):
         source = _read_source("run_condition5_grid_only.py")
-        tree = ast.parse(source, filename="run_condition5_grid_only.py")
-        for node in ast.walk(tree):
-            if isinstance(node, ast.Assign):
-                for target in node.targets:
-                    if isinstance(target, ast.Name) and target.id == "GRID_ONLY_GLOBAL_PROMPT":
-                        if isinstance(node.value, ast.Constant):
-                            assert "{diary}" not in node.value.value, \
-                                "GRID_ONLY_GLOBAL_PROMPT must not contain {diary}"
-                            assert "{displacement}" not in node.value.value, \
-                                "GRID_ONLY_GLOBAL_PROMPT must not contain {displacement}"
-
-    def test_grid_only_convergence_prompt_no_diary_text(self):
-        """The patched convergence prompt must not contain {diary} or {displacement}."""
-        source = _read_source("run_condition5_grid_only.py")
-        tree = ast.parse(source, filename="run_condition5_grid_only.py")
-        for node in ast.walk(tree):
-            if isinstance(node, ast.Assign):
-                for target in node.targets:
-                    if isinstance(target, ast.Name) and target.id == "GRID_ONLY_CONVERGENCE_PROMPT":
-                        if isinstance(node.value, ast.Constant):
-                            assert "{diary}" not in node.value.value, \
-                                "GRID_ONLY_CONVERGENCE_PROMPT must not contain {diary}"
-                            assert "{displacement}" not in node.value.value, \
-                                "GRID_ONLY_CONVERGENCE_PROMPT must not contain {displacement}"
-
-    def test_patch_prompts_targets_correct_attributes(self):
-        """_patch_prompts must set GLOBAL_PROMPT_TEMPLATE and CONVERGENCE_PROMPT_TEMPLATE."""
-        source = _read_source("run_condition5_grid_only.py")
-        assert "GLOBAL_PROMPT_TEMPLATE" in source
-        assert "CONVERGENCE_PROMPT_TEMPLATE" in source
+        assert 'monitor_mode="grid_only"' in source
 
     def test_passes_constraints(self):
         source = _read_source("run_condition5_grid_only.py")
@@ -286,53 +254,9 @@ class TestCondition6TextOnly:
         names = _all_names(_parse_tree("run_condition6_text_only.py"))
         assert "LTLSymbolicPlanner" in names
 
-    def test_uses_text_only_monitor(self):
-        names = _all_names(_parse_tree("run_condition6_text_only.py"))
-        assert "TextOnlyGoalAdherenceMonitor" in names
-
-    def test_does_not_use_goal_adherence_monitor_for_monitoring(self):
-        """C6 should use TextOnlyGoalAdherenceMonitor, not GoalAdherenceMonitor, for checkpoint monitoring."""
-        calls = _all_call_names(_parse_tree("run_condition6_text_only.py"))
-        assert "TextOnlyGoalAdherenceMonitor" in calls
-        assert "GoalAdherenceMonitor" not in calls
-
-    def test_on_convergence_no_vlm(self):
-        """TextOnlyGoalAdherenceMonitor.on_convergence should not call query_vlm or build_frame_grid."""
+    def test_uses_text_only_monitor_mode(self):
         source = _read_source("run_condition6_text_only.py")
-        tree = ast.parse(source, filename="run_condition6_text_only.py")
-
-        for node in ast.walk(tree):
-            if isinstance(node, ast.ClassDef) and node.name == "TextOnlyGoalAdherenceMonitor":
-                for item in ast.walk(node):
-                    if isinstance(item, ast.FunctionDef) and item.name == "on_convergence":
-                        convergence_calls = set()
-                        for sub in ast.walk(item):
-                            if isinstance(sub, ast.Call):
-                                if isinstance(sub.func, ast.Name):
-                                    convergence_calls.add(sub.func.id)
-                                elif isinstance(sub.func, ast.Attribute):
-                                    convergence_calls.add(sub.func.attr)
-                        assert "query_vlm" not in convergence_calls, \
-                            "on_convergence must not call query_vlm (text-only)"
-                        assert "build_frame_grid" not in convergence_calls, \
-                            "on_convergence must not call build_frame_grid (text-only)"
-
-    def test_text_only_global_prompt_no_grid(self):
-        """TEXT_ONLY_GLOBAL_PROMPT should reference diary and displacement but not grid."""
-        source = _read_source("run_condition6_text_only.py")
-        tree = ast.parse(source, filename="run_condition6_text_only.py")
-        for node in ast.walk(tree):
-            if isinstance(node, ast.Assign):
-                for target in node.targets:
-                    if isinstance(target, ast.Name) and target.id == "TEXT_ONLY_GLOBAL_PROMPT":
-                        if isinstance(node.value, ast.Constant):
-                            assert "{diary}" in node.value.value, \
-                                "TEXT_ONLY_GLOBAL_PROMPT must contain {diary}"
-                            assert "{displacement}" in node.value.value, \
-                                "TEXT_ONLY_GLOBAL_PROMPT must contain {displacement}"
-                            assert "grid" not in node.value.value.lower() or \
-                                "no image" in node.value.value.lower(), \
-                                "TEXT_ONLY_GLOBAL_PROMPT should not reference image grid positively"
+        assert 'monitor_mode="text_only"' in source
 
     def test_passes_constraints(self):
         source = _read_source("run_condition6_text_only.py")

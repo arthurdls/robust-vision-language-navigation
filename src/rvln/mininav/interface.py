@@ -539,18 +539,16 @@ class PoseManager:
 
 
 def resolve_model_with_fallback(primary_model: str, fallback_model: str) -> str:
-    provider = "gemini" if primary_model.startswith("gemini") else "openai"
     try:
-        LLMFactory.create(provider, model=primary_model)
+        LLMFactory.create("openai", model=primary_model)
         return primary_model
     except Exception as exc:
         logger.warning(
             "Model '%s' unavailable (%s). Trying fallback '%s'.",
             primary_model, exc, fallback_model,
         )
-        fallback_provider = "gemini" if fallback_model.startswith("gemini") else "openai"
         try:
-            LLMFactory.create(fallback_provider, model=fallback_model)
+            LLMFactory.create("openai", model=fallback_model)
         except Exception as fallback_exc:
             raise RuntimeError(
                 f"Neither primary model '{primary_model}' nor fallback model "

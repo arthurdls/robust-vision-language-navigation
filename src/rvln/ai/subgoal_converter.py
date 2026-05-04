@@ -86,6 +86,4 @@ class SubgoalConverter:
 
     @staticmethod
     def _make_llm(model: str) -> BaseLLM:
-        if model.startswith("gemini"):
-            return LLMFactory.create("gemini", model=model)
         return LLMFactory.create("openai", model=model)

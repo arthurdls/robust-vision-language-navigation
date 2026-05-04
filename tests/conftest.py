@@ -1,5 +1,8 @@
 """Shared pytest configuration for rvln tests.
 
+Run with: conda run -n rvln-sim pytest tests/ -v
+The rvln-sim environment provides the spot library (required for LTL tests).
+
 Unregisters the ROS launch_testing_ros plugin, which defines a non-standard
 hook (pytest_launch_collect_makemodule) that causes a PluginValidationError
 with newer versions of pluggy/pytest.

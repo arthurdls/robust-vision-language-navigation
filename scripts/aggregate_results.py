@@ -302,6 +302,7 @@ def is_constraint_adhered(run: dict) -> bool | None:
     Check constraint adherence for an episode.
     Uses constraint_analysis.json if available, otherwise falls back to
     any_constraint_violated field in run_info.
+    Returns None when constraints were not checked at runtime (needs post-hoc).
     """
     ca = run.get("_constraint_analysis")
     if ca:
@@ -310,8 +311,14 @@ def is_constraint_adhered(run: dict) -> bool | None:
         if "constraint_adherence" in ca:
             return bool(ca["constraint_adherence"])
 
-    if "any_constraint_violated" in run:
-        return not run["any_constraint_violated"]
+    acv = run.get("any_constraint_violated")
+    if acv is not None:
+        return not acv
+
+    # If any_constraint_violated is explicitly None, constraints were not
+    # checked at runtime (C1, C2, C3). Needs post-hoc analysis.
+    if "any_constraint_violated" in run and acv is None:
+        return None
 
     # Check subgoal-level constraint violations
     subgoal_summaries = run.get("subgoal_summaries", [])
@@ -976,44 +983,52 @@ def aggregate_by_subgoal_position(
     return result
 
 
+def _run_pair_key(run: dict) -> tuple:
+    """Unique key for pairing runs across conditions: (task_id, initial_pos)."""
+    task = run.get("task", {})
+    tid = task.get("task_id", "")
+    pos = tuple(task.get("initial_pos", []))
+    return (tid, pos)
+
+
 def compute_paired_mcnemar_tests(
     runs_by_condition: dict[str, list[dict]],
 ) -> dict[str, dict]:
     """
     Compute McNemar's test for C0 vs each baseline on M1, using paired
-    episodes matched by task_id.
+    episodes matched by (task_id, initial_pos).
 
     Starting positions are fixed across conditions, so episodes with the
-    same task_id form a natural pair.
+    same task_id and starting position form a natural pair.
     """
     comparisons = {}
     c0_runs = runs_by_condition.get("condition0", [])
     if not c0_runs:
         return comparisons
 
-    c0_by_task = {}
+    c0_by_key = {}
     for run in c0_runs:
-        tid = run.get("task", {}).get("task_id", "")
-        if tid:
-            c0_by_task[tid] = run
+        key = _run_pair_key(run)
+        if key[0]:
+            c0_by_key[key] = run
 
     for cond in CONDITION_ORDER[1:]:
         cx_runs = runs_by_condition.get(cond, [])
         if not cx_runs:
             continue
 
-        cx_by_task = {}
+        cx_by_key = {}
         for run in cx_runs:
-            tid = run.get("task", {}).get("task_id", "")
-            if tid:
-                cx_by_task[tid] = run
+            key = _run_pair_key(run)
+            if key[0]:
+                cx_by_key[key] = run
 
-        shared_tasks = sorted(set(c0_by_task.keys()) & set(cx_by_task.keys()))
-        if not shared_tasks:
+        shared_keys = sorted(set(c0_by_key.keys()) & set(cx_by_key.keys()))
+        if not shared_keys:
             continue
 
-        c0_outcomes = [is_task_success(c0_by_task[t]) for t in shared_tasks]
-        cx_outcomes = [is_task_success(cx_by_task[t]) for t in shared_tasks]
+        c0_outcomes = [is_task_success(c0_by_key[k]) for k in shared_keys]
+        cx_outcomes = [is_task_success(cx_by_key[k]) for k in shared_keys]
 
         comparisons[f"C0_vs_{cond}"] = {
             "M1_task_success_mcnemar": mcnemars_test(c0_outcomes, cx_outcomes),

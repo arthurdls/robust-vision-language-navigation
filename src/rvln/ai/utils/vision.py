@@ -124,8 +124,6 @@ def build_frame_grid(
 
 def _get_llm(model: str = DEFAULT_VLM_MODEL) -> BaseLLM:
     """Resolve a model string to a BaseLLM instance via LLMFactory."""
-    if model.startswith("gemini"):
-        return LLMFactory.create("gemini", model=model)
     return LLMFactory.create("openai", model=model)
 
 

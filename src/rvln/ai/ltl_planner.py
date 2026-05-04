@@ -6,7 +6,10 @@ to manage the automaton state and determine the next short-horizon subgoal.
 from dataclasses import dataclass
 from typing import Literal, Optional
 
-import spot
+try:
+    import spot
+except ImportError:
+    spot = None
 
 from .llm_interface import LLMUserInterface
 
@@ -50,6 +53,11 @@ class LTLSymbolicPlanner:
     """
 
     def __init__(self, llm_interface: LLMUserInterface):
+        if spot is None:
+            raise ImportError(
+                "The 'spot' library is required for LTLSymbolicPlanner. "
+                "Install via the rvln-sim conda environment."
+            )
         self.llm_interface = llm_interface
         self.current_automaton_state = 0
         self.automaton = None
@@ -314,7 +322,8 @@ class LTLSymbolicPlanner:
           G(!pN)             -> negative constraint (avoid)
           F(...)             -> all APs underneath are goals
           positive pN left of U -> positive constraint (maintain until right side)
-          negated !pN left of U -> pN is a sequenced goal, not a constraint
+          negated !pN left of U where pN is a goal -> sequencing (not a constraint)
+          negated !pN left of U where pN is NOT a goal -> negative scoped constraint
           right of U         -> goal
           bare AP / default  -> goal
         """
@@ -327,8 +336,11 @@ class LTLSymbolicPlanner:
         except Exception:
             return {}
 
+        goal_aps: set[str] = set()
+        self._collect_goal_aps(tree, goal_aps)
+
         ap_constraints: dict[str, ConstraintInfo] = {}
-        self._walk_classify(tree, ap_constraints)
+        self._walk_classify(tree, ap_constraints, goal_aps)
 
         result: dict[str, ConstraintInfo] = {}
         for ap_name, info in ap_constraints.items():
@@ -338,7 +350,29 @@ class LTLSymbolicPlanner:
                     result[pi_key] = info
         return result
 
-    def _walk_classify(self, node, out: dict[str, ConstraintInfo]) -> None:
+    def _collect_goal_aps(self, node, goals: set[str]) -> None:
+        """Collect APs that are goals (under F, or on the right side of U)."""
+        kind = node.kind()
+        if kind == spot.op_F:
+            self._collect_all_aps(node[0], goals)
+            return
+        if kind == spot.op_U:
+            self._collect_all_aps(node[1], goals)
+            self._collect_goal_aps(node[0], goals)
+            return
+        for i in range(node.size()):
+            self._collect_goal_aps(node[i], goals)
+
+    def _collect_all_aps(self, node, aps: set[str]) -> None:
+        """Collect every AP referenced under a subtree."""
+        if node.kind() == spot.op_ap:
+            aps.add(str(node))
+            return
+        for i in range(node.size()):
+            self._collect_all_aps(node[i], aps)
+
+    def _walk_classify(self, node, out: dict[str, ConstraintInfo],
+                       goal_aps: set[str]) -> None:
         kind = node.kind()
         if kind == spot.op_G:
             self._classify_under_g(node[0], out)
@@ -346,10 +380,10 @@ class LTLSymbolicPlanner:
         if kind == spot.op_F:
             return
         if kind == spot.op_U:
-            self._classify_until_left(node[0], out)
+            self._classify_until_left(node[0], out, goal_aps)
             return
         for i in range(node.size()):
-            self._walk_classify(node[i], out)
+            self._walk_classify(node[i], out, goal_aps)
 
     def _classify_under_g(self, node, out: dict[str, ConstraintInfo]) -> None:
         kind = node.kind()
@@ -366,12 +400,13 @@ class LTLSymbolicPlanner:
             )
             return
         if kind in (spot.op_F, spot.op_U, spot.op_G):
-            self._walk_classify(node, out)
+            self._walk_classify(node, out, set())
             return
         for i in range(node.size()):
             self._classify_under_g(node[i], out)
 
-    def _classify_until_left(self, node, out: dict[str, ConstraintInfo]) -> None:
+    def _classify_until_left(self, node, out: dict[str, ConstraintInfo],
+                             goal_aps: set[str]) -> None:
         kind = node.kind()
         if kind == spot.op_ap:
             ap = str(node)
@@ -380,9 +415,14 @@ class LTLSymbolicPlanner:
             )
             return
         if kind == spot.op_Not and node[0].kind() == spot.op_ap:
+            ap = str(node[0])
+            if ap not in goal_aps:
+                out[ap] = ConstraintInfo(
+                    description=self._ap_description(ap), polarity="negative",
+                )
             return
         for i in range(node.size()):
-            self._classify_until_left(node[i], out)
+            self._classify_until_left(node[i], out, goal_aps)
 
     def _ap_description(self, ap_name: str) -> str:
         if ap_name.startswith("p") and ap_name[1:].isdigit():

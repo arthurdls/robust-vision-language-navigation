@@ -304,123 +304,12 @@ class OpenAIProvider(BaseLLM):
         raise RuntimeError(f"OpenAIProvider failed after {self.max_retries} attempts") from last_exc
 
 
-class GeminiProvider(BaseLLM):
-    """
-    Provider wrapper for the genai/Gemini SDK style client.
-
-    Converts messages to the 'contents' field expected by the gemini client used in the
-    original code: contents=[{"role":"user","parts":[{"text":"..."}]}, ...]
-    """
-
-    def __init__(self, model: str = "gemini-2.5-flash-lite", api_key_env: Optional[str] = "GEMINI_API_KEY",
-                 rate_limit_seconds: float = 0.0, max_retries: int = 3, **genai_kwargs):
-        super().__init__(model=model, api_key_env=api_key_env,
-                         rate_limit_seconds=rate_limit_seconds, max_retries=max_retries)
-        try:
-            from google import genai
-            # from google.genai.types import GenerateContentConfig
-        except Exception as e:
-            raise ImportError(
-                "Gemini SDK (genai) not installed. Install it or choose a different provider."
-            ) from e
-
-        api_key = os.environ.get(api_key_env)
-        if not api_key:
-            logger.warning(f"Gemini API key env '{api_key_env}' not found. Client may still instantiate if using other auth.")
-        # instantiate the client
-        self._client = genai.Client(api_key=api_key, **genai_kwargs)
-
-    def format_multimodal_message(self, text: str, media: str, mime: str, media_type: str, is_url: bool = False) -> List[Dict[str, Any]]:
-        """
-        Build Gemini-style contents:
-         - If is_url: use {"image": {"image_uri": ...}} or {"video": {"uri": ...}}
-         - Else: use inline_data as before
-        """
-        if is_url:
-            if media_type == "image":
-                parts = [{"text": text}, {"image": {"image_uri": media}}]
-            elif media_type == "video":
-                parts = [{"text": text}, {"video": {"uri": media}}]
-            else:
-                parts = [{"text": text}]
-        else:
-            parts = [{"text": text}, {"inline_data": {"mime_type": mime, "data": media}}]
-
-        return [{"role": "user", "parts": parts}]
-
-    def make_request(self, messages: List[Dict[str, Any]], temperature: float = 0.0,
-                     json_mode: bool = False) -> str:
-        """
-        Call genai client, normalize response to dict and extract the likely text field(s).
-        """
-        attempt = 0
-        last_exc = None
-        contents = _openai_to_gemini(messages)
-        config = {"temperature": temperature}
-        if json_mode:
-            config["response_mime_type"] = "application/json"
-
-        while attempt < self.max_retries:
-            attempt += 1
-            if self.rate_limit_seconds:
-                time.sleep(self.rate_limit_seconds)
-            try:
-                resp = self._client.models.generate_content(
-                    model=self.model,
-                    contents=contents,
-                    config=config,
-                )
-                data = _normalize_sdk_response(resp)
-
-                usage_meta = data.get("usage_metadata") or {}
-                self.last_usage = {
-                    "model": data.get("model_version", self.model),
-                    "input_tokens": usage_meta.get("prompt_token_count", 0),
-                    "output_tokens": usage_meta.get("candidates_token_count", 0),
-                }
-
-                try:
-                    return data["candidates"][0]["content"]["parts"][0]["text"]
-                except (KeyError, IndexError, TypeError) as e:
-                    logger.warning("Gemini standard text path failed: %s. Trying fallbacks.", e)
-
-                if "text" in data and data["text"]:
-                    logger.warning("Gemini: using top-level 'text' fallback.")
-                    return data["text"]
-
-                candidates = data.get("candidates") or data.get("outputs") or data.get("response", None)
-                if isinstance(candidates, list) and candidates:
-                    first = candidates[0]
-                    if isinstance(first, dict):
-                        for key in ("content", "text", "output"):
-                            if key in first and first[key]:
-                                logger.warning("Gemini: using candidates[0]['%s'] fallback.", key)
-                                return first[key]
-
-                if isinstance(data.get("output"), dict):
-                    out = data["output"]
-                    if "content" in out:
-                        logger.warning("Gemini: using output.content fallback.")
-                        return json.dumps(out["content"])
-
-                logger.error(
-                    "Gemini: could not extract text from response. "
-                    "Returning raw JSON. Keys: %s",
-                    list(data.keys()),
-                )
-                return json.dumps(data)
-            except Exception as e:
-                last_exc = e
-                logger.warning("GeminiProvider attempt %d failed: %s", attempt, e, exc_info=True)
-                time.sleep(0.5 * attempt)
-                continue
-        raise RuntimeError(f"GeminiProvider failed after {self.max_retries} attempts") from last_exc
 
 
 class LLMFactory:
     """
     Factory for creating provider objects by name.
-    Supported names: "openai", "gemini".
+    Supported names: "openai".
     You can also pass a class object that inherits from BaseLLM as `provider_class`.
     """
 
@@ -430,12 +319,9 @@ class LLMFactory:
                rate_limit_seconds: float = 0.0, max_retries: int = 3,
                **provider_kwargs) -> BaseLLM:
         name = provider_name.lower() if provider_name else None
-        model = model or (
-            "gpt-4o-mini" if (name == "openai") else ("gemini-2.5-flash-lite" if name == "gemini" else None)
-        )
+        model = model or "gpt-4o-mini"
 
         if provider_class:
-            # allow direct provider class injection
             if not issubclass(provider_class, BaseLLM):
                 raise TypeError("provider_class must be a subclass of BaseLLM")
             return provider_class(model=model, api_key_env=api_key_env,
@@ -444,57 +330,10 @@ class LLMFactory:
         if name == "openai":
             return OpenAIProvider(model=model, api_key_env=api_key_env or "OPENAI_API_KEY",
                                   rate_limit_seconds=rate_limit_seconds, max_retries=max_retries, **provider_kwargs)
-        elif name == "gemini":
-            return GeminiProvider(model=model, api_key_env=api_key_env or "GEMINI_API_KEY",
-                                  rate_limit_seconds=rate_limit_seconds, max_retries=max_retries, **provider_kwargs)
         else:
-            raise ValueError(f"Unknown provider_name '{provider_name}'. Supported: openai, gemini, or pass provider_class.")
+            raise ValueError(f"Unknown provider_name '{provider_name}'. Supported: 'openai', or pass provider_class.")
 
 
-def _openai_to_gemini(messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """
-    Convert OpenAI-style chat messages to Gemini-style contents.
-    Now handles http(s)/data URLs for image_url and video_url by emitting Gemini image/video parts.
-    """
-    gemini_messages = []
-    for msg in messages:
-        role = msg.get("role", "user")
-        content = msg.get("content", "")
-        parts = []
-
-        # Case 1: content is a simple text string
-        if isinstance(content, str):
-            parts.append({"text": content})
-
-        # Case 2: content is a list of message parts (OpenAI multimodal)
-        elif isinstance(content, list):
-            for item in content:
-                t = item.get("type")
-                if t == "text":
-                    parts.append({"text": item.get("text", "")})
-                elif t == "image_url":
-                    img_url = item.get("image_url", "")
-                    if isinstance(img_url, str) and (img_url.startswith("http://") or img_url.startswith("https://") or img_url.startswith("data:image/")):
-                        # emit Gemini image part when URL or data URI present
-                        parts.append({"image": {"image_uri": img_url}})
-                    else:
-                        parts.append({"text": f"[image: {img_url}]"})
-                elif t == "video_url":
-                    vid_url = item.get("video_url", "")
-                    if isinstance(vid_url, str) and (vid_url.startswith("http://") or vid_url.startswith("https://") or vid_url.startswith("data:video/")):
-                        parts.append({"video": {"uri": vid_url}})
-                    else:
-                        parts.append({"text": f"[video: {vid_url}]"})
-                else:
-                    # unknown part type -> fallback to text
-                    parts.append({"text": str(item)})
-        else:
-            # Fallback for unexpected types
-            parts.append({"text": str(content)})
-
-        gemini_messages.append({"role": role, "parts": parts})
-
-    return gemini_messages
 
 
 def _normalize_sdk_response(resp: Any) -> Dict[str, Any]:
@@ -529,50 +368,21 @@ def _normalize_sdk_response(resp: Any) -> Dict[str, Any]:
 
 if __name__ == "__main__":
     openai_llm = LLMFactory.create("openai", model="gpt-4o-mini")
-    # gemini_llm = LLMFactory.create("gemini", model="gemini-2.5-flash-lite")
 
-    # Simple text prompt ---
     print("\n=== TEXT PROMPT TEST ===")
     try:
         text_response_oai = openai_llm.make_text_request("Say hello from OpenAI.")
-        # text_response_gem = gemini_llm.make_text_request("Say hello from Gemini.")
         print("OpenAI response:", text_response_oai)
-        # print("Gemini response:", text_response_gem)
     except Exception as e:
         print("Text test failed:", e)
 
-    # Text + Image prompt ---
     print("\n=== IMAGE PROMPT TEST ===")
     try:
-        # create dummy image (solid red 64x64)
         img = np.zeros((64, 64, 3), dtype=np.uint8)
-        img[:, :, 0] = 255  # red
+        img[:, :, 0] = 255
 
         text = "What color is this image?"
         img_response_oai = openai_llm.make_text_and_image_request(text, img)
-        # img_response_gem = gemini_llm.make_text_and_image_request(text, img)
-
         print("OpenAI image response:", img_response_oai)
-        # print("Gemini image response:", img_response_gem)
     except Exception as e:
         print("Image test failed:", e)
-
-    # # Text + Video prompt ---
-    # print("\n=== VIDEO PROMPT TEST ===")
-    # try:
-    #     # create dummy video (10 frames, 64x64, moving blue square)
-    #     frames = []
-    #     for i in range(10):
-    #         frame = np.zeros((64, 64, 3), dtype=np.uint8)
-    #         frame[i: i+10, i: i+10, 2] = 255  # moving blue block
-    #         frames.append(frame)
-    #     video = np.stack(frames)
-
-    #     text = "What is happening in this video?"
-    #     vid_response_oai = openai_llm.make_text_and_video_request(text, video)
-    #     # vid_response_gem = gemini_llm.make_text_and_video_request(text, video)
-
-    #     print("OpenAI video response:", vid_response_oai)
-    #     # print("Gemini video response:", vid_response_gem)
-    # except Exception as e:
-    #     print("Video test failed:", e)

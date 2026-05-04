@@ -35,6 +35,7 @@ def test_no_stall_when_not_enough_history():
     m._stall_window = 3
     m._stall_threshold = 0.05
     m._stall_completion_floor = 0.8
+    m._peak_completion = 0.12
     assert m._is_stalled() is False
 
 
@@ -44,6 +45,7 @@ def test_stall_detected_when_flat():
     m._stall_window = 3
     m._stall_threshold = 0.05
     m._stall_completion_floor = 0.8
+    m._peak_completion = 0.32
     assert m._is_stalled() is True
 
 
@@ -53,6 +55,7 @@ def test_no_stall_when_progressing():
     m._stall_window = 3
     m._stall_threshold = 0.05
     m._stall_completion_floor = 0.8
+    m._peak_completion = 0.50
     assert m._is_stalled() is False
 
 
@@ -63,6 +66,7 @@ def test_no_stall_when_completion_high():
     m._stall_window = 3
     m._stall_threshold = 0.05
     m._stall_completion_floor = 0.8
+    m._peak_completion = 0.86
     assert m._is_stalled() is False
 
 
@@ -73,6 +77,7 @@ def test_stall_only_looks_at_last_window():
     m._stall_window = 3
     m._stall_threshold = 0.05
     m._stall_completion_floor = 0.8
+    m._peak_completion = 0.32
     assert m._is_stalled() is True
 
 

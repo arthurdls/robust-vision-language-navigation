@@ -348,6 +348,13 @@ def main():
             print(f"Waiting for UnrealCV on port {args.port}...")
             if wait_for_port("127.0.0.1", args.port):
                 print(f"Simulator restarted and ready on port {args.port}.")
+                print("Re-initializing gym environment...")
+                init_result = init_env(
+                    env_id=map_info.env_id,
+                    time_dilation=args.time_dilation,
+                    seed=args.seed,
+                )
+                print(f"Gym env re-initialized: {init_result['status']}, drone_cam={init_result['drone_cam_id']}")
             else:
                 print("Timeout: simulator did not restart.", file=sys.stderr)
                 proc.terminate()

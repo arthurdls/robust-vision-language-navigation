@@ -13,7 +13,10 @@ import json
 import logging
 import time
 from typing import Any, Dict, List
-import spot
+try:
+    import spot
+except ImportError:
+    spot = None
 from ..config import DEFAULT_LLM_MODEL
 from .prompts import (
     LTL_NL_SYSTEM_PROMPT,
@@ -129,6 +132,8 @@ class LLMUserInterface():
         """
         evaluation_llm = self._base_llm
         def check_predicates(predicates_1: dict, predicates_2: dict) -> bool:
+            if len(predicates_1) != len(predicates_2):
+                return False
             sorted_predicates_1 = sorted(predicates_1.items())
             sorted_predicates_2 = sorted(predicates_2.items())
             request = LTL_NL_CHECK_PREDICATES_PROMPT
@@ -155,10 +160,14 @@ class LLMUserInterface():
                 ltl_nl_str_2=ltl_nl_str_2,
             )
 
-            response_text = evaluation_llm.make_text_request(request, temperature=0.0)
-            if int(response_text) == 1:
+            response_text = evaluation_llm.make_text_request(request, temperature=0.0).strip()
+            try:
+                value = int(response_text)
+            except ValueError:
+                raise ValueError(f"Failed to check semantics. Response is '{response_text}'")
+            if value == 1:
                 return True
-            elif int(response_text) == 0:
+            elif value == 0:
                 return False
             else:
                 raise ValueError(f"Failed to check semantics. Response is '{response_text}'")
