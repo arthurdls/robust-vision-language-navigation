@@ -41,7 +41,7 @@ Go forwad to the end of the room. Then turn right until you see the hallway. The
 Go forward until you reach the black car. Then turn right 180 degrees. Then go toward the white car. Then turn left 180 degrees. Then turn toward the red car on the right. Then go to the red car. Then turn toward the black car on the left. Then go to the black car. Then land.
 
 * [-5282, 1811, 262, -86]
-Pass by the red car while maintaining site of it. 
+Pass by the red car while maintaining sight of it. 
 
 * [6352, 534, 500, 178]
 Go over the house ahead, go past it, and then land.

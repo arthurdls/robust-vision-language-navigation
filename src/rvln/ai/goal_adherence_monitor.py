@@ -43,7 +43,7 @@ from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
 import numpy as np
 
-from ..config import DEFAULT_VLM_MODEL
+from ..config import DEFAULT_MAX_CORRECTIONS, DEFAULT_VLM_MODEL
 from .prompts import (
     DIARY_SYSTEM_PROMPT as GENERAL_SYSTEM_PROMPT,
     DIARY_LOCAL_PROMPT as LOCAL_PROMPT_TEMPLATE,
@@ -51,6 +51,11 @@ from .prompts import (
     DIARY_GLOBAL_PROMPT_WITH_CONSTRAINTS as GLOBAL_PROMPT_TEMPLATE_CONSTRAINTS,
     DIARY_CONVERGENCE_PROMPT as CONVERGENCE_PROMPT_TEMPLATE,
     DIARY_CONVERGENCE_PROMPT_WITH_CONSTRAINTS as CONVERGENCE_PROMPT_TEMPLATE_CONSTRAINTS,
+    TEXT_ONLY_GLOBAL_SYSTEM_PROMPT,
+    TEXT_ONLY_GLOBAL_PROMPT as TEXT_ONLY_GLOBAL_PROMPT_TEMPLATE,
+    TEXT_ONLY_GLOBAL_PROMPT_WITH_CONSTRAINTS as TEXT_ONLY_GLOBAL_PROMPT_TEMPLATE_CONSTRAINTS,
+    TEXT_ONLY_CONVERGENCE_PROMPT as TEXT_ONLY_CONVERGENCE_PROMPT_TEMPLATE,
+    TEXT_ONLY_CONVERGENCE_PROMPT_WITH_CONSTRAINTS as TEXT_ONLY_CONVERGENCE_PROMPT_TEMPLATE_CONSTRAINTS,
 )
 from .utils.llm_providers import BaseLLM, LLMFactory
 from .utils.vision import build_frame_grid, query_vlm, sample_frames_every_n
@@ -134,13 +139,15 @@ class GoalAdherenceMonitor:
         check_interval: int,
         model: str = DEFAULT_VLM_MODEL,
         artifacts_dir: Optional[Path] = None,
-        max_corrections: int = 15,
+        max_corrections: int = DEFAULT_MAX_CORRECTIONS,
         check_interval_s: Optional[float] = None,
         stall_window: int = 3,
         stall_threshold: float = 0.05,
         stall_completion_floor: float = 0.8,
         constraints: Optional[List[Any]] = None,
         negative_constraints: Optional[List[str]] = None,
+        global_backend: Literal["vlm_grid", "text_llm"] = "vlm_grid",
+        global_model: Optional[str] = None,
     ):
         self._subgoal = subgoal
         self._check_interval = check_interval
@@ -150,6 +157,12 @@ class GoalAdherenceMonitor:
         self._constraints: List[Any] = list(
             constraints or negative_constraints or []
         )
+
+        # Text-only global backend configuration
+        self._global_backend: Literal["vlm_grid", "text_llm"] = global_backend
+        self._global_llm: Optional[BaseLLM] = None
+        if global_backend == "text_llm":
+            self._global_llm = self._make_llm(global_model or model)
 
         # Time-based mode configuration
         self._time_based: bool = check_interval_s is not None
@@ -325,6 +338,10 @@ class GoalAdherenceMonitor:
 
         disp_str = self._format_displacement()
         diary_blob = "\n".join(self._diary) if self._diary else "(no diary entries yet)"
+
+        if self._global_backend == "text_llm":
+            return self._run_text_only_convergence(diary_blob, disp_str)
+
         prompt = self._format_convergence_prompt(diary_blob, disp_str)
 
         sampled = sample_frames_every_n(self._frame_paths, self._check_interval)
@@ -409,6 +426,129 @@ class GoalAdherenceMonitor:
             action="command",
             new_instruction=corrective,
             reasoning=f"Convergence diagnosis: {parsed.get('diagnosis', 'unknown')}. Raw: {response}",
+            diary_entry="",
+            completion_pct=pct,
+        )
+
+    def _run_text_only_convergence(self, diary_blob: str, disp_str: str) -> DiaryCheckResult:
+        """Run text-only convergence check (no image grid)."""
+        if self._constraints:
+            prompt = TEXT_ONLY_CONVERGENCE_PROMPT_TEMPLATE_CONSTRAINTS.format(
+                subgoal=self._subgoal,
+                diary=diary_blob,
+                prev_completion_pct=self._last_completion_pct,
+                displacement=disp_str,
+                constraints_block=self._constraints_block(),
+            )
+        else:
+            prompt = TEXT_ONLY_CONVERGENCE_PROMPT_TEMPLATE.format(
+                subgoal=self._subgoal,
+                diary=diary_blob,
+                prev_completion_pct=self._last_completion_pct,
+                displacement=disp_str,
+                constraints_block="",
+            )
+
+        messages = [
+            {"role": "system", "content": TEXT_ONLY_GLOBAL_SYSTEM_PROMPT},
+            {"role": "user", "content": prompt},
+        ]
+        t0 = time.time()
+        response = self._global_llm.make_request(messages, temperature=0.0)
+        rtt = time.time() - t0
+        self._vlm_calls += 1
+        usage = self._global_llm.last_usage
+        self._vlm_rtts.append({
+            "label": "text_only_convergence",
+            "step": self._step,
+            "rtt_s": round(rtt, 3),
+            "model": usage.get("model", self._model),
+            "input_tokens": usage.get("input_tokens", 0),
+            "output_tokens": usage.get("output_tokens", 0),
+        })
+
+        parsed = self._parse_json_response(response)
+        if parsed is None:
+            self._parse_failures += 1
+            logger.warning(
+                "Text-only convergence JSON parse failed (attempt 1), retrying. Raw: %s",
+                response[:200],
+            )
+            t0 = time.time()
+            response = self._global_llm.make_request(messages, temperature=0.0)
+            rtt = time.time() - t0
+            self._vlm_calls += 1
+            usage = self._global_llm.last_usage
+            self._vlm_rtts.append({
+                "label": "text_only_convergence_retry",
+                "step": self._step,
+                "rtt_s": round(rtt, 3),
+                "model": usage.get("model", self._model),
+                "input_tokens": usage.get("input_tokens", 0),
+                "output_tokens": usage.get("output_tokens", 0),
+            })
+            parsed = self._parse_json_response(response)
+            if parsed is None:
+                self._parse_failures += 1
+                raise RuntimeError(
+                    f"Text-only convergence parse failed after retry. Raw: {response[:200]}"
+                )
+
+        pct = float(parsed.get("completion_percentage", self._last_completion_pct))
+        pct = max(0.0, min(1.0, pct))
+        self._last_completion_pct = pct
+        self._peak_completion = max(self._peak_completion, pct)
+
+        if parsed.get("complete", False) or parsed.get("diagnosis") == "complete":
+            return DiaryCheckResult(
+                action="stop",
+                new_instruction="",
+                reasoning=f"Text-only convergence: complete. Raw: {response}",
+                diary_entry="",
+                completion_pct=pct,
+            )
+
+        corrective = parsed.get("corrective_instruction") or ""
+        if not corrective:
+            t0 = time.time()
+            response = self._global_llm.make_request(messages, temperature=0.0)
+            rtt = time.time() - t0
+            self._vlm_calls += 1
+            usage = self._global_llm.last_usage
+            self._vlm_rtts.append({
+                "label": "text_only_convergence_instruction_retry",
+                "step": self._step,
+                "rtt_s": round(rtt, 3),
+                "model": usage.get("model", self._model),
+                "input_tokens": usage.get("input_tokens", 0),
+                "output_tokens": usage.get("output_tokens", 0),
+            })
+            parsed_retry = self._parse_json_response(response)
+            if parsed_retry is not None and (
+                parsed_retry.get("complete", False) or parsed_retry.get("diagnosis") == "complete"
+            ):
+                pct_r = float(parsed_retry.get("completion_percentage", pct))
+                pct_r = max(0.0, min(1.0, pct_r))
+                self._last_completion_pct = pct_r
+                self._peak_completion = max(self._peak_completion, pct_r)
+                return DiaryCheckResult(
+                    action="stop",
+                    new_instruction="",
+                    reasoning=f"Text-only convergence: complete (retry). Raw: {response}",
+                    diary_entry="",
+                    completion_pct=pct_r,
+                )
+            corrective = ((parsed_retry or {}).get("corrective_instruction") or "").strip()
+            if not corrective:
+                raise RuntimeError(
+                    f"Text-only convergence retry: no corrective instruction. Raw: {response[:200]}"
+                )
+
+        self._corrections_used += 1
+        return DiaryCheckResult(
+            action="command",
+            new_instruction=corrective,
+            reasoning=f"Text-only convergence: {parsed.get('diagnosis', 'unknown')}. Raw: {response}",
             diary_entry="",
             completion_pct=pct,
         )
@@ -581,7 +721,7 @@ class GoalAdherenceMonitor:
         prev_path = self._frame_paths[step - n]
         curr_path = self._frame_paths[step - 1]
 
-        # --- Local query: what changed ---
+        # --- Local query: what changed (always uses VLM with images) ---
         grid_two = build_frame_grid([prev_path, curr_path])
         prompt_local = LOCAL_PROMPT_TEMPLATE.format(subgoal=self._subgoal)
         change_text = self._timed_query_vlm(
@@ -593,50 +733,72 @@ class GoalAdherenceMonitor:
         self._diary.append(diary_entry)
 
         # --- Global query: assess progress ---
-        sampled = sample_frames_every_n(self._frame_paths, n)
-        if not sampled:
-            return DiaryCheckResult(
-                action="continue",
-                new_instruction="",
-                reasoning="No sampled frames for global grid.",
-                diary_entry=diary_entry,
-                completion_pct=self._last_completion_pct,
-            )
-
-        sampled = sampled[-self.MAX_GLOBAL_FRAMES:]
-
-        grid_global = build_frame_grid(sampled)
         diary_blob = "\n".join(self._diary)
-        prompt_global = self._format_global_prompt(diary_blob, disp_str)
 
-        response_global = self._timed_query_vlm(
-            grid_global, prompt_global, "global_checkpoint",
-            system_prompt=GENERAL_SYSTEM_PROMPT,
-        )
+        if self._global_backend == "text_llm":
+            response_global = self._run_text_only_global(diary_blob, disp_str, step)
+            grid_global = None
+        else:
+            sampled = sample_frames_every_n(self._frame_paths, n)
+            if not sampled:
+                return DiaryCheckResult(
+                    action="continue",
+                    new_instruction="",
+                    reasoning="No sampled frames for global grid.",
+                    diary_entry=diary_entry,
+                    completion_pct=self._last_completion_pct,
+                )
 
-        parsed = self._parse_json_response(response_global)
-        if parsed is None:
-            self._parse_failures += 1
-            logger.warning(
-                "Checkpoint %d JSON parse failed, retrying. Raw: %s",
-                step, response_global[:200],
-            )
+            sampled = sampled[-self.MAX_GLOBAL_FRAMES:]
+
+            grid_global = build_frame_grid(sampled)
+            prompt_global = self._format_global_prompt(diary_blob, disp_str)
+
             response_global = self._timed_query_vlm(
-                grid_global, prompt_global, "global_checkpoint_retry",
+                grid_global, prompt_global, "global_checkpoint",
                 system_prompt=GENERAL_SYSTEM_PROMPT,
             )
+
             parsed = self._parse_json_response(response_global)
             if parsed is None:
                 self._parse_failures += 1
-                raise RuntimeError(
-                    f"Checkpoint {step} JSON parse failed after retry. Raw: {response_global[:200]}"
+                logger.warning(
+                    "Checkpoint %d JSON parse failed, retrying. Raw: %s",
+                    step, response_global[:200],
                 )
+                response_global = self._timed_query_vlm(
+                    grid_global, prompt_global, "global_checkpoint_retry",
+                    system_prompt=GENERAL_SYSTEM_PROMPT,
+                )
+                parsed = self._parse_json_response(response_global)
+                if parsed is None:
+                    self._parse_failures += 1
+                    raise RuntimeError(
+                        f"Checkpoint {step} JSON parse failed after retry. Raw: {response_global[:200]}"
+                    )
 
-        self._save_checkpoint_artifact(
-            step, grid_two, grid_global,
-            prompt_local, change_text,
-            prompt_global, response_global,
-        )
+        if self._global_backend == "text_llm":
+            parsed = self._parse_json_response(response_global)
+            if parsed is None:
+                self._parse_failures += 1
+                logger.warning(
+                    "Text-only checkpoint %d JSON parse failed, retrying. Raw: %s",
+                    step, response_global[:200],
+                )
+                response_global = self._run_text_only_global(diary_blob, disp_str, step, label_suffix="_retry")
+                parsed = self._parse_json_response(response_global)
+                if parsed is None:
+                    self._parse_failures += 1
+                    raise RuntimeError(
+                        f"Text-only checkpoint {step} JSON parse failed after retry. Raw: {response_global[:200]}"
+                    )
+
+        if grid_global is not None:
+            self._save_checkpoint_artifact(
+                step, grid_two, grid_global,
+                prompt_local, change_text,
+                self._format_global_prompt(diary_blob, disp_str), response_global,
+            )
 
         result = self._parse_global_response(
             response_global, diary_entry, parsed=parsed,
@@ -659,6 +821,45 @@ class GoalAdherenceMonitor:
             )
 
         return result
+
+    def _run_text_only_global(self, diary_blob: str, disp_str: str, step: int, label_suffix: str = "") -> str:
+        """Run text-only global assessment (no image grid)."""
+        if self._constraints:
+            prompt = TEXT_ONLY_GLOBAL_PROMPT_TEMPLATE_CONSTRAINTS.format(
+                subgoal=self._subgoal,
+                diary=diary_blob,
+                prev_completion_pct=self._last_completion_pct,
+                displacement=disp_str,
+                constraints_block=self._constraints_block(),
+            )
+        else:
+            prompt = TEXT_ONLY_GLOBAL_PROMPT_TEMPLATE.format(
+                subgoal=self._subgoal,
+                diary=diary_blob,
+                prev_completion_pct=self._last_completion_pct,
+                displacement=disp_str,
+                constraints_block="",
+            )
+
+        messages = [
+            {"role": "system", "content": TEXT_ONLY_GLOBAL_SYSTEM_PROMPT},
+            {"role": "user", "content": prompt},
+        ]
+        label = f"text_only_global{label_suffix}"
+        t0 = time.time()
+        response = self._global_llm.make_request(messages, temperature=0.0)
+        rtt = time.time() - t0
+        self._vlm_calls += 1
+        usage = self._global_llm.last_usage
+        self._vlm_rtts.append({
+            "label": label,
+            "step": step,
+            "rtt_s": round(rtt, 3),
+            "model": usage.get("model", self._model),
+            "input_tokens": usage.get("input_tokens", 0),
+            "output_tokens": usage.get("output_tokens", 0),
+        })
+        return response
 
     def _run_checkpoint_async(self) -> DiaryCheckResult:
         """Run a checkpoint from the background thread (time-based mode).

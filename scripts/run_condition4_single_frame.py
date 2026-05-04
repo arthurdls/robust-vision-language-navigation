@@ -18,7 +18,6 @@ Usage (from repo root):
 """
 
 import argparse
-import glob
 import json
 import logging
 import math
@@ -51,12 +50,16 @@ from rvln.config import (
     DEFAULT_TIME_DILATION,
     DEFAULT_VLM_MODEL,
 )
+from rvln.eval.task_utils import (
+    get_completed_task_ids,
+    resolve_eval_tasks,
+    sanitize_run_label,
+)
 from rvln.paths import (
     BATCH_SCRIPT,
     REPO_ROOT,
     UAV_FLOW_EVAL,
 )
-from rvln.maps import validate_task_map
 from rvln.sim.env_setup import (
     apply_action_poses,
     import_batch_module,
@@ -74,27 +77,6 @@ SHARED_TASKS_DIR = REPO_ROOT / "tasks"
 CONDITION4_RESULTS_DIR = REPO_ROOT / "results" / "condition4"
 
 logger = logging.getLogger(__name__)
-
-
-def _get_completed_task_ids(results_dir: Path) -> set:
-    completed = set()
-    if not results_dir.is_dir():
-        return completed
-    for entry in results_dir.iterdir():
-        if not entry.is_dir():
-            continue
-        run_info_path = entry / "run_info.json"
-        if not run_info_path.exists():
-            continue
-        try:
-            with open(run_info_path, "r") as f:
-                run_info = json.load(f)
-            task_id = run_info.get("task", {}).get("task_id", "")
-            if task_id:
-                completed.add(task_id)
-        except Exception:
-            continue
-    return completed
 
 
 # ---------------------------------------------------------------------------
@@ -208,101 +190,6 @@ def _query_single_frame(frame_path: Path, prompt: str, llm, label: str = "single
         "output_tokens": usage.get("output_tokens", 0),
     }
     return response, call_record
-
-
-# ---------------------------------------------------------------------------
-# Task loading (same as run_integration.py)
-# ---------------------------------------------------------------------------
-
-def _load_task(path: Path) -> Dict[str, Any]:
-    with open(path, "r") as f:
-        data = json.load(f)
-    if not isinstance(data, dict):
-        raise ValueError("Task JSON must be an object")
-    instruction = data.get("instruction", "").strip()
-    initial_pos = data.get("initial_pos")
-    if not instruction:
-        raise ValueError("Task JSON must have 'instruction'")
-    if not initial_pos or not isinstance(initial_pos, (list, tuple)) or len(initial_pos) < 4:
-        raise ValueError("Task JSON must have 'initial_pos' with at least 4 numbers")
-    result = {
-        "instruction": instruction,
-        "initial_pos": [float(x) for x in initial_pos],
-        "max_steps_per_subgoal": int(data.get("max_steps_per_subgoal", DEFAULT_MAX_STEPS_PER_SUBGOAL)),
-        "diary_check_interval": int(data.get("diary_check_interval", DEFAULT_DIARY_CHECK_INTERVAL)),
-        "max_corrections": int(data.get("max_corrections", DEFAULT_MAX_CORRECTIONS)),
-    }
-    for passthrough_key in ("task_id", "category", "difficulty", "region", "notes"):
-        if passthrough_key in data:
-            result[passthrough_key] = data[passthrough_key]
-    return result
-
-
-def _resolve_tasks(args: argparse.Namespace, map_info) -> List[Dict[str, Any]]:
-    cmd = getattr(args, "command", None)
-    task_file = getattr(args, "task", None)
-    run_all = getattr(args, "run_all_tasks", False)
-
-    count = sum([1 if cmd else 0, 1 if task_file else 0, 1 if run_all else 0])
-    if count == 0:
-        raise SystemExit(
-            "Specify a task source:\n"
-            "  -c \"instruction\" --initial-position x,y,z,yaw\n"
-            "  --task TASK.json\n"
-            "  --run_all_tasks"
-        )
-    if count > 1:
-        raise SystemExit("At most one of -c/--command, --task, or --run_all_tasks is allowed.")
-
-    if cmd is not None:
-        initial_pos_str = getattr(args, "initial_position", None) or map_info.default_position
-        return [{
-            "instruction": cmd.strip(),
-            "initial_pos": parse_position(initial_pos_str),
-            "max_steps_per_subgoal": args.max_steps_per_subgoal,
-            "diary_check_interval": args.diary_check_interval,
-            "max_corrections": args.max_corrections,
-        }]
-
-    tasks_dir = SHARED_TASKS_DIR / map_info.task_dir_name
-
-    if task_file is not None:
-        validate_task_map(task_file, map_info)
-        path = Path(task_file)
-        if not path.is_absolute():
-            if len(path.parts) > 1:
-                path = SHARED_TASKS_DIR / path
-            else:
-                path = tasks_dir / path.name
-        if not path.exists():
-            raise SystemExit(f"Task file not found: {path}")
-        task = _load_task(path)
-        task["max_steps_per_subgoal"] = args.max_steps_per_subgoal or task["max_steps_per_subgoal"]
-        task["diary_check_interval"] = args.diary_check_interval or task["diary_check_interval"]
-        task["max_corrections"] = args.max_corrections or task["max_corrections"]
-        return [task]
-
-    tasks_dir.mkdir(parents=True, exist_ok=True)
-    json_files = sorted(glob.glob(str(tasks_dir / "*.json")))
-    if not json_files:
-        raise SystemExit(f"No JSON files found in {tasks_dir}")
-    tasks = []
-    for jf in json_files:
-        try:
-            task = _load_task(Path(jf))
-            task["max_steps_per_subgoal"] = args.max_steps_per_subgoal or task["max_steps_per_subgoal"]
-            task["diary_check_interval"] = args.diary_check_interval or task["diary_check_interval"]
-            task["max_corrections"] = args.max_corrections or task["max_corrections"]
-            tasks.append(task)
-        except Exception as e:
-            logger.warning("Skipping %s: %s", jf, e)
-    return tasks
-
-
-def _sanitize_name(text: str, max_len: int = 40) -> str:
-    clean = text.lower().replace(" ", "_")
-    safe = "".join(c for c in clean if c.isalnum() or c == "_")
-    return safe[:max_len] or "subgoal"
 
 
 # ---------------------------------------------------------------------------
@@ -583,7 +470,7 @@ def run_single_frame_control_loop(
     frames_dir = run_dir / "frames"
     frames_dir.mkdir(parents=True, exist_ok=True)
 
-    env.teleport(initial_pos[0:3], initial_pos[4])
+    env.teleport(initial_pos[0:3], initial_pos[3])
     time.sleep(batch.SLEEP_AFTER_RESET_S)
 
     start_ts = datetime.now().isoformat()
@@ -604,7 +491,7 @@ def run_single_frame_control_loop(
     subgoal_index = 0
 
     origin_x, origin_y, origin_z = initial_pos[0], initial_pos[1], initial_pos[2]
-    origin_yaw = initial_pos[4]
+    origin_yaw = initial_pos[3]
 
     current_subgoal = planner.get_next_predicate()
     if current_subgoal is None:
@@ -612,7 +499,7 @@ def run_single_frame_control_loop(
 
     while current_subgoal is not None:
         subgoal_index += 1
-        safe_name = _sanitize_name(current_subgoal)
+        safe_name = sanitize_run_label(current_subgoal, fallback="subgoal")
         subgoal_dir = run_dir / f"subgoal_{subgoal_index:02d}_{safe_name}"
 
         active_constraints = planner.get_active_constraints()
@@ -771,7 +658,7 @@ def main():
     map_info = env.get_map_info()
     results_base = Path(args.results_dir) / map_info.task_dir_name
     results_base.mkdir(parents=True, exist_ok=True)
-    tasks = _resolve_tasks(args, map_info)
+    tasks = resolve_eval_tasks(args, map_info, SHARED_TASKS_DIR, overrides={"max_steps_per_subgoal": "max_steps_per_subgoal", "diary_check_interval": "diary_check_interval", "max_corrections": "max_corrections"})
 
     try:
         drone_cam_id = env.drone_cam_id
@@ -782,7 +669,7 @@ def main():
             )
             drone_cam_id = interactive_camera_select(env, initial_pos_for_cam, batch)
 
-        completed_ids = _get_completed_task_ids(results_base)
+        completed_ids = get_completed_task_ids(results_base)
         if completed_ids:
             logger.info("Found %d completed task(s) in %s", len(completed_ids), results_base)
 
@@ -793,7 +680,7 @@ def main():
                 continue
             logger.info("\n===== Task %d/%d: '%s' =====", idx + 1, len(tasks), task["instruction"][:80])
             ts = datetime.now().strftime("%Y_%m_%d_%H_%M_%S")
-            task_label = task.get("task_id") or _sanitize_name(task["instruction"], max_len=30)
+            task_label = task.get("task_id") or sanitize_run_label(task["instruction"], max_len=30, fallback="subgoal")
             run_name = f"c4_single_frame__{task_label}__{ts}"
             try:
                 run_dir = results_base / run_name

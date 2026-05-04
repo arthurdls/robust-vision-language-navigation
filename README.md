@@ -32,7 +32,7 @@ Vision-Language-Action (VLA) policies have enabled language-conditioned control 
 
 ## Key Results
 
-Seven-condition ablation on a six-sub-goal urban UAV mission in UnrealZoo Downtown West (n=1 per condition):
+**Preliminary** single-run results on a six-sub-goal urban UAV mission in UnrealZoo Downtown West (n=1 per condition). Full evaluation covers 3 maps, 5 tasks per map, 3 starting position variants = 315 total episodes across 7 conditions.
 
 | | Condition | Success Rate | Steps | VLM Calls | Corrections | Time (s) |
 |:---:|-----------|:---:|:---:|:---:|:---:|:---:|
@@ -48,7 +48,13 @@ Seven-condition ablation on a six-sub-goal urban UAV mission in UnrealZoo Downto
 - Task decomposition is strictly necessary: the naive VLA (C1) fails immediately.
 - Runtime monitoring is strictly necessary: open-loop LTL (C3) achieves 0% despite correct decomposition, converging prematurely on every sub-goal.
 - The LTL formalism outperforms LLM-only planning (C0: 83% vs C2: 50%).
-- Both text diary and image grids are independently necessary: removing either degrades performance to 0--17%.
+- Both text diary and image grids are independently necessary: removing either degrades performance to 0-17%.
+
+**Experimental design notes:**
+- Task category distribution is uneven across maps (Greek Island is ~80% constrained, Suburb Neighborhood is ~80% sequential). Per-category breakdowns should be interpreted alongside per-map results.
+- C1 and C3 require manual video review for task success and constraint adherence metrics.
+- Simulator stochasticity (propeller visual effects, rendering variations) cannot be fully controlled.
+- 45 episodes per condition provides borderline statistical power for moderate effect sizes.
 
 ## Contributions
 
