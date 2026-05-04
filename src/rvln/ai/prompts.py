@@ -101,7 +101,7 @@ Respond with EXACTLY ONE JSON object (no markdown fences):
   are highly confident -- use at most 0.95 when unsure.
 - "should_stop": true if the drone is off-track, moving away from the target,
   overshooting, or heading toward a collision. The drone will be stopped and a
-  corrective instruction issued. Do NOT set true for slow but correct progress.
+  corrective instruction issued. Do NOT set true for slow but correct progress."""
 
 DIARY_GLOBAL_PROMPT_WITH_CONSTRAINTS = """\
 Subgoal: {subgoal}
@@ -141,7 +141,7 @@ Respond with EXACTLY ONE JSON object (no markdown fences):
 - "constraint_violated": true if any active constraint listed above has been
   violated or is about to be violated based on the visual evidence and diary.
   If true, also set "should_stop" to true. false if no constraints are listed
-  or none have been violated.
+  or none have been violated."""
 
 DIARY_CONVERGENCE_PROMPT = """\
 Subgoal: {subgoal}

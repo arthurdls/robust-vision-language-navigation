@@ -116,7 +116,8 @@ def _load_task_full(path: Path) -> Dict[str, Any]:
     result = {
         "instruction": instruction,
         "initial_pos": [float(x) for x in initial_pos],
-        "max_steps": int(data.get("max_steps_per_subgoal", DEFAULT_MAX_STEPS_PER_SUBGOAL)),
+        "max_steps": int(data.get("max_steps_per_subgoal", DEFAULT_MAX_STEPS_PER_SUBGOAL))
+                    * int(data.get("expected_subgoal_count", 3)),
         "max_steps_per_subgoal": int(data.get("max_steps_per_subgoal", DEFAULT_MAX_STEPS_PER_SUBGOAL)),
         "diary_check_interval": int(data.get("diary_check_interval", DEFAULT_DIARY_CHECK_INTERVAL)),
         "max_corrections": int(data.get("max_corrections", DEFAULT_MAX_CORRECTIONS)),

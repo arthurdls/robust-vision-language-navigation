@@ -254,7 +254,17 @@ def _ask_user_for_help(
       "replan"           - new high-level NL instruction for full LTL replanning (value = instruction)
       "skip"             - skip this subgoal
       "abort"            - abort the entire mission
+
+    In non-interactive mode (stdin is not a TTY), automatically skips.
     """
+    if not sys.stdin.isatty():
+        logger.warning(
+            "ask_help triggered in non-interactive mode, auto-skipping subgoal '%s' "
+            "(completion: %.0f%%, reason: %s)",
+            subgoal_nl, completion_pct * 100, reasoning,
+        )
+        return ("skip", "")
+
     print(f"\n{'='*60}")
     print("SYSTEM REQUESTING HELP")
     print(f"  Subgoal: {subgoal_nl}")

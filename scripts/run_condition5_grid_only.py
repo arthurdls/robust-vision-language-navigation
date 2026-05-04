@@ -576,6 +576,8 @@ def run_grid_only_control_loop(
     seed=DEFAULT_SEED, time_dilation=DEFAULT_TIME_DILATION,
     env_id="", diary_mode=DEFAULT_DIARY_MODE,
 ):
+    _patch_prompts()
+
     from rvln.ai.llm_interface import LLMUserInterface
     from rvln.ai.ltl_planner import LTLSymbolicPlanner
 

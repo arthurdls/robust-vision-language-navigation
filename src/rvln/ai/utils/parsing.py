@@ -71,8 +71,8 @@ def parse_ltl_nl(formula: str, predicate_map: dict[str, str]) -> str:
                 return f"({parsed_left} must hold true UNTIL {parsed_right} is accomplished)"
 
     # 2. If no binary operator, check for unary operators (F, !)
-    if formula.startswith('F '):
-        sub_formula = formula[1:].strip()
+    if formula.startswith('F ') or formula.startswith('F('):
+        sub_formula = formula[2:].strip() if formula.startswith('F ') else formula[1:].strip()
         return f"(eventually {parse_ltl_nl(sub_formula, predicate_map)} must be accomplished)"
 
     if formula.startswith('G ') or formula.startswith('G('):

@@ -96,7 +96,7 @@ class LLMUserInterface():
 
         try:
             ltl_nl = extract_json(response_text)
-        except json.JSONDecodeError as e:
+        except (json.JSONDecodeError, SyntaxError) as e:
             print(f"Error decoding JSON: {e}")
             raise Exception("INCOMPLETE: Unable to find ltl-nl formula")
 
