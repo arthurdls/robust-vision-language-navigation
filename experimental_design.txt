@@ -65,7 +65,7 @@ CONDITION 1: NAIVE END-TO-END VLA
 ---------------------------------
 Pipeline: Full NL instruction --> OpenVLA
           (no LTL decomposition, no subgoal conversion, no monitoring)
-Script: Modified run_ltl.py (skip planner, feed raw instruction)
+Script: run_condition1_naive.py
 Implementation: Pass the entire long-horizon instruction directly to
   OpenVLA as a single instruction string. No LTL decomposition, no
   goal adherence monitoring, no convergence corrections. Run the basic control
@@ -114,7 +114,7 @@ CONDITION 3: OPEN-LOOP LTL (No Monitor, No Corrections)
 Pipeline: NL --> LTL-NL --> Subgoal --> SubgoalConverter --> OpenVLA
           (NO goal adherence monitoring, NO convergence corrections)
           Advance to next subgoal on convergence (drone stops = done).
-Script: run_ltl.py (existing script, already implements this)
+Script: run_condition3_open_loop.py
 Implementation: Use the full LTL planner and SubgoalConverter, but
   run the basic OpenVLA control loop without any VLM monitoring. When
   the drone stops moving (convergence detected), assume the subgoal is
@@ -534,7 +534,7 @@ M8. Average Episode Length
    - Condition 0: run_integration.py (full pipeline)
    - Condition 1: Single OpenVLA pass with raw instruction
    - Condition 2: LLM decomposition + goal adherence monitoring
-   - Condition 3: run_ltl.py (LTL + blind execution)
+   - Condition 3: run_condition3_open_loop.py (LTL + blind execution)
    - Condition 4: Single-frame monitor variant
    - Condition 5: Grid-only monitor variant
    - Condition 6: Text-only global assessment variant
@@ -844,7 +844,7 @@ Before running the full experiment suite:
 3. Token cost validation (Section 10, first item) -- determines
    whether the budget is feasible.
 
-4. Condition 3 implementation (already exists as run_ltl.py) --
+4. Condition 3 implementation (run_condition3_open_loop.py) --
    most important baseline, run first.
 
 5. Condition 0 implementation (already exists as run_integration.py)
