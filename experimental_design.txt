@@ -32,9 +32,9 @@ Key components:
     outputs action poses.
 
 Default parameters (from config.py):
-  - LLM model: gpt-4o (planning, subgoal conversion, C6 global checks)
+  - LLM model: gpt-5.4 (planning, subgoal conversion, C6 global checks)
   - VLM model: gpt-5.4 (goal adherence monitoring: local, global, convergence)
-  - SubgoalConverter uses the LLM model (gpt-4o), not the VLM, since
+  - SubgoalConverter uses the LLM model (gpt-5.4), not the VLM, since
     subgoal conversion is a text-to-text task with no image input.
   - Max steps per subgoal: 500
   - Diary check interval: every 20 frames
@@ -83,7 +83,7 @@ Pipeline: NL --> LLM text-to-text decomposition --> Sequential subgoals
           + GoalAdherenceMonitor (full, same as Condition 0)
 Script: Modified run_integration.py (replace LTL planner with simple
   LLM decomposition, no Spot automaton, no formal state machine)
-Implementation: Use the same LLM (gpt-4o) to break the instruction
+Implementation: Use the same LLM (gpt-5.4) to break the instruction
   into a numbered list of subgoals (text-to-text, no LTL formula).
   Execute subgoals sequentially with the same goal adherence monitoring as the
   full system. Advance to the next subgoal when the monitor confirms
@@ -614,9 +614,8 @@ IMPORTANT: These estimates must be validated empirically by running
 logs. The image token count depends heavily on the VLM provider's
 image encoding. Adjust the budget after validation.
 
-Per-condition cost (at $2.50/MTok input for gpt-4o, or $10/MTok for
+Per-condition cost (at $2.50/MTok input for gpt-5.4, or $10/MTok for
 GPT-5.4):
-  - gpt-4o monitor: 45 eps x 350K tokens x $2.50/MTok = ~$39
   - gpt-5.4 monitor: 45 eps x 350K tokens x $10/MTok = ~$158
 
 Total for 7 conditions:
