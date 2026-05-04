@@ -867,6 +867,32 @@ class GoalAdherenceMonitor:
                 grid_global, prompt_global, "global_checkpoint",
                 system_prompt=GENERAL_SYSTEM_PROMPT,
             )
+
+            parsed = self._parse_json_response(response_global)
+            if parsed is None:
+                self._parse_failures += 1
+                logger.warning(
+                    "Checkpoint %d JSON parse failed, retrying. Raw: %s",
+                    step, response_global[:200],
+                )
+                response_global = self._timed_query_vlm(
+                    grid_global, prompt_global, "global_checkpoint_retry",
+                    system_prompt=GENERAL_SYSTEM_PROMPT,
+                )
+                parsed = self._parse_json_response(response_global)
+                if parsed is None:
+                    self._parse_failures += 1
+                    logger.error(
+                        "Checkpoint %d JSON parse failed after retry; "
+                        "treating as continue with prior completion. Raw: %s",
+                        step, response_global[:200],
+                    )
+                    parsed = {
+                        "complete": False,
+                        "completion_percentage": self._last_completion_pct,
+                        "should_stop": False,
+                        "reasoning": "parse_failure_fallback",
+                    }
         else:
             sampled = sample_frames_every_n(self._frame_paths, n)
             if not sampled:
