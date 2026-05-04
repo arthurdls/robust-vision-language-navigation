@@ -498,6 +498,7 @@ def _run_subgoal(
             total_steps = step
             break
 
+        async_force_converge = False
         if use_async:
             async_result = monitor.poll_result()
             if async_result is not None:
@@ -518,6 +519,7 @@ def _run_subgoal(
                         "reasoning": async_result.reasoning,
                         "constraint_violated": async_result.constraint_violated,
                     })
+                    async_force_converge = True
 
         image = set_drone_cam_and_get_image(env, cam_id)
         if image is None:
@@ -632,6 +634,8 @@ def _run_subgoal(
                 if small_count >= batch.ACTION_SMALL_STEPS:
                     converged = True
         else:
+            if async_force_converge:
+                converged = True
             elapsed_since_correction = time.time() - last_correction_time
             if last_pose is not None and elapsed_since_correction >= check_interval_s:
                 diffs = [abs(a - b) for a, b in zip(current_pose, last_pose)]
