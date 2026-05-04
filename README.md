@@ -267,3 +267,9 @@ This work was supported by the MIT Generative AI Impact Consortium (MGAIC), admi
 ## License
 
 `src/gym_unrealcv/`, `src/rvln/eval/`, and `src/rvln/server/` contain code vendored from [UAV-Flow](https://github.com/buaa-colalab/UAV-Flow) (commit `0114801`). Upstream licensing applies to those subtrees; see the original repository for attribution requirements.
+
+## Ethical Use Disclaimer
+
+This research was developed for civilian scientific purposes: advancing autonomous UAV navigation through language grounding and formal verification. The authors do not endorse or support the use of this work, in whole or in part, for military operations, weapons development, surveillance of civilian populations, or any application intended to cause harm to human life.
+
+We encourage all users and developers who build upon this work to consider the ethical implications of their applications and to prioritize human safety and well-being.
