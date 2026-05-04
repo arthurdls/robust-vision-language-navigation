@@ -1,5 +1,6 @@
 {
   "task_id": "sidewalk_to_crosswalk_3",
+  "category": "constrained",
   "instruction": "Never go on the road. Go forward until the end of the sidewalk, then turn right 90 degrees. Then go forward until you see the red cross walk on the left near the streetlamps. Then turn left 90 degrees. Then cross the street. Then land near the streetlamp.",
   "initial_pos": [
     -16703,
@@ -10,5 +11,5 @@
   "expected_subgoal_count": 6,
   "max_steps_per_subgoal": 500,
   "max_corrections": 20,
-  "diary_check_interval": 20
+  "diary_check_interval": 10
 }

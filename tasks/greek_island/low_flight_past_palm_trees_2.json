@@ -1,5 +1,6 @@
 {
   "task_id": "low_flight_past_palm_trees_2",
+  "category": "constrained",
   "instruction": "Go forward until you go past the palm trees ahead. Make sure to stay near the ground.",
   "initial_pos": [
     -12482,
@@ -10,5 +11,5 @@
   "expected_subgoal_count": 2,
   "max_steps_per_subgoal": 500,
   "max_corrections": 20,
-  "diary_check_interval": 20
+  "diary_check_interval": 10
 }

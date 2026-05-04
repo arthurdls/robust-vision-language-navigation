@@ -1,5 +1,6 @@
 {
   "task_id": "car_to_car_navigation_2",
+  "category": "sequential",
   "instruction": "Go forward until you reach the black car. Then turn right 180 degrees. Then go toward the white car. Then turn left 180 degrees. Then turn toward the red car on the right. Then go to the red car. Then turn toward the black car on the left. Then go to the black car. Then land.",
   "initial_pos": [
     -1928,
@@ -10,5 +11,5 @@
   "expected_subgoal_count": 8,
   "max_steps_per_subgoal": 500,
   "max_corrections": 20,
-  "diary_check_interval": 20
+  "diary_check_interval": 10
 }

@@ -1,5 +1,6 @@
 {
   "task_id": "trail_to_beach_over_rocks_2",
+  "category": "constrained",
   "instruction": "Go forward until you reach the beach, while staying above the clear trail. Then turn left 90 degrees. Then approach the rock ahead. Then ascend until you are above the rocks. Go forward and land near the tree.",
   "initial_pos": [
     28047,
@@ -10,5 +11,5 @@
   "expected_subgoal_count": 5,
   "max_steps_per_subgoal": 500,
   "max_corrections": 20,
-  "diary_check_interval": 20
+  "diary_check_interval": 10
 }

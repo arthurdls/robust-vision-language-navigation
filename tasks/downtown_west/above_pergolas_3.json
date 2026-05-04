@@ -1,5 +1,6 @@
 {
   "task_id": "above_pergolas_3",
+  "category": "constrained",
   "instruction": "Go past all of the pergolas ahead, maintain an altitude above the pergolas.",
   "initial_pos": [
     10987,
@@ -10,5 +11,5 @@
   "expected_subgoal_count": 2,
   "max_steps_per_subgoal": 500,
   "max_corrections": 20,
-  "diary_check_interval": 20
+  "diary_check_interval": 10
 }

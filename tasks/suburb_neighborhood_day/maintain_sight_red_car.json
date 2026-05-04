@@ -1,9 +1,15 @@
 {
   "task_id": "maintain_sight_red_car",
+  "category": "constrained",
   "instruction": "Pass by the red car while maintaining site of it.",
-  "initial_pos": [-5282, 1811, 262, -86],
+  "initial_pos": [
+    -5282,
+    1811,
+    262,
+    -86
+  ],
   "expected_subgoal_count": 2,
   "max_steps_per_subgoal": 500,
   "max_corrections": 20,
-  "diary_check_interval": 20
+  "diary_check_interval": 10
 }

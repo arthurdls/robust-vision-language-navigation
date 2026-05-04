@@ -1,9 +1,15 @@
 {
   "task_id": "trail_bridge_to_house",
+  "category": "sequential",
   "instruction": "Go forward along the trail until you reach the bridge. Then cross the bridge. Then turn right until you see the house. Then go to the house. Then land.",
-  "initial_pos": [9878, 23312, 1821, -113],
+  "initial_pos": [
+    9878,
+    23312,
+    1821,
+    -113
+  ],
   "expected_subgoal_count": 5,
   "max_steps_per_subgoal": 500,
   "max_corrections": 20,
-  "diary_check_interval": 20
+  "diary_check_interval": 10
 }

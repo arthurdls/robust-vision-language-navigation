@@ -1,5 +1,6 @@
 {
   "task_id": "exit_building_through_hallway_2",
+  "category": "sequential",
   "instruction": "Go forwad to the end of the room. Then turn right until you see the hallway. Then go forward until the end of the hallway. Then turn right 90 degrees. Go forward. Turn right to face the door. Then go to the door. Exit the building.",
   "initial_pos": [
     3212,
@@ -10,5 +11,5 @@
   "expected_subgoal_count": 6,
   "max_steps_per_subgoal": 500,
   "max_corrections": 20,
-  "diary_check_interval": 20
+  "diary_check_interval": 10
 }

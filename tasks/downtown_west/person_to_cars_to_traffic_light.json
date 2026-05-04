@@ -1,9 +1,15 @@
 {
   "task_id": "person_to_cars_to_traffic_light",
+  "category": "sequential",
   "instruction": "Get close to the person ahead. Then turn right until you see the black car, and then go to the black car. Then turn left until you see the red car and go to the red car. Then go to the first traffic light ahead. Land near it.",
-  "initial_pos": [-12000, -1450, 360, 30],
+  "initial_pos": [
+    -12000,
+    -1450,
+    360,
+    30
+  ],
   "expected_subgoal_count": 6,
   "max_steps_per_subgoal": 500,
   "max_corrections": 20,
-  "diary_check_interval": 20
+  "diary_check_interval": 10
 }
