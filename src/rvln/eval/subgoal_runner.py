@@ -434,6 +434,20 @@ def run_subgoal(
             step, trigger, completion_pct * 100, reasoning,
         )
 
+        # Max corrections exhausted is a hard ceiling, just like max_steps:
+        # the agent has used its full correction budget without converging.
+        # Abort the mission directly (counted as ask_help) instead of asking
+        # the callback, which could otherwise issue a correction we can't honor.
+        if monitor is not None and monitor.corrections_exhausted:
+            logger.warning(
+                "Max corrections (%d) exhausted for subgoal '%s'; "
+                "treating as ask_help and aborting mission.",
+                monitor.max_corrections, subgoal_nl,
+            )
+            stop_reason = "ask_help"
+            total_steps = step
+            return "break"
+
         if ask_help_callback is None:
             stop_reason = "ask_help_no_handler"
             total_steps = step
