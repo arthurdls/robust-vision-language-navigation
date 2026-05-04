@@ -200,6 +200,7 @@ def run_text_only_control_loop(
     wall_clock_seconds = (end_dt - start_dt).total_seconds()
 
     run_info = {
+        "completed": True,
         "condition": "condition6_text_only",
         "task": task,
         "seed": seed,

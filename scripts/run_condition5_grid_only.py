@@ -198,6 +198,7 @@ def run_grid_only_control_loop(
     wall_clock_seconds = (end_dt - start_dt).total_seconds()
 
     run_info = {
+        "completed": True,
         "condition": "condition5_grid_only",
         "task": task,
         "seed": seed,

@@ -227,6 +227,7 @@ def run_integrated_control_loop(
     subgoal_index = 0
     replan_count = 0
     aborted = False
+    completed = False
 
     origin_x, origin_y, origin_z = initial_pos[0], initial_pos[1], initial_pos[2]
     origin_yaw = initial_pos[3]
@@ -363,6 +364,8 @@ def run_integrated_control_loop(
             if aborted or not replan_requested:
                 break
 
+        completed = not aborted
+
     finally:
         logger.info(
             "Run finished: %d subgoals processed, %d replan(s), aborted=%s.",
@@ -431,6 +434,7 @@ def run_integrated_control_loop(
             "ltl_plans": ltl_plans,
             "replan_count": replan_count,
             "aborted": aborted,
+            "completed": completed,
             "subgoal_count": subgoal_index,
             "subgoal_summaries": subgoal_summaries,
             "total_steps": total_steps_all,

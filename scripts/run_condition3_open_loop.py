@@ -254,6 +254,7 @@ def run_open_loop_control_loop(
     wall_clock_seconds = (end_dt - start_dt).total_seconds()
 
     run_info = {
+        "completed": True,
         "condition": "condition3_open_loop",
         "task": task,
         "seed": seed,

@@ -390,6 +390,7 @@ def run_llm_planner_control_loop(
         "decomposition_records": decomposition_records,
         "replan_count": replan_count,
         "aborted": aborted,
+        "completed": not aborted,
         "subgoal_count": subgoal_index,
         "subgoal_summaries": subgoal_summaries,
         "total_steps": total_steps_all,

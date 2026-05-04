@@ -557,6 +557,7 @@ def run_single_frame_control_loop(
     wall_clock_seconds = (end_dt - start_dt).total_seconds()
 
     run_info = {
+        "completed": True,
         "condition": "condition4_single_frame",
         "task": task,
         "seed": seed,
