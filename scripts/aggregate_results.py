@@ -17,9 +17,14 @@ Metrics computed:
     M7 - Token / Inference Overhead (input + output tokens per episode)
     M8 - Average Episode Length (steps and wall-clock seconds)
 
+Breakdowns:
+  - Per-category (sequential vs constrained tasks)
+  - Per-map (generalization across simulation environments)
+
 Statistical tests:
   - Wilson confidence intervals for binary metrics (M1, M2, M3)
   - Fisher's exact test for pairwise C0 vs each baseline
+  - McNemar's test for paired comparisons (matched starting positions)
   - Bonferroni correction for 6 comparisons (threshold: p < 0.0083)
   - Effect size (odds ratio) reporting
 """
@@ -111,6 +116,74 @@ def fishers_exact_test(
     return {
         "p_value": p_value,
         "odds_ratio": odds_ratio,
+        "significant_bonferroni": p_value < BONFERRONI_THRESHOLD,
+    }
+
+
+def mcnemars_test(
+    c0_outcomes: list[bool | None],
+    cx_outcomes: list[bool | None],
+) -> dict[str, Any]:
+    """
+    McNemar's test for paired binary outcomes (matched starting positions).
+
+    Each list entry corresponds to the same episode (same task + same starting
+    position) run under two conditions.  Entries that are None (manual review
+    needed) are excluded from the test.
+
+    Returns dict with statistic, p_value, n_discordant, and significance flag.
+    """
+    if not HAS_SCIPY:
+        return {
+            "statistic": None,
+            "p_value": None,
+            "n_discordant": None,
+            "significant_bonferroni": None,
+            "note": "scipy not installed",
+        }
+
+    # Build discordant pair counts
+    b = 0  # c0 success, cx failure
+    c = 0  # c0 failure, cx success
+    n_paired = 0
+    for o0, ox in zip(c0_outcomes, cx_outcomes):
+        if o0 is None or ox is None:
+            continue
+        n_paired += 1
+        if o0 and not ox:
+            b += 1
+        elif not o0 and ox:
+            c += 1
+
+    n_discordant = b + c
+    if n_discordant == 0:
+        return {
+            "statistic": 0.0,
+            "p_value": 1.0,
+            "n_paired": n_paired,
+            "n_discordant": 0,
+            "significant_bonferroni": False,
+            "note": "no discordant pairs",
+        }
+
+    if n_discordant < 25:
+        p_value = scipy_stats.binom_test(b, n_discordant, 0.5)
+        return {
+            "statistic": None,
+            "p_value": p_value,
+            "n_paired": n_paired,
+            "n_discordant": n_discordant,
+            "significant_bonferroni": p_value < BONFERRONI_THRESHOLD,
+            "note": "exact binomial (n_discordant < 25)",
+        }
+
+    statistic = (b - c) ** 2 / (b + c)
+    p_value = 1 - scipy_stats.chi2.cdf(statistic, df=1)
+    return {
+        "statistic": round(statistic, 4),
+        "p_value": p_value,
+        "n_paired": n_paired,
+        "n_discordant": n_discordant,
         "significant_bonferroni": p_value < BONFERRONI_THRESHOLD,
     }
 
@@ -598,6 +671,149 @@ def aggregate_by_category(runs_by_condition: dict[str, list[dict]]) -> dict[str,
     return result
 
 
+def aggregate_by_map(runs_by_condition: dict[str, list[dict]]) -> dict[str, dict[str, dict]]:
+    """
+    Group episodes by map and compute M1/M2/M3 for each map within each
+    condition.  Map is inferred from the run's source path (e.g.
+    results/condition0/greek_island/...) or the run's env_id field.
+
+    Returns: {condition: {map_name: {M1, M2, M3 metrics}}}.
+    """
+    result: dict[str, dict[str, dict]] = {}
+
+    for cond in CONDITION_ORDER:
+        runs = runs_by_condition.get(cond, [])
+        if not runs:
+            continue
+
+        by_map: dict[str, list[dict]] = defaultdict(list)
+        for run in runs:
+            map_name = run.get("env_id", "")
+            if not map_name:
+                source = run.get("_source_path", "")
+                parts = Path(source).parts
+                for i, p in enumerate(parts):
+                    if p.startswith("condition"):
+                        if i + 1 < len(parts) and not parts[i + 1].startswith("c"):
+                            map_name = parts[i + 1]
+                        break
+            if not map_name:
+                map_name = "unknown"
+            by_map[map_name].append(run)
+
+        cond_maps = {}
+        for map_name, map_runs in sorted(by_map.items()):
+            n = len(map_runs)
+
+            task_successes = 0
+            task_determined = 0
+            for run in map_runs:
+                res = is_task_success(run)
+                if res is not None:
+                    task_determined += 1
+                    if res:
+                        task_successes += 1
+            m1_rate, m1_lo, m1_hi = wilson_ci(task_successes, task_determined)
+
+            constraint_adhered = 0
+            constraint_determined = 0
+            for run in map_runs:
+                res = is_constraint_adhered(run)
+                if res is not None:
+                    constraint_determined += 1
+                    if res:
+                        constraint_adhered += 1
+            m2_rate, m2_lo, m2_hi = wilson_ci(constraint_adhered, constraint_determined)
+
+            successful_subgoals = 0
+            total_subgoals = 0
+            for run in map_runs:
+                c = run.get("condition", "")
+                if "condition3" in c or "open_loop" in c:
+                    continue
+                summaries = run.get("subgoal_summaries", [])
+                for sg in summaries:
+                    total_subgoals += 1
+                    if sg.get("stop_reason", "") == "monitor_complete":
+                        successful_subgoals += 1
+            m3_rate, m3_lo, m3_hi = wilson_ci(successful_subgoals, total_subgoals)
+
+            cond_maps[map_name] = {
+                "n_episodes": n,
+                "M1_task_success": {
+                    "successes": task_successes,
+                    "determined": task_determined,
+                    "rate": round(m1_rate, 4),
+                    "wilson_ci_lower": round(m1_lo, 4),
+                    "wilson_ci_upper": round(m1_hi, 4),
+                },
+                "M2_constraint_adherence": {
+                    "adhered": constraint_adhered,
+                    "determined": constraint_determined,
+                    "rate": round(m2_rate, 4),
+                    "wilson_ci_lower": round(m2_lo, 4),
+                    "wilson_ci_upper": round(m2_hi, 4),
+                },
+                "M3_subgoal_success": {
+                    "successful_subgoals": successful_subgoals,
+                    "total_subgoals": total_subgoals,
+                    "rate": round(m3_rate, 4),
+                    "wilson_ci_lower": round(m3_lo, 4),
+                    "wilson_ci_upper": round(m3_hi, 4),
+                },
+            }
+
+        result[cond] = cond_maps
+
+    return result
+
+
+def compute_paired_mcnemar_tests(
+    runs_by_condition: dict[str, list[dict]],
+) -> dict[str, dict]:
+    """
+    Compute McNemar's test for C0 vs each baseline on M1, using paired
+    episodes matched by task_id.
+
+    Starting positions are fixed across conditions, so episodes with the
+    same task_id form a natural pair.
+    """
+    comparisons = {}
+    c0_runs = runs_by_condition.get("condition0", [])
+    if not c0_runs:
+        return comparisons
+
+    c0_by_task = {}
+    for run in c0_runs:
+        tid = run.get("task", {}).get("task_id", "")
+        if tid:
+            c0_by_task[tid] = run
+
+    for cond in CONDITION_ORDER[1:]:
+        cx_runs = runs_by_condition.get(cond, [])
+        if not cx_runs:
+            continue
+
+        cx_by_task = {}
+        for run in cx_runs:
+            tid = run.get("task", {}).get("task_id", "")
+            if tid:
+                cx_by_task[tid] = run
+
+        shared_tasks = sorted(set(c0_by_task.keys()) & set(cx_by_task.keys()))
+        if not shared_tasks:
+            continue
+
+        c0_outcomes = [is_task_success(c0_by_task[t]) for t in shared_tasks]
+        cx_outcomes = [is_task_success(cx_by_task[t]) for t in shared_tasks]
+
+        comparisons[f"C0_vs_{cond}"] = {
+            "M1_task_success_mcnemar": mcnemars_test(c0_outcomes, cx_outcomes),
+        }
+
+    return comparisons
+
+
 def compute_pairwise_tests(
     condition_metrics: dict[str, dict],
 ) -> dict[str, dict]:
@@ -831,11 +1047,103 @@ def print_category_table(category_metrics: dict[str, dict[str, dict]]):
     print()
 
 
+def print_map_table(map_metrics: dict[str, dict[str, dict]]):
+    """Print a per-map breakdown showing generalization across environments."""
+    sep = "=" * 110
+    print()
+    print(sep)
+    print(f"{'Per-Map Breakdown (Generalization Across Environments)':^110}")
+    print(sep)
+    print()
+
+    all_maps = set()
+    for cond_data in map_metrics.values():
+        all_maps.update(cond_data.keys())
+    all_maps = sorted(all_maps)
+
+    for map_name in all_maps:
+        print(f"Map: {map_name}")
+        header = (
+            f"  {'Condition':<28} {'N':>4} "
+            f"{'M1 (Task)':>12} {'M1 CI':>20} "
+            f"{'M2 (Const)':>12} {'M2 CI':>20} "
+            f"{'M3 (Subg)':>12}"
+        )
+        print(header)
+        print("  " + "-" * 106)
+
+        for cond in CONDITION_ORDER:
+            cond_data = map_metrics.get(cond, {})
+            md = cond_data.get(map_name)
+            if not md:
+                continue
+
+            name = CONDITION_NAMES.get(cond, cond)
+            n = md["n_episodes"]
+            m1 = md["M1_task_success"]
+            m2 = md["M2_constraint_adherence"]
+            m3 = md["M3_subgoal_success"]
+
+            m1_str = f"{m1['rate']:.2%}" if m1["determined"] > 0 else "N/A"
+            m1_ci = (
+                f"[{m1['wilson_ci_lower']:.3f}, {m1['wilson_ci_upper']:.3f}]"
+                if m1["determined"] > 0 else "N/A"
+            )
+            m2_str = f"{m2['rate']:.2%}" if m2["determined"] > 0 else "N/A"
+            m2_ci = (
+                f"[{m2['wilson_ci_lower']:.3f}, {m2['wilson_ci_upper']:.3f}]"
+                if m2["determined"] > 0 else "N/A"
+            )
+            m3_str = f"{m3['rate']:.2%}" if m3["total_subgoals"] > 0 else "N/A"
+
+            print(
+                f"  {name:<28} {n:>4} "
+                f"{m1_str:>12} {m1_ci:>20} "
+                f"{m2_str:>12} {m2_ci:>20} "
+                f"{m3_str:>12}"
+            )
+
+        print()
+
+    print(sep)
+    print()
+
+
+def print_mcnemar_table(mcnemar_results: dict[str, dict]):
+    """Print McNemar's test results for paired comparisons."""
+    if not mcnemar_results:
+        return
+    sep = "-" * 100
+    print()
+    print(sep)
+    print(f"McNemar's Test (Paired C0 vs Baselines, Bonferroni threshold: p < {BONFERRONI_THRESHOLD:.4f}):")
+    print(f"{'Comparison':<22} {'Metric':<28} {'p-value':>10} {'Discordant':>11} {'Paired':>7} {'Sig?':>6}")
+    print(sep)
+    for comp_name, comp_data in mcnemar_results.items():
+        for metric_name, test_result in comp_data.items():
+            p_val = test_result.get("p_value")
+            n_disc = test_result.get("n_discordant", "")
+            n_paired = test_result.get("n_paired", "")
+            sig = test_result.get("significant_bonferroni")
+            note = test_result.get("note", "")
+
+            p_str = f"{p_val:.4f}" if p_val is not None else "N/A"
+            sig_str = "***" if sig else ""
+            label = metric_name
+            if note:
+                label = f"{metric_name} ({note})"
+
+            print(f"{comp_name:<22} {label:<28} {p_str:>10} {str(n_disc):>11} {str(n_paired):>7} {sig_str:>6}")
+    print()
+
+
 def write_json_output(
     condition_metrics: dict[str, dict],
     pairwise: dict[str, dict],
     output_path: Path,
     category_metrics: dict[str, dict[str, dict]] | None = None,
+    map_metrics: dict[str, dict[str, dict]] | None = None,
+    mcnemar_results: dict[str, dict] | None = None,
 ):
     """Write full metrics to JSON."""
     output = {
@@ -849,6 +1157,10 @@ def write_json_output(
     }
     if category_metrics:
         output["category_breakdown"] = category_metrics
+    if map_metrics:
+        output["map_breakdown"] = map_metrics
+    if mcnemar_results:
+        output["mcnemar_paired_tests"] = mcnemar_results
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with open(output_path, "w") as f:
         json.dump(output, f, indent=2, default=str)
@@ -1007,18 +1319,28 @@ def main():
     # Compute pairwise statistical tests
     pairwise = compute_pairwise_tests(condition_metrics)
 
+    # Compute McNemar's test (paired by task_id)
+    mcnemar_results = compute_paired_mcnemar_tests(runs_by_condition)
+
     # Compute per-category breakdown (sequential vs constrained)
     category_metrics = aggregate_by_category(runs_by_condition)
 
+    # Compute per-map breakdown (generalization across environments)
+    map_metrics = aggregate_by_map(runs_by_condition)
+
     # Output
     print_summary_table(condition_metrics, pairwise)
+    print_mcnemar_table(mcnemar_results)
     print_category_table(category_metrics)
+    print_map_table(map_metrics)
 
     # Write files
     output_path = Path(output_dir)
     write_json_output(
         condition_metrics, pairwise, output_path / "experiment_summary.json",
         category_metrics=category_metrics,
+        map_metrics=map_metrics,
+        mcnemar_results=mcnemar_results,
     )
     write_csv_output(condition_metrics, pairwise, output_path / "experiment_summary.csv")
 
