@@ -43,10 +43,17 @@ class MonitorDashboard:
 
     # Image display sizes. Tk wants concrete pixel dims; the monitor's
     # grid PNGs are typically much larger than this so we shrink to fit.
-    LOCAL_IMG_W = 480
-    LOCAL_IMG_H = 270
-    GLOBAL_IMG_W = 480
-    GLOBAL_IMG_H = 270
+    LOCAL_IMG_W = 560
+    LOCAL_IMG_H = 320
+    GLOBAL_IMG_W = 560
+    GLOBAL_IMG_H = 320
+
+    # Font sizes. The defaults were too small to read on a 1080p+ display
+    # with the dashboard sharing the screen with the run terminal. Bumped
+    # to 12 / 13 so an operator can read it from across the room.
+    TEXT_FONT = ("Courier", 13)
+    HEADER_FONT = ("Helvetica", 12, "bold")
+    TIMESTAMP_FONT = ("Helvetica", 11)
 
     def __init__(self, run_dir: Path, poll_interval_s: float = 1.0):
         self.run_dir = Path(run_dir)
@@ -148,7 +155,13 @@ class MonitorDashboard:
 
         self._root = tk.Tk()
         self._root.title("MiniNav Live Monitor")
-        self._root.geometry("1100x780")
+        self._root.geometry("1280x900")
+        # Make ttk.LabelFrame titles match the operator-readable size we
+        # use for body text. The default ttk theme renders these tiny.
+        try:
+            ttk.Style().configure("TLabelframe.Label", font=self.HEADER_FONT)
+        except Exception:
+            pass
 
         # 3 rows, 2 columns. Top row = images, middle = text panels,
         # bottom = full-width convergence panel. Configure weights so
@@ -183,22 +196,23 @@ class MonitorDashboard:
             title="Last convergence (all retries from the latest event)",
         )
 
-    @staticmethod
-    def _make_image_panel(parent, row, column, title):
+    def _make_image_panel(self, parent, row, column, title):
         import tkinter as tk
         from tkinter import ttk
 
         frame = ttk.LabelFrame(parent, text=title)
         frame.grid(row=row, column=column, padx=6, pady=6, sticky="nsew")
         ts_var = tk.StringVar(value="(waiting for first checkpoint)")
-        ts = ttk.Label(frame, textvariable=ts_var, foreground="gray30")
+        ts = ttk.Label(
+            frame, textvariable=ts_var, foreground="gray30",
+            font=self.TIMESTAMP_FONT,
+        )
         ts.pack(anchor="w", padx=4)
         img_label = ttk.Label(frame)
         img_label.pack(padx=4, pady=4)
         return img_label, ts_var
 
-    @staticmethod
-    def _make_text_panel(parent, row, column, title, columnspan=1):
+    def _make_text_panel(self, parent, row, column, title, columnspan=1):
         import tkinter as tk
         from tkinter import ttk
 
@@ -208,7 +222,10 @@ class MonitorDashboard:
             padx=6, pady=6, sticky="nsew",
         )
         ts_var = tk.StringVar(value="(no event yet)")
-        ts = ttk.Label(frame, textvariable=ts_var, foreground="gray30")
+        ts = ttk.Label(
+            frame, textvariable=ts_var, foreground="gray30",
+            font=self.TIMESTAMP_FONT,
+        )
         ts.pack(anchor="w", padx=4)
 
         body = tk.Frame(frame)
@@ -217,7 +234,7 @@ class MonitorDashboard:
         scrollbar.pack(side="right", fill="y")
         text = tk.Text(
             body, wrap="word", height=8,
-            font=("Courier", 9),
+            font=self.TEXT_FONT,
             yscrollcommand=scrollbar.set,
         )
         text.pack(side="left", fill="both", expand=True)
@@ -342,11 +359,36 @@ class MonitorDashboard:
     # ------------------------------------------------------------------
 
     def _set_image(self, label, path: Path, max_w: int, max_h: int, slot: str) -> None:
-        from PIL import Image, ImageTk
+        # The monitor writes grid_local.png / grid_global.png via
+        # PIL.Image.save(); the dashboard polls that same directory on
+        # its own thread, so it can race the writer and read a half-
+        # written file. Two defenses:
+        #   1. ImageFile.LOAD_TRUNCATED_IMAGES=True so PIL accepts a
+        #      partial PNG instead of raising "image file is truncated".
+        #   2. The whole load+thumbnail+PhotoImage sequence is wrapped
+        #      in try/except. A bad read just defers the refresh to the
+        #      next tick (mtime hasn't changed, so we'll hit the same
+        #      path again next second when it's fully written).
+        # Use a context manager + .copy() so the file handle is closed
+        # before PhotoImage materializes its bitmap; otherwise
+        # PIL keeps a lazy reference to the file.
+        from PIL import Image, ImageFile, ImageTk
+        ImageFile.LOAD_TRUNCATED_IMAGES = True
 
-        img = Image.open(path)
-        img.thumbnail((max_w, max_h))
-        photo = ImageTk.PhotoImage(img)
+        try:
+            with Image.open(path) as raw:
+                img = raw.copy()
+            img.thumbnail((max_w, max_h))
+            photo = ImageTk.PhotoImage(img)
+        except Exception as exc:
+            # Reset the cached mtime so we retry next tick.
+            if slot == "local":
+                self._cur_local_mtime = None
+            else:
+                self._cur_global_mtime = None
+            logger.debug("Dashboard: image load failed (%s); will retry.", exc)
+            return
+
         label.configure(image=photo)
         # Keep a reference; otherwise Tk garbage-collects the image.
         if slot == "local":
