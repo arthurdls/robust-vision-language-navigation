@@ -83,6 +83,7 @@ def run_naive_control_loop(
     seed: int = DEFAULT_SEED,
     time_dilation: int = DEFAULT_TIME_DILATION,
     env_id: str = "",
+    save_frames: bool = True,
 ) -> Dict[str, Any]:
     instruction = task["instruction"]
     initial_pos = normalize_initial_pos(task["initial_pos"])
@@ -109,7 +110,9 @@ def run_naive_control_loop(
     total_steps = 0
 
     from rvln.eval.step_timer import StepTimer
+    from rvln.eval.async_frame_writer import AsyncFrameWriter
     _step_timer = StepTimer(run_dir / "step_timings.jsonl")
+    _frame_writer = AsyncFrameWriter(frames_dir, enabled=save_frames)
 
     # Loop-carried frame: first iteration fetches via /get_frame, subsequent
     # iterations reuse the image returned by /step.
@@ -129,11 +132,7 @@ def run_naive_control_loop(
 
             frame_path = frames_dir / f"frame_{step:06d}.png"
             with _step_timer.phase("frame_write"):
-                try:
-                    import cv2
-                    cv2.imwrite(str(frame_path), image)
-                except Exception as e:
-                    logger.debug("Failed to save frame %s: %s", frame_path, e)
+                _frame_writer.write(f"frame_{step:06d}.png", image)
 
             with _step_timer.phase("predict"):
                 response = batch.send_prediction_request(
@@ -201,6 +200,7 @@ def run_naive_control_loop(
         total_steps = max_steps
 
     _step_timer.close()
+    _frame_writer.close()
 
     end_ts = datetime.now().isoformat()
 
@@ -278,6 +278,8 @@ def main():
     parser.add_argument("-o", "--results_dir", default=str(CONDITION1_RESULTS_DIR))
     parser.add_argument("--save-mp4", action="store_true")
     parser.add_argument("--mp4-fps", type=float, default=10.0)
+    parser.add_argument("--no-save-frames", action="store_true",
+                        help="Skip per-step PNG writes (faster benchmarks)")
     parser.add_argument("--select-cam", action="store_true",
                         help="Interactively pick the drone camera instead of auto-detecting")
     parser.add_argument("--log_level", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"])
@@ -334,6 +336,7 @@ def main():
                     save_mp4=args.save_mp4, mp4_fps=args.mp4_fps,
                     seed=args.seed, time_dilation=args.time_dilation,
                     env_id=map_info.env_id,
+                    save_frames=not args.no_save_frames,
                 )
                 logger.info("Run saved to %s (%d steps, stop=%s)",
                             run_dir, run_info["total_steps"], run_info["stop_reason"])
