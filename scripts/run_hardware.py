@@ -104,6 +104,13 @@ CONFIG = {
     # ---- Goal-adherence monitor (TIME MODE ONLY) -------------------------
     "monitor_model": "gpt-5.4",
     "diary_check_interval_s": 3.0,
+    # Spacing (seconds) between cells in the 9-frame global VLM grid.
+    # Independent from diary_check_interval_s -- you can sample the
+    # diary every 1 s while the global grid still steps every 3 s, and
+    # the grid will only shift by one cell when a new spacing boundary
+    # is crossed (consistent past frames across consecutive
+    # checkpoints). "" -> inherit diary_check_interval_s.
+    "global_grid_spacing_s": "",
     "max_steps_per_subgoal": 500,
     "max_seconds_per_subgoal": 120.0,
     "max_corrections": 20,
