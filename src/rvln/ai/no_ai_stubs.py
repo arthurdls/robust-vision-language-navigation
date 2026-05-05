@@ -14,6 +14,7 @@ Limitations:
 from __future__ import annotations
 
 import shutil
+import signal
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
@@ -37,11 +38,33 @@ class DiaryCheckResult:
 
 
 def _prompt(prompt: str, default: str = "") -> str:
+    """input() that lets Ctrl-C actually break out.
+
+    The hardware runner installs a SIGINT handler that just flips a flag
+    without raising; under that handler, a Ctrl-C while ``input()`` is
+    blocking is silently swallowed (the underlying read syscall restarts).
+    Around the read we restore Python's default SIGINT handler, which raises
+    KeyboardInterrupt, then put the runner's handler back. The exception is
+    allowed to propagate so the caller's finally-block tears down hardware.
+    """
     suffix = f" [{default}]" if default else ""
+    prev = None
     try:
-        raw = input(f"{prompt}{suffix}: ").strip()
-    except EOFError:
-        raw = ""
+        prev = signal.signal(signal.SIGINT, signal.default_int_handler)
+    except (ValueError, OSError):
+        # Not on the main thread; fall through with whatever's installed.
+        prev = None
+    try:
+        try:
+            raw = input(f"{prompt}{suffix}: ").strip()
+        except EOFError:
+            raw = ""
+    finally:
+        if prev is not None:
+            try:
+                signal.signal(signal.SIGINT, prev)
+            except (ValueError, OSError):
+                pass
     return raw or default
 
 
