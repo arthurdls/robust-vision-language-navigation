@@ -27,6 +27,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+import numpy as np
+
 from PIL import Image
 
 _SRC = Path(__file__).resolve().parent.parent / "src"
@@ -145,15 +147,21 @@ def run_open_loop_control_loop(
         stop_reason = "max_steps"
         total_steps = 0
 
+        # Loop-carried frame: first iteration fetches via /get_frame, subsequent
+        # iterations reuse the image returned by /step. Reset each subgoal to
+        # force a fresh /get_frame at the start of each subgoal.
+        image: Optional[np.ndarray] = None
+
         for step in range(max_steps_per_subgoal):
             _step_timer.start_step(total_frame_count + step)
             try:
-                with _step_timer.phase("get_frame"):
-                    image = set_drone_cam_and_get_image(env, drone_cam_id)
                 if image is None:
-                    stop_reason = "no_image"
-                    total_steps = step
-                    break
+                    with _step_timer.phase("get_frame"):
+                        image = set_drone_cam_and_get_image(env, drone_cam_id)
+                    if image is None:
+                        stop_reason = "no_image"
+                        total_steps = step
+                        break
 
                 global_frame_idx = total_frame_count + step
                 frame_path = frames_dir / f"frame_{global_frame_idx:06d}.png"
@@ -196,6 +204,12 @@ def run_open_loop_control_loop(
                         break
 
                 total_steps = step + 1
+
+                if new_image is None:
+                    # /step didn't return an image; fall back to /get_frame next iter.
+                    image = None
+                else:
+                    image = new_image
 
                 if last_pose is not None:
                     diffs = [abs(a - b) for a, b in zip(current_pose, last_pose)]
