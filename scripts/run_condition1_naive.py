@@ -106,80 +106,93 @@ def run_naive_control_loop(
     stop_reason = "max_steps"
     total_steps = 0
 
+    from rvln.eval.step_timer import StepTimer
+    _step_timer = StepTimer(run_dir / "step_timings.jsonl")
+
     for step in range(max_steps):
-        image = set_drone_cam_and_get_image(env, cam_id)
-        if image is None:
-            logger.warning("No image at step %d, ending run.", step)
-            stop_reason = "no_image"
-            total_steps = step
-            break
-
-        frame_path = frames_dir / f"frame_{step:06d}.png"
+        _step_timer.start_step(step)
         try:
-            import cv2
-            cv2.imwrite(str(frame_path), image)
-        except Exception as e:
-            logger.debug("Failed to save frame %s: %s", frame_path, e)
-
-        response = batch.send_prediction_request(
-            image=Image.fromarray(image),
-            proprio=state_for_openvla(current_pose),
-            instr=instruction.strip().lower(),
-            server_url=server_url,
-        )
-
-        if response is None:
-            logger.warning("No VLA response at step %d, ending run.", step)
-            stop_reason = "no_response"
-            total_steps = step
-            break
-
-        action_poses = response.get("action")
-        if not isinstance(action_poses, list) or len(action_poses) == 0:
-            logger.warning("Empty action at step %d, ending run.", step)
-            stop_reason = "empty_action"
-            total_steps = step
-            break
-
-        try:
-            new_image, current_pose, steps_added = apply_action_poses(
-                env,
-                action_poses,
-                origin_x,
-                origin_y,
-                origin_z,
-                origin_yaw,
-                trajectory_log=trajectory_log,
-                sleep_s=0.1,
-                drone_cam_id=cam_id,
-            )
-        except Exception as e:
-            logger.error("Error executing action at step %d: %s", step, e)
-            stop_reason = "action_error"
-            total_steps = step
-            break
-
-        total_steps = step + 1
-
-        if last_pose is not None:
-            diffs = [abs(a - b) for a, b in zip(current_pose, last_pose)]
-            if all(d < ACTION_SMALL_DELTA_POS for d in diffs[:3]) and diffs[3] < ACTION_SMALL_DELTA_YAW:
-                small_count += 1
-            else:
-                small_count = 0
-            if small_count >= batch.ACTION_SMALL_STEPS:
-                logger.info("Convergence at step %d (drone stopped moving).", step)
-                stop_reason = "convergence"
+            with _step_timer.phase("get_frame"):
+                image = set_drone_cam_and_get_image(env, cam_id)
+            if image is None:
+                logger.warning("No image at step %d, ending run.", step)
+                stop_reason = "no_image"
+                total_steps = step
                 break
-        last_pose = list(current_pose)
 
-        if response.get("done") is True:
-            logger.info("Model reported done at step %d.", step)
-            stop_reason = "model_done"
-            break
+            frame_path = frames_dir / f"frame_{step:06d}.png"
+            with _step_timer.phase("frame_write"):
+                try:
+                    import cv2
+                    cv2.imwrite(str(frame_path), image)
+                except Exception as e:
+                    logger.debug("Failed to save frame %s: %s", frame_path, e)
+
+            with _step_timer.phase("predict"):
+                response = batch.send_prediction_request(
+                    image=Image.fromarray(image),
+                    proprio=state_for_openvla(current_pose),
+                    instr=instruction.strip().lower(),
+                    server_url=server_url,
+                )
+
+            if response is None:
+                logger.warning("No VLA response at step %d, ending run.", step)
+                stop_reason = "no_response"
+                total_steps = step
+                break
+
+            action_poses = response.get("action")
+            if not isinstance(action_poses, list) or len(action_poses) == 0:
+                logger.warning("Empty action at step %d, ending run.", step)
+                stop_reason = "empty_action"
+                total_steps = step
+                break
+
+            with _step_timer.phase("apply_action"):
+                try:
+                    new_image, current_pose, steps_added = apply_action_poses(
+                        env,
+                        action_poses,
+                        origin_x,
+                        origin_y,
+                        origin_z,
+                        origin_yaw,
+                        trajectory_log=trajectory_log,
+                        sleep_s=0.1,
+                        drone_cam_id=cam_id,
+                    )
+                except Exception as e:
+                    logger.error("Error executing action at step %d: %s", step, e)
+                    stop_reason = "action_error"
+                    total_steps = step
+                    break
+
+            total_steps = step + 1
+
+            if last_pose is not None:
+                diffs = [abs(a - b) for a, b in zip(current_pose, last_pose)]
+                if all(d < ACTION_SMALL_DELTA_POS for d in diffs[:3]) and diffs[3] < ACTION_SMALL_DELTA_YAW:
+                    small_count += 1
+                else:
+                    small_count = 0
+                if small_count >= batch.ACTION_SMALL_STEPS:
+                    logger.info("Convergence at step %d (drone stopped moving).", step)
+                    stop_reason = "convergence"
+                    break
+            last_pose = list(current_pose)
+
+            if response.get("done") is True:
+                logger.info("Model reported done at step %d.", step)
+                stop_reason = "model_done"
+                break
+        finally:
+            _step_timer.end_step()
     else:
         stop_reason = "max_steps"
         total_steps = max_steps
+
+    _step_timer.close()
 
     end_ts = datetime.now().isoformat()
 
