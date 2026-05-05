@@ -62,7 +62,7 @@ from rvln.config import (
     DEFAULT_CONTROL_RETRY_SLEEP,
     DEFAULT_DIARY_CHECK_INTERVAL,
     DEFAULT_DIARY_CHECK_INTERVAL_S,
-    DEFAULT_DIARY_MODE,
+    DEFAULT_HARDWARE_DIARY_MODE,
     DEFAULT_LLM_MODEL,
     DEFAULT_MAX_CORRECTIONS,
     DEFAULT_MAX_SECONDS_PER_SUBGOAL,
@@ -1697,7 +1697,7 @@ def parse_args() -> argparse.Namespace:
         help="VLM that scores progress and detects stalls. (default: %(default)s)",
     )
     g_monitor.add_argument(
-        "--diary-mode", choices=("frame", "time"), default=DEFAULT_DIARY_MODE,
+        "--diary-mode", choices=("frame", "time"), default=DEFAULT_HARDWARE_DIARY_MODE,
         help=(
             "Checkpoint cadence: 'frame' (sync, every N control steps) or "
             "'time' (async, every N seconds, monitor runs in a thread). "
