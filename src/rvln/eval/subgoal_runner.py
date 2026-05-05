@@ -676,11 +676,7 @@ def run_subgoal(
 
             total_steps = step + 1
 
-            if new_image is None:
-                # /step didn't return an image; fall back to /get_frame next iter.
-                image = None
-            else:
-                image = new_image
+            image = new_image  # None triggers /get_frame fallback on next iteration.
 
             # --- Convergence detection ---
             # Note: checkpoints (monitor.on_frame above) still fire during
