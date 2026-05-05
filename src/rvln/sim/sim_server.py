@@ -27,7 +27,7 @@ import cv2
 import numpy as np
 from flask import Flask, jsonify, request
 
-from rvln.config import SLEEP_SHORT_S, DEFAULT_STEP_SLEEP_S
+from rvln.config import DEFAULT_STEP_SLEEP_S, SLEEP_SHORT_S
 
 logger = logging.getLogger(__name__)
 
