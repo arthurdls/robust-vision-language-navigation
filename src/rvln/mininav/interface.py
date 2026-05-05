@@ -452,25 +452,69 @@ class FrameRecorder:
 
 
 class VideoRecorder:
-    """Stream captured frames into a single playback video as the run progresses.
+    """Stream camera frames into a single playback video on a dedicated thread.
+
+    Runs independently of the control loop: the thread reads the latest frame
+    from the camera at the configured fps and pushes it to disk. That way
+    the video keeps growing during everything the main thread blocks on --
+    convergence VLM polls, operator stdin prompts, OpenVLA round-trips,
+    long checkpoints -- so playback is continuous from camera-up to
+    shutdown rather than freezing at the first checkpoint.
 
     The OpenVLA / goal-adherence monitor pipeline still writes per-step PNGs
-    (the VLM needs frames on disk), but those typically live in a temp dir
-    and get discarded. This class adds a permanent run_dir/playback.<ext>
-    file that survives the run regardless of --record.
+    on the main thread (the VLM needs frames on disk), but those live in a
+    temp dir without --record. This class produces a permanent
+    run_dir/playback.mp4 regardless of --record.
 
     The writer opens lazily on the first frame so we don't commit to a size
     before the camera has produced anything, and close() runs from the main
     finally block so SIGINT / SIGTERM / errors all yield a playable file
-    (the moov atom for mp4 is only written on release).
+    (the moov atom for mp4 is only written on release()).
     """
 
-    def __init__(self, video_path: Path, fps: float):
+    def __init__(self, video_path: Path, fps: float, camera: Any):
         self.video_path = video_path
         # Some codecs reject fps <= 0; clamp to 1 fps as a safety floor.
         self.fps = float(fps) if fps and fps > 0 else 1.0
+        self.camera = camera
         self._writer: Optional[cv2.VideoWriter] = None
         self._open_failed = False
+        self._stop = threading.Event()
+        self._thread: Optional[threading.Thread] = None
+        self._frames_written = 0
+
+    def start(self) -> None:
+        """Begin background capture. Idempotent."""
+        if self._thread is not None and self._thread.is_alive():
+            return
+        self._stop.clear()
+        self._thread = threading.Thread(
+            target=self._run, name="video-recorder", daemon=True,
+        )
+        self._thread.start()
+
+    def _run(self) -> None:
+        period = 1.0 / self.fps
+        next_t = time.time()
+        while not self._stop.is_set():
+            now = time.time()
+            if now < next_t:
+                # Bound the sleep so a stop() request is picked up quickly
+                # without busy-waiting.
+                self._stop.wait(min(period, next_t - now))
+                continue
+            try:
+                ok, frame = self.camera.read()
+            except Exception as exc:
+                logger.warning("VideoRecorder: camera.read raised (%s).", exc)
+                ok, frame = False, None
+            if ok and frame is not None:
+                self._write_frame(frame)
+            # Schedule the next tick on the original cadence so a slow
+            # camera.read doesn't drift the video clock forever.
+            next_t += period
+            if next_t < now - period:
+                next_t = now + period
 
     def _open(self, frame_bgr: np.ndarray) -> None:
         h, w = frame_bgr.shape[:2]
@@ -486,7 +530,7 @@ class VideoRecorder:
             return
         self._writer = writer
 
-    def write(self, frame_bgr: np.ndarray) -> None:
+    def _write_frame(self, frame_bgr: np.ndarray) -> None:
         if self._open_failed:
             return
         if self._writer is None:
@@ -495,13 +539,24 @@ class VideoRecorder:
                 return
         try:
             self._writer.write(frame_bgr)
+            self._frames_written += 1
         except Exception as exc:
             logger.warning("VideoRecorder: write failed (%s).", exc)
 
     def close(self) -> None:
+        self._stop.set()
+        if self._thread is not None and self._thread.is_alive():
+            self._thread.join(timeout=2.0)
+            if self._thread.is_alive():
+                logger.warning("VideoRecorder thread did not exit within 2s.")
         if self._writer is not None:
             self._writer.release()
             self._writer = None
+        if self._frames_written:
+            logger.info(
+                "VideoRecorder: wrote %d frames to %s",
+                self._frames_written, self.video_path,
+            )
 
 
 class DroneControlClient:
@@ -1069,7 +1124,6 @@ def run_subgoal(
     stall_completion_floor: float = 0.8,
     constraints: Optional[List[Any]] = None,
     recorder: Optional["FrameRecorder"] = None,
-    video_recorder: Optional["VideoRecorder"] = None,
     no_ai: bool = False,
 ) -> Dict[str, Any]:
     """Execute a single subgoal with OpenVLA, goal adherence monitoring, and operator help.
@@ -1301,8 +1355,6 @@ def run_subgoal(
                 global_frame_idx = frame_offset + step
                 frame_path = frames_dir / f"frame_{global_frame_idx:06d}.png"
                 cv2.imwrite(str(frame_path), frame)
-                if video_recorder is not None:
-                    video_recorder.write(frame)
 
                 # 4. Call monitor.on_frame
                 result = monitor.on_frame(frame_path, displacement=list(subgoal_rel_pose))
@@ -2149,13 +2201,17 @@ def main() -> None:
         ctx=recorder_ctx,
     )
     # Always save a single playback video to the run dir, regardless of
-    # --record. This is what survives a Ctrl-C / kill: per-step PNGs may be
-    # in a temp dir that gets wiped, but the video is finalized in the
-    # finally block so even partial runs are reviewable.
+    # --record. The recorder owns its own thread that reads the camera
+    # independently of the control loop, so the video keeps growing during
+    # convergence VLM polls, operator stdin prompts, and any other main-
+    # thread block. close() runs in the finally block so SIGINT / SIGTERM
+    # / errors all yield a playable file.
     video_recorder = VideoRecorder(
         video_path=run_dir / "playback.mp4",
         fps=args.fps,
+        camera=camera,
     )
+    video_recorder.start()
 
     try:
         if args.no_ai:
@@ -2225,7 +2281,6 @@ def main() -> None:
                 stall_completion_floor=args.stall_completion_floor,
                 constraints=active_constraints,
                 recorder=recorder,
-                video_recorder=video_recorder,
                 no_ai=args.no_ai,
             )
             frame_offset += result["total_steps"]
