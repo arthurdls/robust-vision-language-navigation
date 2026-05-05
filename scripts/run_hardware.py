@@ -19,7 +19,7 @@ Usage (from repo root):
   #   terminal 2: python scripts/start_server.py
   #   terminal 3:
   python scripts/run_hardware.py \
-      --preferred_server_host 127.0.0.1 \
+      --control_host 127.0.0.1 \
       --control_port 8080 \
       --camera_url http://127.0.0.1:8081/frame \
       --openvla_predict_url http://127.0.0.1:5007/predict \

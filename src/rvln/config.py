@@ -75,7 +75,7 @@ DEFAULT_GA_MAX_CORRECTIONS = 10
 # ---------------------------------------------------------------------------
 # Hardware interface (MiniNav)
 # ---------------------------------------------------------------------------
-DEFAULT_PREFERRED_SERVER_HOST = "192.168.0.101"
+DEFAULT_CONTROL_HOST = "192.168.0.101"
 DEFAULT_CONTROL_PORT = 8080
 DEFAULT_CONTROL_RETRIES = 10
 DEFAULT_CONTROL_RETRY_SLEEP = 2.0
