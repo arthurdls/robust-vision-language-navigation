@@ -49,8 +49,10 @@ CONFIG = {
     "camera_init_timeout": None,
 
     # ---- Recording -------------------------------------------------------
-    # Persist frames + per-step metadata under run_dir/.
-    "record": False,
+    # Persist frames + per-step metadata under run_dir/. Default ON for
+    # hardware runs since post-flight inspection wants both the per-step
+    # PNGs and recording_log.jsonl alongside playback.mp4.
+    "record": True,
     # When recording, throttle log entries to this rate.
     "record_fps": None,
 
@@ -77,13 +79,17 @@ CONFIG = {
     "stall_threshold": None,
     "stall_completion_floor": None,
 
-    # ---- Pose source (one of these is required) -------------------------
+    # ---- Pose source (exactly one of these) -----------------------------
+    # dead_reckoning defaults ON since most hardware runs don't have a live
+    # odometry feed wired up. To switch to real odometry, set odom_http_url
+    # or odom_udp_port AND flip dead_reckoning to False -- they are
+    # mutually exclusive and the run aborts if both are configured.
     "odom_http_url": None,
     "odom_udp_host": None,
     "odom_udp_port": None,
     "odom_stale_timeout_s": None,
     "odom_poll_hz": None,
-    "dead_reckoning": False,
+    "dead_reckoning": True,
 
     # ---- Misc -----------------------------------------------------------
     "extra_env_file": None,
