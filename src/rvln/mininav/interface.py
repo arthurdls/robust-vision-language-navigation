@@ -97,6 +97,33 @@ def sanitize_name(text: str, max_len: int = 48) -> str:
 def signal_handler(sig, frame):
     global stop_capture
     stop_capture = True
+
+
+def _interruptible_input(prompt: str) -> str:
+    """input() that lets Ctrl-C raise KeyboardInterrupt.
+
+    The signal_handler above only flips stop_capture without raising, which
+    means a Ctrl-C while input() is blocked on stdin is silently swallowed
+    (the read syscall restarts). Temporarily restore Python's default SIGINT
+    handler around the read so KeyboardInterrupt fires and the main()
+    finally-block can tear down hardware. Returns "" on EOF.
+    """
+    prev = None
+    try:
+        prev = signal.signal(signal.SIGINT, signal.default_int_handler)
+    except (ValueError, OSError):
+        prev = None
+    try:
+        try:
+            return input(prompt)
+        except EOFError:
+            return ""
+    finally:
+        if prev is not None:
+            try:
+                signal.signal(signal.SIGINT, prev)
+            except (ValueError, OSError):
+                pass
     logger.info("Signal received; shutting down.")
     cv2.destroyAllWindows()
 
@@ -785,21 +812,21 @@ def _ask_operator_for_help(
     print("[4] Skip (continue/end subgoal)")
     print("[5] Abort mission")
     while True:
-        choice = input("Choice [1/2/3/4/5]: ").strip()
+        choice = _interruptible_input("Choice [1/2/3/4/5]: ").strip()
         if choice == "1":
-            instr = input("Instruction: ").strip()
+            instr = _interruptible_input("Instruction: ").strip()
             if not instr:
                 print("Empty instruction, please try again.")
                 continue
             return ("instruction", instr)
         elif choice == "2":
-            subgoal = input("New subgoal: ").strip()
+            subgoal = _interruptible_input("New subgoal: ").strip()
             if not subgoal:
                 print("Empty subgoal, please try again.")
                 continue
             return ("override_subgoal", subgoal)
         elif choice == "3":
-            instr = input("New high-level instruction: ").strip()
+            instr = _interruptible_input("New high-level instruction: ").strip()
             if not instr:
                 print("Empty instruction, please try again.")
                 continue
@@ -1863,7 +1890,7 @@ def main() -> None:
 
     load_env_vars(args.extra_env_file)
     initial_world_pose = parse_position(args.initial_position)
-    instruction = args.instruction or input("Enter initial instruction: ").strip()
+    instruction = args.instruction or _interruptible_input("Enter initial instruction: ").strip()
     if not instruction:
         raise SystemExit("Instruction is required.")
 
