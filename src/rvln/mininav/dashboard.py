@@ -41,21 +41,27 @@ logger = logging.getLogger(__name__)
 class MonitorDashboard:
     """Polls a run_dir for monitor artifacts and renders them in Tkinter."""
 
-    # Image display sizes. Tk wants concrete pixel dims; the monitor's
-    # grid PNGs are typically much larger than this so we shrink to fit.
-    LOCAL_IMG_W = 560
-    LOCAL_IMG_H = 320
-    GLOBAL_IMG_W = 560
-    GLOBAL_IMG_H = 320
+    # Image display sizes are computed at UI build time from the actual
+    # screen dimensions (see _build_ui), so a dashboard on a 1920x1080
+    # monitor uses much bigger panels than one on a 1366x768 laptop. The
+    # values below are only fallbacks if Tk can't probe the screen.
+    LOCAL_IMG_W = 720
+    LOCAL_IMG_H = 405
+    GLOBAL_IMG_W = 720
+    GLOBAL_IMG_H = 405
 
-    # Font sizes. The defaults were too small to read on a 1080p+ display
-    # with the dashboard sharing the screen with the run terminal. Bumped
-    # to 12 / 13 so an operator can read it from across the room.
-    TEXT_FONT = ("Courier", 13)
-    HEADER_FONT = ("Helvetica", 12, "bold")
-    TIMESTAMP_FONT = ("Helvetica", 11)
+    # Font sizes. Operator feedback: still hard to read at 13pt sharing
+    # screen with the run terminal. Bumped again to 17pt body so the
+    # dashboard is readable from a meter or two away.
+    TEXT_FONT = ("Courier", 17)
+    HEADER_FONT = ("Helvetica", 16, "bold")
+    TIMESTAMP_FONT = ("Helvetica", 14)
 
-    def __init__(self, run_dir: Path, poll_interval_s: float = 1.0):
+    # Fraction of the screen the window covers (92%). Leaves room for the
+    # window manager's titlebar / taskbar so nothing is clipped.
+    SCREEN_FRACTION = 0.92
+
+    def __init__(self, run_dir: Path, poll_interval_s: float = 0.25):
         self.run_dir = Path(run_dir)
         self.poll_interval_s = float(poll_interval_s)
         self._stop = threading.Event()
@@ -155,11 +161,37 @@ class MonitorDashboard:
 
         self._root = tk.Tk()
         self._root.title("MiniNav Live Monitor")
-        self._root.geometry("1280x900")
+
+        # Size the window to fit the actual screen. Operator runs the
+        # dashboard alongside the run terminal on a single monitor, so
+        # we want it big enough to be readable but not so big it covers
+        # the taskbar.
+        try:
+            sw = self._root.winfo_screenwidth()
+            sh = self._root.winfo_screenheight()
+            w = max(800, int(sw * self.SCREEN_FRACTION))
+            h = max(600, int(sh * self.SCREEN_FRACTION))
+            self._root.geometry(f"{w}x{h}")
+            # Recompute image panel sizes to use ~42% of window width per
+            # image at 16:9 ratio. Big monitors get big panels.
+            img_w = max(480, int(w * 0.42))
+            img_h = int(img_w * 9 / 16)
+            self.LOCAL_IMG_W = self.GLOBAL_IMG_W = img_w
+            self.LOCAL_IMG_H = self.GLOBAL_IMG_H = img_h
+        except Exception:
+            # Fall back to the class-level defaults if Tk can't probe
+            # screen dims (rare; happens on some headless display
+            # configurations).
+            self._root.geometry("1280x900")
+
         # Make ttk.LabelFrame titles match the operator-readable size we
         # use for body text. The default ttk theme renders these tiny.
         try:
-            ttk.Style().configure("TLabelframe.Label", font=self.HEADER_FONT)
+            style = ttk.Style()
+            style.configure("TLabelframe.Label", font=self.HEADER_FONT)
+            # Bump scrollbar arrow widgets so they're easier to grab on
+            # high-DPI displays.
+            style.configure("Vertical.TScrollbar", arrowsize=18)
         except Exception:
             pass
 
