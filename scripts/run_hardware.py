@@ -10,105 +10,127 @@ for the full terminal layout.
 Wire format (matches boieng_mininav.py): each packet is 5 float32 values,
 [frame_count, vx, vy, vz, yaw_rate], where vx/vy/vz are in m/s and
 yaw_rate is in rad/s. Internally the pipeline keeps OpenVLA's cm
-emission convention end to end (per-step delta, safety clip at <=50
-cm/s linear and <=20 deg/s yaw, dead-reckoning); the wire boundary
-divides vx/vy/vz by 100 so the drone sees m/s.
+emission convention end to end (per-step delta, magnitude clip in
+cm/s, dead-reckoning); the wire boundary multiplies by
+scale_output_translation (default 0.01 -> m/s) before sending.
 
 Configure runs by editing the CONFIG block below. Hardware always runs in
 time-based monitor mode; frame-mode options are intentionally absent.
 Anything passed on the command line still wins over CONFIG (handy for
-one-off overrides without editing the file). Keys set to None fall back
-to the upstream default in src/rvln/mininav/interface.py.
+one-off overrides without editing the file). Every value below is a
+literal default copied from the upstream argparse so what you see is
+exactly what you get.
 """
 
 import sys
 from pathlib import Path
 
+# Computed once so the visible default path is the actual absolute one
+# the run will use. Resolves to <repo_root>/results/hardware regardless
+# of where you cd before invoking the script.
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+_DEFAULT_RESULTS_DIR = str(_REPO_ROOT / "results" / "hardware")
+
 # ============================================================================
 # CONFIG -- edit these for your run, then `python scripts/run_hardware.py`.
+# Every key is a literal value (no None, no DEFAULT_X references). Empty
+# strings ("") mark genuinely-optional alternatives -- they're translated
+# to "not passed" so argparse's None default takes effect; e.g. an empty
+# instruction triggers an interactive stdin prompt.
 # ============================================================================
 
 CONFIG = {
     # ---- Task ------------------------------------------------------------
-    # Mission instruction (None -> prompted on stdin at startup).
-    "instruction": None,
+    # Mission instruction. "" => the run prompts on stdin at startup.
+    # Set a string here to skip the prompt.
+    "instruction": "",
     # Starting world pose: "x,y,z,yaw_deg".
     "initial_position": "0,0,0,0",
-    # Run-output directory (None -> results/hardware/).
-    "results_dir": None,
+    # Run-output directory. Defaults to <repo_root>/results/hardware/.
+    "results_dir": _DEFAULT_RESULTS_DIR,
 
     # ---- Camera (set exactly one source) ---------------------------------
-    # Local cv2 device index (USB / V4L2). Default 4 = MiniNav USB cam.
+    # Local cv2 device index (USB / V4L2). 4 = MiniNav USB cam on Jetson.
     "camera": 4,
     # HTTP frame source, e.g. "http://127.0.0.1:8081/frame" for the mock.
-    "camera_url": None,
+    # Set this XOR camera_pipeline to override the cv2 capture.
+    "camera_url": "",
     # GStreamer pipeline (Jetson MIPI-CSI). Must end in 'appsink'.
-    "camera_pipeline": None,
-    # Capture target rate (None -> default DEFAULT_CAMERA_FPS).
-    "fps": None,
-    "camera_retries": None,
-    "camera_init_timeout": None,
+    "camera_pipeline": "",
+    "fps": 30,
+    "camera_retries": 15,
+    "camera_init_timeout": 8.0,
 
     # ---- Recording -------------------------------------------------------
-    # Persist frames + per-step metadata under run_dir/. Default ON for
-    # hardware runs since post-flight inspection wants both the per-step
-    # PNGs and recording_log.jsonl alongside playback.mp4.
+    # Persist per-step PNGs under run_dir/frames + recording_log.jsonl
+    # alongside the always-on playback.mp4 video.
     "record": True,
-    # When recording, throttle log entries to this rate.
-    "record_fps": None,
+    "record_fps": 30.0,
 
     # ---- Control server (boieng wire) ------------------------------------
-    "control_host": None,        # default: 192.168.0.101
-    "control_port": None,        # default: 8080
-    "control_retries": None,
-    "control_retry_sleep": None,
-    "command_dt_s": None,
+    "control_host": "192.168.0.101",
+    "control_port": 8080,
+    "control_retries": 10,
+    "control_retry_sleep": 2.0,
+    "command_dt_s": 0.1,
     # Wire-output scaling: multipliers applied to vx/vy/vz and yaw_rate
-    # at the wire boundary. Internal pipeline runs in cm/s + rad/s
-    # (OpenVLA's emission units); the defaults convert vx/vy/vz to m/s
-    # for the drone and leave yaw_rate as rad/s.
-    "scale_output_translation": None,  # default 0.01 (cm/s -> m/s on wire)
-    "scale_output_rotation": None,     # default 1.0 (rad/s unchanged)
+    # at the wire boundary. Internal pipeline runs in cm/s + rad/s;
+    # defaults convert vx/vy/vz to m/s and leave yaw_rate as rad/s.
+    "scale_output_translation": 0.01,
+    "scale_output_rotation": 1.0,
     # Per-step magnitude clip applied BEFORE wire scaling. User-facing
     # units: meters/second for translation, degrees/second for rotation.
     # Defaults give 0.5 m/s + 20 deg/s on the wire with the default
-    # output scales. Translation is clipped on the 3D vector norm
-    # (heading preserved); yaw is sign-preserved.
-    "max_translation_m_s": None,       # default 0.5
-    "max_rotation_deg_s": None,        # default 20.0
+    # output scales. Translation is clipped on the 3D vector norm so
+    # heading is preserved; yaw is sign-preserved.
+    "max_translation_m_s": 0.5,
+    "max_rotation_deg_s": 20.0,
 
     # ---- OpenVLA ---------------------------------------------------------
-    "openvla_predict_url": None,  # default: http://127.0.0.1:5007/predict
+    "openvla_predict_url": "http://127.0.0.1:5007/predict",
+
+    # ---- Small-motion auto-converge --------------------------------------
+    # When OpenVLA emits N consecutive "small" steps the run forces a
+    # convergence VLM call (drone is presumed to have stopped moving).
+    # action_small_delta_pos is per-axis cm; action_small_delta_yaw is
+    # degrees; action_small_steps is the consecutive-step count.
+    "action_small_delta_pos": 3.0,
+    "action_small_delta_yaw": 1.0,
+    "action_small_steps": 10,
 
     # ---- LTL planner / subgoal converter ---------------------------------
-    "llm_model": None,           # default: DEFAULT_LLM_MODEL
+    "llm_model": "gpt-5.4",
 
     # ---- Goal-adherence monitor (TIME MODE ONLY) -------------------------
-    "monitor_model": None,                     # default: DEFAULT_VLM_MODEL
-    "diary_check_interval_s": None,            # seconds between checkpoints
-    "max_steps_per_subgoal": None,
-    "max_seconds_per_subgoal": None,
-    "max_corrections": None,
-    "stall_window": None,
-    "stall_threshold": None,
-    "stall_completion_floor": None,
+    "monitor_model": "gpt-5.4",
+    "diary_check_interval_s": 3.0,
+    "max_steps_per_subgoal": 500,
+    "max_seconds_per_subgoal": 120.0,
+    "max_corrections": 20,
+    "stall_window": 5,
+    "stall_threshold": 0.05,
+    "stall_completion_floor": 0.5,
 
     # ---- Pose source (exactly one of these) -----------------------------
-    # dead_reckoning defaults ON since most hardware runs don't have a live
-    # odometry feed wired up. To switch to real odometry, set odom_http_url
-    # or odom_udp_port AND flip dead_reckoning to False -- they are
-    # mutually exclusive and the run aborts if both are configured.
-    "odom_http_url": None,
-    "odom_udp_host": None,
-    "odom_udp_port": None,
-    "odom_stale_timeout_s": None,
-    "odom_poll_hz": None,
+    # dead_reckoning ON by default since most hardware runs do not have a
+    # live odometry feed wired up. To switch to real odometry, set
+    # odom_http_url (or odom_udp_port > 0) AND flip dead_reckoning to
+    # False -- they are mutually exclusive and the run aborts if both
+    # are configured.
+    "odom_http_url": "",
+    "odom_udp_host": "0.0.0.0",
+    "odom_udp_port": 0,
+    "odom_stale_timeout_s": 1.0,
+    "odom_poll_hz": 50.0,
     "dead_reckoning": True,
 
     # ---- Misc -----------------------------------------------------------
-    "extra_env_file": None,
+    # Optional .env overlay layered on top of .env / .env.local. "" =
+    # no overlay.
+    "extra_env_file": "",
     "log_level": "INFO",
-    # Shortcut: True == --log_level DEBUG. Same effect as passing -v on the CLI.
+    # Shortcut: True == --log_level DEBUG. Same effect as passing -v on
+    # the CLI. Suppresses third-party HTTP / image-encoding debug noise.
     "verbose": False,
 }
 
@@ -126,10 +148,14 @@ def _build_argv(cfg: dict) -> list[str]:
 
     Hardware always runs time-based monitoring, so --diary-mode is forced
     to 'time' here; remove it from CONFIG to avoid surprising overrides.
+    Empty strings are skipped so the genuinely-optional alternatives
+    (instruction, camera_url, camera_pipeline, odom_http_url,
+    extra_env_file) fall through to argparse's None default and the
+    consuming code's "if not value" branch.
     """
     argv: list[str] = ["--diary-mode", "time"]
     for key, value in cfg.items():
-        if value is None:
+        if value == "":
             continue
         flag = "--" + _DASHED_FLAGS.get(key, key)
         if isinstance(value, bool):
@@ -141,7 +167,7 @@ def _build_argv(cfg: dict) -> list[str]:
 
 
 # src/ layout: allow `python scripts/run_hardware.py` without `pip install -e .`
-_SRC = Path(__file__).resolve().parent.parent / "src"
+_SRC = _REPO_ROOT / "src"
 if _SRC.is_dir() and str(_SRC) not in sys.path:
     sys.path.insert(0, str(_SRC))
 
