@@ -1323,10 +1323,17 @@ def run_subgoal(
                 subgoal_rel_pose = relative_pose(world_pose, origin_world)
 
                 if use_async:
-                    # Async mode: time-based convergence guard
+                    # Async mode: time-based convergence guard. Same --no-ai
+                    # carve-out as the sync branch: when the operator is in
+                    # the loop, only force_converge from the prompt should
+                    # trigger convergence.
                     converged = False
                     elapsed_since_correction = time.time() - last_correction_time
-                    if last_pose is not None and elapsed_since_correction >= check_interval_s:
+                    if (
+                        not no_ai
+                        and last_pose is not None
+                        and elapsed_since_correction >= check_interval_s
+                    ):
                         diffs = [abs(a - b) for a, b in zip(subgoal_rel_pose, last_pose)]
                         if all(d < ACTION_SMALL_DELTA_POS for d in diffs[:3]) and diffs[3] < ACTION_SMALL_DELTA_YAW:
                             small_count += 1
@@ -1392,11 +1399,20 @@ def run_subgoal(
                             stop_reason = "convergence_no_command"
                             break
                 else:
-                    # Sync mode: step-based convergence guard (original behavior)
+                    # Sync mode: step-based convergence guard (original behavior).
+                    # The small-motion auto-detector is suppressed under --no-ai
+                    # since the operator drives convergence explicitly via the
+                    # 'f' (force_converge) action at each checkpoint; otherwise
+                    # near-zero OpenVLA velocities silently trigger convergence
+                    # between prompts.
                     converged = result.action == "force_converge"
                     steps_since_correction = step - last_correction_step
 
-                    if last_pose is not None and steps_since_correction >= check_interval:
+                    if (
+                        not no_ai
+                        and last_pose is not None
+                        and steps_since_correction >= check_interval
+                    ):
                         diffs = [abs(a - b) for a, b in zip(subgoal_rel_pose, last_pose)]
                         if all(d < ACTION_SMALL_DELTA_POS for d in diffs[:3]) and diffs[3] < ACTION_SMALL_DELTA_YAW:
                             small_count += 1
