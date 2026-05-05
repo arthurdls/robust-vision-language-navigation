@@ -8,10 +8,11 @@ results/hardware/run_<timestamp>/. See README "Running on Hardware (MiniNav)"
 for the full terminal layout.
 
 Wire format (matches boieng_mininav.py): each packet is 5 float32 values,
-[frame_count, vx, vy, vz, yaw_rate], where vx/vy/vz are in cm/s and
-yaw_rate is in rad/s. Per-step velocities are derived from OpenVLA's
-predicted target pose and clipped to <=50 cm/s linear and <=20 deg/s
-yaw before being sent.
+[frame_count, vx, vy, vz, yaw_rate], where vx/vy/vz are in m/s and
+yaw_rate is in rad/s. Internally the pipeline keeps OpenVLA's cm
+emission convention end to end (per-step delta, safety clip at <=50
+cm/s linear and <=20 deg/s yaw, dead-reckoning); the wire boundary
+divides vx/vy/vz by 100 so the drone sees m/s.
 
 Configure runs by editing the CONFIG block below. Hardware always runs in
 time-based monitor mode; frame-mode options are intentionally absent.

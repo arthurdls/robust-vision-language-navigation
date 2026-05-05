@@ -9,10 +9,11 @@ Pipeline:
 4) OpenVLA /predict + /reset calls.
 5) Real command streaming to drone server using boieng wire format:
    [frame_count, vx, vy, vz, yaw_rate] as float32 over TCP. Velocities
-   only: vx/vy/vz in cm/s, yaw_rate in rad/s. Each step's velocity is
-   the per-step delta from OpenVLA's predicted target pose (cm and
-   radians), clipped to <=50 cm/s linear magnitude and
-   <=20 deg/s yaw before being sent.
+   only: vx/vy/vz in m/s, yaw_rate in rad/s. Internally the pipeline
+   keeps OpenVLA's cm-emission convention end-to-end (per-step delta,
+   safety clip at <=50 cm/s linear and <=20 deg/s yaw, dead-reckoning
+   integration); DroneControlClient.send_command divides vx/vy/vz by
+   100 at the wire boundary so the drone sees m/s.
 6) Pose source (exactly one, no silent fallback):
    - External odometry feed (HTTP poll or UDP stream), or
    - Dead-reckoning from sent commands (--dead-reckoning).
@@ -583,9 +584,22 @@ class DroneControlClient:
         raise RuntimeError(f"Could not connect to control server {self.host}:{self.port}")
 
     def send_command(self, frame_count: int, command: np.ndarray) -> None:
+        """Send a velocity command on the wire.
+
+        Internal pipeline units are cm/s for vx/vy/vz (matching OpenVLA's
+        cm-emission convention) and rad/s for yaw_rate; the drone receiver
+        expects m/s + rad/s, so we divide the linear axes by 100 at this
+        boundary. Doing the conversion here (rather than in
+        to_command_from_action_pose or _clip_velocity) keeps every other
+        consumer of the command in cm/s -- safety caps, dead-reckoning
+        integration, trajectory_log, and verbose status output all stay
+        consistent with the OpenVLA proprio frame.
+        """
         if self.sock is None:
             raise RuntimeError("Control socket not connected")
-        payload = np.array([frame_count, *command.tolist()], dtype=np.float32).tobytes()
+        wire = command.astype(np.float32, copy=True)
+        wire[0:3] = wire[0:3] / 100.0
+        payload = np.array([frame_count, *wire.tolist()], dtype=np.float32).tobytes()
         self.sock.sendall(payload)
 
     def close(self) -> None:
@@ -1570,10 +1584,14 @@ def run_subgoal(
                 now = time.time()
                 if logger.isEnabledFor(logging.DEBUG) and (now - last_status_t) >= 1.0:
                     if last_cmd_sent is not None:
+                        # Show the actual wire values (m/s); last_cmd_sent
+                        # is in internal cm/s, so divide by 100 to match
+                        # what DroneControlClient.send_command put on the
+                        # wire. yaw_rate is rad/s in both representations.
                         cmd_str = (
-                            f"[vx={last_cmd_sent[0]:+6.1f}, "
-                            f"vy={last_cmd_sent[1]:+6.1f}, "
-                            f"vz={last_cmd_sent[2]:+6.1f} cm/s, "
+                            f"[vx={last_cmd_sent[0]/100.0:+5.2f}, "
+                            f"vy={last_cmd_sent[1]/100.0:+5.2f}, "
+                            f"vz={last_cmd_sent[2]/100.0:+5.2f} m/s, "
                             f"yaw={last_cmd_sent[3]:+5.2f} rad/s]"
                         )
                     else:
@@ -1871,11 +1889,12 @@ def parse_args() -> argparse.Namespace:
         "\n"
         "Wire format (matches boieng_mininav.py):\n"
         "  Each packet is 5 float32 values: [frame_count, vx, vy, vz, yaw_rate].\n"
-        "  vx/vy/vz are linear velocities in cm/s, yaw_rate is in rad/s. The\n"
+        "  vx/vy/vz are linear velocities in m/s, yaw_rate is in rad/s. The\n"
         "  drone (and the simulated mock) integrate these as velocities.\n"
-        "  Per-step velocities are derived from OpenVLA's predicted target\n"
-        "  pose (cm and radians) and clipped to <=50 cm/s linear and\n"
-        "  <=20 deg/s yaw before being sent.\n"
+        "  Internally the pipeline keeps OpenVLA's cm emission convention\n"
+        "  for safety clipping (<=50 cm/s linear, <=20 deg/s yaw) and dead-\n"
+        "  reckoning; vx/vy/vz are divided by 100 at the wire boundary so\n"
+        "  the drone sees m/s.\n"
         "\n"
         "Pose source:\n"
         "  Preferred:    --odom_http_url <url>   external odometry feed\n"
