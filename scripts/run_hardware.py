@@ -7,14 +7,20 @@ server, LTL planner, and live goal adherence monitor. Results land under
 results/hardware/run_<timestamp>/. See README "Running on Hardware (MiniNav)"
 for the full terminal layout.
 
-Defaults target real MiniNav hardware: USB camera 0, control server at
-192.168.0.101:8080, OpenVLA action poses treated as absolute positions.
+Wire format (matches boieng_mininav.py): each packet is 5 float32 values,
+[frame_count, vx, vy, vz, yaw_rate], where vx/vy/vz are in cm/s and
+yaw_rate is in rad/s. Per-step velocities are derived from OpenVLA's
+predicted target pose and clipped to <=50 cm/s linear and <=20 deg/s
+yaw before being sent.
+
+Defaults target the Jetson + MiniNav drone: USB camera index 4, control
+server at 192.168.0.101:8080, OpenVLA at 127.0.0.1:5007.
 
 Usage (from repo root):
-  # Live flight (real USB camera + real drone):
+  # Live flight (USB camera + real drone):
   python scripts/run_hardware.py --instruction "take off and circle the red cone"
 
-  # Fully simulated (OpenVLA proprio/action in cm, so use velocity + delta mode):
+  # Fully simulated:
   #   terminal 1: python scripts/start_mock_hardware.py
   #   terminal 2: python scripts/start_server.py
   #   terminal 3:
@@ -24,8 +30,6 @@ Usage (from repo root):
       --camera_url http://127.0.0.1:8081/frame \
       --openvla_predict_url http://127.0.0.1:5007/predict \
       --initial_position 0,0,0,0 \
-      --command_is_velocity \
-      --action_pose_mode delta_from_pose \
       --instruction "Move forward 10.0 meters, then turn toward the red car"
 
 All flags are forwarded to rvln.mininav.interface.

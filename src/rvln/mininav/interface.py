@@ -8,7 +8,11 @@ Pipeline:
 3) Subgoal conversion + GoalAdherenceMonitor supervision.
 4) OpenVLA /predict + /reset calls.
 5) Real command streaming to drone server using boieng wire format:
-   [frame_count, vx, vy, vz, yaw] as float32 over TCP.
+   [frame_count, vx, vy, vz, yaw_rate] as float32 over TCP. Velocities
+   only: vx/vy/vz in cm/s, yaw_rate in rad/s. Each step's velocity is
+   the per-step delta from OpenVLA's predicted target pose (cm and
+   radians), clipped to <=50 cm/s linear magnitude and
+   <=20 deg/s yaw before being sent.
 6) Pose source (exactly one, no silent fallback):
    - External odometry feed (HTTP poll or UDP stream), or
    - Dead-reckoning from sent commands (--dead-reckoning).
@@ -629,34 +633,18 @@ class OdometryPoseProvider:
 
 
 class DeadReckoningPoseProvider:
-    """Integrate sent commands into a world-frame pose estimate.
+    """Integrate sent velocity commands into a world-frame pose estimate.
 
-    Wire commands have different meanings under different ``action_pose_mode``
-    settings, so the integration formula depends on the mode:
-
-    - ``delta_from_pose`` + ``command_is_velocity``: command is (vx, vy, vz,
-      yaw_rate). Integrate ``pose += v * dt``. Used by the simulated mock.
-    - ``delta_from_pose`` + not velocity: command is a per-step pose delta
-      in subgoal-relative frame. Adding it to ``world_pose`` yields the
-      target world pose.
-    - ``direct``: command is the *absolute* target relative pose (in the
-      subgoal-relative frame). DR snaps to ``subgoal_origin + command`` -
-      i.e. it trusts that the drone tracks the model's prediction. This
-      is imperfect (real tracking has lag/drift) but usable when no
-      external odometry feed is available. ``set_subgoal_origin`` must be
-      called by the runner at each subgoal start.
+    Wire commands are always velocities matching the boieng_mininav.py
+    reference: ``[vx (cm/s), vy (cm/s), vz (cm/s), yaw_rate (rad/s)]``.
+    Integration is straight-up Euler: ``pose += v * dt``. World-pose yaw
+    is stored in degrees, so the yaw-rate (rad/s) is converted before
+    being added.
     """
 
-    def __init__(
-        self,
-        initial_world_pose: List[float],
-        command_is_velocity: bool,
-        action_pose_mode: str = "delta_from_pose",
-    ):
+    def __init__(self, initial_world_pose: List[float]):
         self.world_pose = list(initial_world_pose)
         self.subgoal_origin = list(initial_world_pose)
-        self.command_is_velocity = command_is_velocity
-        self.action_pose_mode = action_pose_mode
 
     def set_world_pose(self, pose: List[float]) -> None:
         self.world_pose = [float(p) for p in pose]
@@ -665,37 +653,18 @@ class DeadReckoningPoseProvider:
         self.subgoal_origin = [float(p) for p in origin]
 
     def update_from_command(self, command: np.ndarray, dt_s: float) -> None:
-        if self.action_pose_mode == "direct":
-            # Wire command is the absolute target in subgoal-relative frame:
-            # x,y,z in metres, yaw in radians. Predict that the drone reaches
-            # this target by snapping world_pose to (subgoal_origin + cmd).
-            # No body-frame rotation: relative_pose() in this codebase is a
-            # pure translation, so the inverse is too.
-            cx, cy, cz, cyaw_rad = (float(command[i]) for i in range(4))
-            self.world_pose[0] = self.subgoal_origin[0] + cx
-            self.world_pose[1] = self.subgoal_origin[1] + cy
-            self.world_pose[2] = self.subgoal_origin[2] + cz
-            self.world_pose[3] = normalize_angle(
-                self.subgoal_origin[3] + math.degrees(cyaw_rad)
-            )
-            return
-
-        vx, vy, vz, yaw = (
+        vx, vy, vz, yaw_rate = (
             float(command[0]),
             float(command[1]),
             float(command[2]),
             float(command[3]),
         )
-        if self.command_is_velocity:
-            self.world_pose[0] += vx * dt_s
-            self.world_pose[1] += vy * dt_s
-            self.world_pose[2] += vz * dt_s
-            self.world_pose[3] = normalize_angle(self.world_pose[3] + math.degrees(yaw) * dt_s)
-        else:
-            self.world_pose[0] += vx
-            self.world_pose[1] += vy
-            self.world_pose[2] += vz
-            self.world_pose[3] = normalize_angle(self.world_pose[3] + math.degrees(yaw))
+        self.world_pose[0] += vx * dt_s
+        self.world_pose[1] += vy * dt_s
+        self.world_pose[2] += vz * dt_s
+        self.world_pose[3] = normalize_angle(
+            self.world_pose[3] + math.degrees(yaw_rate) * dt_s
+        )
 
     def get_pose(self) -> List[float]:
         return list(self.world_pose)
@@ -745,22 +714,60 @@ class PoseManager:
             self.odom.close()
 
 
-def to_command_from_action_pose(action_pose: List[float], current_relative_pose: List[float], mode: str) -> np.ndarray:
+# Safety caps on the velocity command sent over the wire. OpenVLA emits
+# translations in cm and yaw in radians, and we treat the per-step delta
+# as the per-step velocity (cm/s, rad/s) without dividing by dt. These
+# caps mirror the boieng_mininav.py reference, which also drives the
+# drone with a fixed yaw rate of 20 deg/s during scripted turns.
+MAX_LINEAR_CM_S = 50.0
+MAX_YAW_RAD_S = math.radians(20.0)
+
+
+def _clip_velocity(
+    vx: float, vy: float, vz: float, vyaw: float,
+) -> Tuple[float, float, float, float]:
+    """Clip a velocity command to the per-axis safety caps.
+
+    Translation is clipped by **magnitude** so the direction is preserved
+    (a diagonal command at the limit isn't allowed to outrun a single-axis
+    one). Yaw rate is clipped per-axis since it's a scalar.
+    """
+    mag = math.sqrt(vx * vx + vy * vy + vz * vz)
+    if mag > MAX_LINEAR_CM_S and mag > 0.0:
+        scale = MAX_LINEAR_CM_S / mag
+        vx, vy, vz = vx * scale, vy * scale, vz * scale
+    if vyaw > MAX_YAW_RAD_S:
+        vyaw = MAX_YAW_RAD_S
+    elif vyaw < -MAX_YAW_RAD_S:
+        vyaw = -MAX_YAW_RAD_S
+    return vx, vy, vz, vyaw
+
+
+def to_command_from_action_pose(
+    action_pose: List[float],
+    current_relative_pose: List[float],
+) -> np.ndarray:
+    """Convert an OpenVLA target pose into a velocity wire command.
+
+    The drone receiver (matching the boieng_mininav.py reference) takes a
+    5-float packet ``[frame_count, vx, vy, vz, yaw_rate]`` and integrates
+    those values as velocities. OpenVLA emits an absolute target pose in
+    the subgoal-relative frame, with translations in cm and yaw in
+    radians. The per-step delta to that target is approximately the
+    per-step velocity, so we send it directly as ``[vx (cm/s), vy (cm/s),
+    vz (cm/s), yaw_rate (rad/s)]`` after clipping to the safety caps.
+    """
     x = float(action_pose[0])
     y = float(action_pose[1])
     z = float(action_pose[2])
     yaw = float(action_pose[3])
-    if mode == "delta_from_pose":
-        return np.array(
-            [
-                x - float(current_relative_pose[0]),
-                y - float(current_relative_pose[1]),
-                z - float(current_relative_pose[2]),
-                yaw - math.radians(float(current_relative_pose[3])),
-            ],
-            dtype=np.float32,
-        )
-    return np.array([x, y, z, yaw], dtype=np.float32)
+    vx = x - float(current_relative_pose[0])
+    vy = y - float(current_relative_pose[1])
+    vz = z - float(current_relative_pose[2])
+    # current_relative_pose stores yaw in degrees; OpenVLA emits radians.
+    vyaw = yaw - math.radians(float(current_relative_pose[3]))
+    vx, vy, vz, vyaw = _clip_velocity(vx, vy, vz, vyaw)
+    return np.array([vx, vy, vz, vyaw], dtype=np.float32)
 
 
 def write_json(path: Path, payload: Dict[str, Any]) -> None:
@@ -967,7 +974,6 @@ def run_subgoal(
     max_corrections: int,
     frame_offset: int,
     command_dt_s: float,
-    action_pose_mode: str,
     trajectory_log: List[Dict[str, Any]],
     check_interval_s: Optional[float] = None,
     max_seconds: Optional[float] = None,
@@ -1299,7 +1305,7 @@ def run_subgoal(
                         continue
                     current_world = pose_manager.get_world_pose()
                     current_rel = relative_pose(current_world, origin_world)
-                    cmd = to_command_from_action_pose(action_pose, current_rel, action_pose_mode)
+                    cmd = to_command_from_action_pose(action_pose, current_rel)
                     control.send_command(global_frame_idx, cmd)
                     pose_manager.update_from_command(cmd, command_dt_s)
                     updated_rel = relative_pose(pose_manager.get_world_pose(), origin_world)
@@ -1537,7 +1543,7 @@ def parse_args() -> argparse.Namespace:
 
     epilog = (
         "Examples:\n"
-        "  # Live flight (USB camera 0, control server at 192.168.0.101:8080)\n"
+        "  # Live flight (Jetson USB camera at index 4, drone at 192.168.0.101)\n"
         "  python scripts/run_hardware.py \\\n"
         "      --instruction \"take off and circle the red cone\" \\\n"
         "      --odom_http_url http://192.168.0.101:8090/pose\n"
@@ -1550,28 +1556,29 @@ def parse_args() -> argparse.Namespace:
         "      --odom_http_url http://127.0.0.1:8081/pose \\\n"
         "      --openvla_predict_url http://127.0.0.1:5007/predict \\\n"
         "      --initial_position 0,0,0,0 \\\n"
-        "      --command_is_velocity \\\n"
-        "      --action_pose_mode delta_from_pose \\\n"
         "      --instruction \"move forward 10m, then turn toward the red car\"\n"
+        "\n"
+        "  # Live flight on Jetson with the onboard CSI camera\n"
+        "  python scripts/run_hardware.py \\\n"
+        "      --camera_pipeline 'nvarguscamerasrc sensor-id=0 ! ... ! appsink' \\\n"
+        "      --odom_http_url http://192.168.0.101:8090/pose \\\n"
+        "      --instruction \"...\"\n"
         "\n"
         "  # Same, with a 5fps recording for cost analysis\n"
         "  python scripts/run_hardware.py ... --record --record_fps 5\n"
         "\n"
-        "Pose source / wire-format modes:\n"
-        "  Live drone with odometry (preferred):\n"
-        "    --odom_http_url <url>      # external odometry is the only pose source\n"
-        "    --action_pose_mode direct  # ship absolute target poses verbatim\n"
-        "    (no --command_is_velocity, no --dead-reckoning)\n"
-        "  Live drone without odometry (DR fallback):\n"
-        "    --dead-reckoning --action_pose_mode direct\n"
-        "    DR snaps to the model's predicted target each step (assumes\n"
-        "    perfect tracking; tracking error and drift accumulate).\n"
-        "  Sim mock (mock_server.py):\n"
-        "    --action_pose_mode delta_from_pose --command_is_velocity\n"
-        "    The mock integrates incoming commands as velocities.\n"
-        "  Sim/test with DR-style integration of per-step deltas:\n"
-        "    --dead-reckoning --action_pose_mode delta_from_pose\n"
-        "    Add --command_is_velocity if the receiver integrates as velocity.\n"
+        "Wire format (matches boieng_mininav.py):\n"
+        "  Each packet is 5 float32 values: [frame_count, vx, vy, vz, yaw_rate].\n"
+        "  vx/vy/vz are linear velocities in cm/s, yaw_rate is in rad/s. The\n"
+        "  drone (and the simulated mock) integrate these as velocities.\n"
+        "  Per-step velocities are derived from OpenVLA's predicted target\n"
+        "  pose (cm and radians) and clipped to <=50 cm/s linear and\n"
+        "  <=20 deg/s yaw before being sent.\n"
+        "\n"
+        "Pose source:\n"
+        "  Preferred:    --odom_http_url <url>   external odometry feed\n"
+        "  Fallback:     --dead-reckoning        integrate commanded velocities\n"
+        "                                        (drifts; use only when no odom)\n"
         "\n"
         "Failure semantics: there is no silent fallback. A stale odometry\n"
         "sample, an unreachable control host, an LLM/VLM failure, or a\n"
@@ -1617,10 +1624,12 @@ def parse_args() -> argparse.Namespace:
 
     g_camera = parser.add_argument_group("Camera")
     g_camera.add_argument(
-        "--camera", type=int, default=0,
+        "--camera", type=int, default=4,
         help=(
             "Local cv2 device index (V4L2 / USB UVC). Used when neither "
-            "--camera_url nor --camera_pipeline is set. (default: %(default)s)"
+            "--camera_url nor --camera_pipeline is set. Default targets the "
+            "USB camera on the Jetson once built-in cameras are enumerated "
+            "(see scripts/hardware_camera_debug.py). (default: %(default)s)"
         ),
     )
     g_camera.add_argument(
@@ -1704,32 +1713,6 @@ def parse_args() -> argparse.Namespace:
             "Time interval between commands sent to the control server. "
             "Also the dt used for dead-reckoning integration. "
             "(default: %(default)s)"
-        ),
-    )
-    g_control.add_argument(
-        "--action_pose_mode", choices=["direct", "delta_from_pose"], default="direct",
-        help=(
-            "How to turn each OpenVLA prediction into a 4-float boieng "
-            "command. The OpenVLA model itself emits a per-step delta in "
-            "the robot frame; the OpenVLA HTTP server (server/openvla.py) "
-            "rotates that delta by the current yaw and adds the current "
-            "proprio, returning an *absolute* target pose in subgoal-"
-            "relative coordinates as response['action']. 'direct' ships "
-            "that absolute pose verbatim (live drone receiver expects an "
-            "absolute target). 'delta_from_pose' subtracts the runner's "
-            "tracked relative pose to recover a per-step delta (sim mock). "
-            "(default: %(default)s)"
-        ),
-    )
-    g_control.add_argument(
-        "--command_is_velocity", action="store_true",
-        help=(
-            "Tells the *receiver* to integrate each wire command as a "
-            "velocity (m/s, rad/s) instead of treating it as an absolute "
-            "pose or per-step delta. Required for the simulated mock_server "
-            "(mock_server.py:66-75 integrates vx/vy/vz/yaw_rate * dt). The "
-            "real drone control server expects absolute poses, so leave "
-            "this off for live flight."
         ),
     )
 
@@ -1863,11 +1846,10 @@ def parse_args() -> argparse.Namespace:
     g_pose.add_argument(
         "--dead-reckoning", action="store_true", default=False,
         help=(
-            "Estimate world pose by integrating sent commands instead of "
-            "using external odometry. Use this when no odometry feed is "
-            "available on the hardware. Drift accumulates; the integration "
-            "method depends on --action_pose_mode and --command_is_velocity "
-            "(see the 'Pose source / wire-format modes' section below)."
+            "Estimate world pose by integrating the velocity commands we "
+            "send to the drone (Euler integration with --command_dt_s). Use "
+            "this when no odometry feed is available; drift accumulates over "
+            "the run."
         ),
     )
 
@@ -1932,22 +1914,6 @@ def main() -> None:
         raise SystemExit(
             "No pose source specified. Use --odom_http_url / --odom_udp_port for "
             "external odometry, or --dead-reckoning for estimated poses."
-        )
-
-    # Reject flag combinations that have no coherent interpretation.
-    if args.action_pose_mode == "direct" and args.command_is_velocity:
-        raise SystemExit(
-            "--action_pose_mode=direct with --command_is_velocity is "
-            "contradictory: direct mode sends absolute target poses, but the "
-            "velocity flag tells the receiver to integrate commands as rates."
-        )
-    if has_dr and args.action_pose_mode == "direct":
-        logger.warning(
-            "--dead-reckoning + --action_pose_mode=direct: DR will track the "
-            "model's predicted target pose each step, which assumes perfect "
-            "tracking. Real tracking error and drift will accumulate. Prefer "
-            "--odom_http_url / --odom_udp_port when an odometry feed is "
-            "available."
         )
 
     llm_model = args.llm_model
@@ -2023,8 +1989,6 @@ def main() -> None:
         print("\033[91mWARNING: Dead-reckoning mode active. Pose will drift over time.\033[0m")
         dr_provider = DeadReckoningPoseProvider(
             initial_world_pose=initial_world_pose,
-            command_is_velocity=args.command_is_velocity,
-            action_pose_mode=args.action_pose_mode,
         )
         pose_manager = PoseManager(odom=None, dr=dr_provider)
 
@@ -2103,7 +2067,6 @@ def main() -> None:
                 max_corrections=args.max_corrections,
                 frame_offset=frame_offset,
                 command_dt_s=args.command_dt_s,
-                action_pose_mode=args.action_pose_mode,
                 trajectory_log=trajectory_log,
                 check_interval_s=check_interval_s,
                 max_seconds=max_seconds,
