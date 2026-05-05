@@ -115,3 +115,18 @@ def test_async_frame_writer_disabled_is_noop(tmp_path: Path) -> None:
     writer.close()
 
     assert list(tmp_path.glob("*.png")) == []
+
+
+def test_async_frame_writer_close_is_idempotent(tmp_path: Path) -> None:
+    """Calling close() twice must not raise and must be a no-op after the first call."""
+    from rvln.eval.async_frame_writer import AsyncFrameWriter
+
+    writer = AsyncFrameWriter(tmp_path, enabled=True)
+    writer.close()
+
+    # Thread and queue should be cleared after the first close.
+    assert writer._thread is None
+    assert writer._q is None
+
+    # Second close must not raise.
+    writer.close()
