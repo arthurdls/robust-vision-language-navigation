@@ -20,13 +20,14 @@ def summarize(path: Path) -> None:
     if not records:
         print(f"No records in {path}")
         return
-    keys = [k for k in records[0].keys() if k.endswith("_ms")]
+    keys = sorted({k for r in records for k in r if k.endswith("_ms")})
     print(f"{path} ({len(records)} steps)")
     print(f"{'phase':<24} {'median':>8} {'p95':>8} {'max':>8}")
     for k in keys:
         vals = [r.get(k, 0.0) for r in records]
+        p95 = statistics.quantiles(vals, n=20)[-1] if len(vals) >= 2 else max(vals)
         print(f"{k:<24} {statistics.median(vals):>8.1f} "
-              f"{statistics.quantiles(vals, n=20)[-1]:>8.1f} "
+              f"{p95:>8.1f} "
               f"{max(vals):>8.1f}")
 
 
