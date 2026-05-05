@@ -68,6 +68,7 @@ from rvln.config import (
     DEFAULT_DIARY_CHECK_INTERVAL,
     DEFAULT_DIARY_CHECK_INTERVAL_S,
     DEFAULT_GLOBAL_GRID_SPACING_S,
+    DEFAULT_LOCAL_GRID_SPACING_S,
     DEFAULT_HARDWARE_DIARY_MODE,
     DEFAULT_LLM_MODEL,
     DEFAULT_MAX_CORRECTIONS,
@@ -1259,6 +1260,7 @@ def run_subgoal(
     trajectory_log: List[Dict[str, Any]],
     check_interval_s: Optional[float] = None,
     global_grid_spacing_s: Optional[float] = None,
+    local_grid_spacing_s: Optional[float] = None,
     max_seconds: Optional[float] = None,
     stall_window: int = DEFAULT_STALL_WINDOW,
     stall_threshold: float = 0.05,
@@ -1318,6 +1320,7 @@ def run_subgoal(
         max_corrections=max_corrections,
         check_interval_s=check_interval_s,
         global_grid_spacing_s=global_grid_spacing_s,
+        local_grid_spacing_s=local_grid_spacing_s,
         stall_window=stall_window,
         stall_threshold=stall_threshold,
         stall_completion_floor=stall_completion_floor,
@@ -2230,6 +2233,18 @@ def parse_args() -> argparse.Namespace:
         ),
     )
     g_monitor.add_argument(
+        "--local_grid_spacing_s", type=float, default=DEFAULT_LOCAL_GRID_SPACING_S,
+        help=(
+            "Spacing (in seconds) between the prev and curr frames in the "
+            "local 'what changed' VLM grid. Without this the time-mode "
+            "local prompt compares two ~100 ms-apart frames (essentially "
+            "identical), which gives the local VLM nothing to talk about. "
+            "None (omit the flag) cascades to --global_grid_spacing_s, "
+            "which itself cascades to --diary_check_interval_s. "
+            "(default: %(default)s)"
+        ),
+    )
+    g_monitor.add_argument(
         "--max_steps_per_subgoal", type=int, default=DEFAULT_MAX_STEPS_PER_SUBGOAL,
         help=(
             "Hard step budget per subgoal; on exhaustion the operator is "
@@ -2614,6 +2629,7 @@ def main() -> None:
                 trajectory_log=trajectory_log,
                 check_interval_s=check_interval_s,
                 global_grid_spacing_s=args.global_grid_spacing_s,
+                local_grid_spacing_s=args.local_grid_spacing_s,
                 max_seconds=max_seconds,
                 stall_window=args.stall_window,
                 stall_threshold=args.stall_threshold,

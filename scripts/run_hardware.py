@@ -111,6 +111,12 @@ CONFIG = {
     # is crossed (consistent past frames across consecutive
     # checkpoints). "" -> inherit diary_check_interval_s.
     "global_grid_spacing_s": "",
+    # Spacing (seconds) between the prev and curr frames in the 2-frame
+    # local "what changed" VLM grid. Without this the local prompt
+    # compared two ~100 ms-apart frames (essentially identical) and the
+    # VLM had nothing to describe. "" cascades to global_grid_spacing_s,
+    # which itself cascades to diary_check_interval_s.
+    "local_grid_spacing_s": "",
     "max_steps_per_subgoal": 500,
     "max_seconds_per_subgoal": 120.0,
     "max_corrections": 20,
