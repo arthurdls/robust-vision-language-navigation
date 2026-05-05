@@ -27,6 +27,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+import numpy as np
+
 from PIL import Image
 
 _SRC = Path(__file__).resolve().parent.parent / "src"
@@ -109,16 +111,21 @@ def run_naive_control_loop(
     from rvln.eval.step_timer import StepTimer
     _step_timer = StepTimer(run_dir / "step_timings.jsonl")
 
+    # Loop-carried frame: first iteration fetches via /get_frame, subsequent
+    # iterations reuse the image returned by /step.
+    image: Optional[np.ndarray] = None
+
     for step in range(max_steps):
         _step_timer.start_step(step)
         try:
-            with _step_timer.phase("get_frame"):
-                image = set_drone_cam_and_get_image(env, cam_id)
             if image is None:
-                logger.warning("No image at step %d, ending run.", step)
-                stop_reason = "no_image"
-                total_steps = step
-                break
+                with _step_timer.phase("get_frame"):
+                    image = set_drone_cam_and_get_image(env, cam_id)
+                if image is None:
+                    logger.warning("No image at step %d, ending run.", step)
+                    stop_reason = "no_image"
+                    total_steps = step
+                    break
 
             frame_path = frames_dir / f"frame_{step:06d}.png"
             with _step_timer.phase("frame_write"):
@@ -169,6 +176,12 @@ def run_naive_control_loop(
                     break
 
             total_steps = step + 1
+
+            if new_image is None:
+                # /step didn't return an image; fall back to /get_frame next iter.
+                image = None
+            else:
+                image = new_image
 
             if last_pose is not None:
                 diffs = [abs(a - b) for a, b in zip(current_pose, last_pose)]

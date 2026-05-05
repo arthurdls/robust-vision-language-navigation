@@ -58,3 +58,29 @@ def test_summarize_mixed_phase_records_no_crash(tmp_path: Path) -> None:
     ]
     jsonl.write_text("\n".join(json.dumps(r) for r in records) + "\n")
     summarize(jsonl)  # must not raise; predict_ms must not be silently dropped
+
+
+def test_apply_action_returns_post_step_image() -> None:
+    """apply_action_poses must return the SimClient.step() image so the
+    main loop can reuse it as next iteration's input frame."""
+    from unittest.mock import MagicMock
+
+    import numpy as np
+
+    from rvln.sim.env_setup import apply_action_poses
+    from rvln.sim.sim_client import SimClient
+
+    fake_image = np.full((224, 224, 3), 42, dtype=np.uint8)
+    client = MagicMock(spec=SimClient)
+    client.step.return_value = (fake_image, [0, 0, 0], [0, 0, 0], 1)
+
+    image, pose, steps = apply_action_poses(
+        client,
+        action_poses=[[0.1, 0.0, 0.0, 0.0]],
+        initial_x=0.0, initial_y=0.0, initial_z=0.0, initial_yaw=0.0,
+        sleep_s=0.0,
+        drone_cam_id=0,
+    )
+
+    assert image is fake_image, "image returned must be the one from /step"
+    assert steps == 1

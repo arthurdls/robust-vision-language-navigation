@@ -14,6 +14,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional
 
+import numpy as np
+
 from PIL import Image
 
 from rvln.config import (
@@ -539,6 +541,10 @@ def run_subgoal(
         total_steps = step
         return "break"
 
+    # Loop-carried frame: first iteration fetches via /get_frame, subsequent
+    # iterations reuse the image returned by /step.
+    image: Optional[np.ndarray] = None
+
     while step < config.max_steps:
         _step_timer.start_step(step)
         try:
@@ -568,12 +574,13 @@ def run_subgoal(
                         })
                         async_force_converge = True
 
-            with _step_timer.phase("get_frame"):
-                image = set_drone_cam_and_get_image(env, cam_id)
             if image is None:
-                logger.warning("No image at step %d, ending subgoal.", step)
-                stop_reason = "no_image"
-                break
+                with _step_timer.phase("get_frame"):
+                    image = set_drone_cam_and_get_image(env, cam_id)
+                if image is None:
+                    logger.warning("No image at step %d, ending subgoal.", step)
+                    stop_reason = "no_image"
+                    break
 
             global_frame_idx = frame_offset + step
             frame_path = frames_dir / f"frame_{global_frame_idx:06d}.png"
@@ -668,6 +675,12 @@ def run_subgoal(
                     break
 
             total_steps = step + 1
+
+            if new_image is None:
+                # /step didn't return an image; fall back to /get_frame next iter.
+                image = None
+            else:
+                image = new_image
 
             # --- Convergence detection ---
             # Note: checkpoints (monitor.on_frame above) still fire during
