@@ -28,6 +28,7 @@ Usage (from repo root):
 Controls:
   n / Space / Right  next camera
   p / Left           previous camera
+  Enter              print the --camera flag for run_hardware.py
   0-9                jump to that probed slot
   r                  re-probe (rescan everything)
   s                  save a snapshot to /tmp/cam_<label>_<ts>.png
@@ -57,6 +58,10 @@ class Source:
     label: str  # human-readable, e.g. "v4l2:/dev/video0" or "csi:sensor-id=0"
     kind: str   # "v4l2" | "csi" | "pipeline"
     open_fn: Callable[[], "cv2.VideoCapture"]
+    # The cv2 integer index that maps to this source, when it exists. Only
+    # set for V4L2 sources, since run_hardware.py's --camera flag is typed
+    # as int and goes straight into cv2.VideoCapture(N).
+    index: Optional[int] = None
 
 
 # ---------------------------------------------------------------------------
@@ -92,7 +97,7 @@ def _build_v4l2_sources(max_index: int) -> List[Source]:
             # Hint cv2 to use the V4L2 backend directly; otherwise it may
             # try gstreamer / ffmpeg first and fail silently on some builds.
             return cv2.VideoCapture(i, cv2.CAP_V4L2)
-        sources.append(Source(label=label, kind="v4l2", open_fn=opener))
+        sources.append(Source(label=label, kind="v4l2", open_fn=opener, index=idx))
     return sources
 
 
@@ -230,7 +235,7 @@ def overlay_status(
         f"slot {slot + 1}/{total}  {source.label}  "
         f"{resolution[0]}x{resolution[1]}  {fps:.1f} fps"
     )
-    line2 = "n/Space=next  p=prev  0-9=jump  r=rescan  s=snapshot  q/Esc=quit"
+    line2 = "n=next  p=prev  Enter=print flag  0-9=jump  r=rescan  s=snap  q=quit"
     cv2.putText(
         frame, line1, (12, 24),
         cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2, cv2.LINE_AA,
@@ -254,6 +259,39 @@ def fit_to_window(frame: np.ndarray, target: int) -> np.ndarray:
 def label_slug(label: str) -> str:
     safe = "".join(c if c.isalnum() else "_" for c in label)
     return safe.strip("_")[:64] or "cam"
+
+
+def report_run_hardware_flag(source: Source) -> None:
+    """Print what to pass to run_hardware.py to use this source.
+
+    ``run_hardware.py``'s ``--camera`` flag is typed as ``int`` and is fed
+    directly into ``cv2.VideoCapture``. Only V4L2 sources map cleanly. CSI
+    and arbitrary GStreamer pipelines aren't accepted by ``--camera`` today,
+    so we print explicit guidance instead of pretending otherwise.
+    """
+    print()
+    print("=" * 60)
+    print(f"Selected source: {source.label}")
+    if source.kind == "v4l2" and source.index is not None:
+        print(f"  Use:  python scripts/run_hardware.py --camera {source.index}")
+    elif source.kind == "csi":
+        print(
+            "  This is a CSI / Argus camera (nvarguscamerasrc). "
+            "run_hardware.py's --camera flag is an integer cv2 index and "
+            "does not accept a GStreamer pipeline. Either expose the "
+            "camera as a V4L2 node first (e.g. nvv4l2camerasrc -> "
+            "v4l2loopback) and use that index, or run a small HTTP "
+            "frame server fed by this pipeline and pass --camera_url."
+        )
+    else:
+        print(
+            "  This source is a custom GStreamer pipeline. run_hardware.py's "
+            "--camera flag only takes an integer cv2 device index. Run a "
+            "frame server that consumes this pipeline and pass "
+            "--camera_url instead."
+        )
+    print("=" * 60)
+    sys.stdout.flush()
 
 
 # ---------------------------------------------------------------------------
@@ -396,6 +434,9 @@ def main() -> None:
 
             if key in (ord("q"), 27):  # Esc
                 break
+            if key in (10, 13):  # Enter / Return
+                report_run_hardware_flag(sources[slot])
+                continue
             if key in (ord("n"), ord(" "), 83):  # Right arrow
                 slot = (slot + 1) % len(sources)
                 cap.release()
