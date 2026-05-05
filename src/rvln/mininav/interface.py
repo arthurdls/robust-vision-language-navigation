@@ -9,9 +9,9 @@ Pipeline:
 4) OpenVLA /predict + /reset calls.
 5) Real command streaming to drone server using boieng wire format:
    [frame_count, vx, vy, vz, yaw] as float32 over TCP.
-6) Pose source:
-   - Primary: external odometry feed (HTTP poll or UDP stream)
-   - Fallback: dead-reckoning from sent commands.
+6) Pose source (exactly one, no silent fallback):
+   - External odometry feed (HTTP poll or UDP stream), or
+   - Dead-reckoning from sent commands (--dead-reckoning).
 
 Operator help: when the monitor detects a stall (completion plateau),
 exhausts its correction budget, or hits the step/time limit, the drone
@@ -594,14 +594,13 @@ class DeadReckoningPoseProvider:
       yaw_rate). Integrate ``pose += v * dt``. Used by the simulated mock.
     - ``delta_from_pose`` + not velocity: command is a per-step pose delta
       in subgoal-relative frame. Adding it to ``world_pose`` yields the
-      target world pose (see math comment in ``update_from_command``).
-    - ``direct``: command is the *absolute* target relative pose (the raw
-      OpenVLA prediction). Without the subgoal origin the DR provider can't
-      reconstruct world coords from it, so we leave ``world_pose`` alone.
-      ``PoseManager`` continuously syncs DR via ``set_world_pose`` whenever
-      odometry is healthy; on failover the DR pose stays frozen at the last
-      good odom value (a safe-but-stale snapshot rather than divergent
-      garbage).
+      target world pose.
+    - ``direct``: command is the *absolute* target relative pose (in the
+      subgoal-relative frame). DR snaps to ``subgoal_origin + command`` -
+      i.e. it trusts that the drone tracks the model's prediction. This
+      is imperfect (real tracking has lag/drift) but usable when no
+      external odometry feed is available. ``set_subgoal_origin`` must be
+      called by the runner at each subgoal start.
     """
 
     def __init__(
@@ -611,26 +610,30 @@ class DeadReckoningPoseProvider:
         action_pose_mode: str = "delta_from_pose",
     ):
         self.world_pose = list(initial_world_pose)
+        self.subgoal_origin = list(initial_world_pose)
         self.command_is_velocity = command_is_velocity
         self.action_pose_mode = action_pose_mode
-        self._direct_mode_warned = False
 
     def set_world_pose(self, pose: List[float]) -> None:
         self.world_pose = [float(p) for p in pose]
 
+    def set_subgoal_origin(self, origin: List[float]) -> None:
+        self.subgoal_origin = [float(p) for p in origin]
+
     def update_from_command(self, command: np.ndarray, dt_s: float) -> None:
         if self.action_pose_mode == "direct":
-            # Wire command is an absolute target in subgoal-relative frame; we
-            # don't have the subgoal origin here, so we cannot compute a world
-            # pose from it. Skip integration; rely on odometry sync (or accept
-            # a frozen last-known-pose fallback if odom dies).
-            if not self._direct_mode_warned:
-                logger.info(
-                    "Dead-reckoning is a frozen-snapshot fallback in "
-                    "action_pose_mode=direct; pose only advances while "
-                    "odometry is healthy."
-                )
-                self._direct_mode_warned = True
+            # Wire command is the absolute target in subgoal-relative frame:
+            # x,y,z in metres, yaw in radians. Predict that the drone reaches
+            # this target by snapping world_pose to (subgoal_origin + cmd).
+            # No body-frame rotation: relative_pose() in this codebase is a
+            # pure translation, so the inverse is too.
+            cx, cy, cz, cyaw_rad = (float(command[i]) for i in range(4))
+            self.world_pose[0] = self.subgoal_origin[0] + cx
+            self.world_pose[1] = self.subgoal_origin[1] + cy
+            self.world_pose[2] = self.subgoal_origin[2] + cz
+            self.world_pose[3] = normalize_angle(
+                self.subgoal_origin[3] + math.degrees(cyaw_rad)
+            )
             return
 
         vx, vy, vz, yaw = (
@@ -688,6 +691,10 @@ class PoseManager:
     def update_from_command(self, command: np.ndarray, dt_s: float) -> None:
         if self.dr is not None:
             self.dr.update_from_command(command, dt_s)
+
+    def set_subgoal_origin(self, origin: List[float]) -> None:
+        if self.dr is not None:
+            self.dr.set_subgoal_origin(origin)
 
     def close(self) -> None:
         if self.odom is not None:
@@ -973,6 +980,9 @@ def run_subgoal(
     openvla.reset_model()
 
     origin_world = pose_manager.get_world_pose()
+    # In direct mode, DR uses the subgoal origin to convert absolute target
+    # poses into world coords. Refresh it at every subgoal start.
+    pose_manager.set_subgoal_origin(origin_world)
     openvla_pose_origin = [0.0, 0.0, 0.0, 0.0]
     last_pose = None
     small_count = 0
@@ -1496,20 +1506,26 @@ def parse_args() -> argparse.Namespace:
         "  python scripts/run_hardware.py ... --record --record_fps 5\n"
         "\n"
         "Pose source / wire-format modes:\n"
-        "  Live drone (default):\n"
-        "    --odom_http_url <url>     # external odometry is the only pose source\n"
-        "    --action_pose_mode direct # ship absolute target poses verbatim\n"
+        "  Live drone with odometry (preferred):\n"
+        "    --odom_http_url <url>      # external odometry is the only pose source\n"
+        "    --action_pose_mode direct  # ship absolute target poses verbatim\n"
         "    (no --command_is_velocity, no --dead-reckoning)\n"
-        "  Sim mock:\n"
+        "  Live drone without odometry (DR fallback):\n"
+        "    --dead-reckoning --action_pose_mode direct\n"
+        "    DR snaps to the model's predicted target each step (assumes\n"
+        "    perfect tracking; tracking error and drift accumulate).\n"
+        "  Sim mock (mock_server.py):\n"
         "    --action_pose_mode delta_from_pose --command_is_velocity\n"
-        "  Pure dead-reckoning (no external pose feed):\n"
+        "    The mock integrates incoming commands as velocities.\n"
+        "  Sim/test with DR-style integration of per-step deltas:\n"
         "    --dead-reckoning --action_pose_mode delta_from_pose\n"
-        "    (--command_is_velocity if the receiver integrates as velocity)\n"
+        "    Add --command_is_velocity if the receiver integrates as velocity.\n"
         "\n"
         "Failure semantics: there is no silent fallback. A stale odometry\n"
         "sample, an unreachable control host, an LLM/VLM failure, or a\n"
         "missing OpenVLA /reset endpoint surfaces as an error, not a\n"
-        "transparent retry to a different code path.\n"
+        "transparent retry to a different code path. Dead-reckoning is a\n"
+        "deliberate choice via --dead-reckoning, not a hidden fallback.\n"
         "\n"
         "Outputs (under --results_dir/run_<YYYY_MM_DD_HH_MM_SS_us>/):\n"
         "  trajectory_log.json  per-step state vector\n"
@@ -1785,8 +1801,10 @@ def parse_args() -> argparse.Namespace:
         "--dead-reckoning", action="store_true", default=False,
         help=(
             "Estimate world pose by integrating sent commands instead of "
-            "using external odometry. Drift accumulates; pair with "
-            "--command_is_velocity for sane integration."
+            "using external odometry. Use this when no odometry feed is "
+            "available on the hardware. Drift accumulates; the integration "
+            "method depends on --action_pose_mode and --command_is_velocity "
+            "(see the 'Pose source / wire-format modes' section below)."
         ),
     )
 
@@ -1844,19 +1862,19 @@ def main() -> None:
         )
 
     # Reject flag combinations that have no coherent interpretation.
-    if has_dr and args.action_pose_mode == "direct":
-        raise SystemExit(
-            "--dead-reckoning is incompatible with --action_pose_mode=direct: "
-            "the wire command in direct mode is an absolute target pose, which "
-            "DR cannot integrate without the subgoal origin. Use "
-            "--action_pose_mode=delta_from_pose (with --command_is_velocity for "
-            "a velocity-driven receiver) when running without external odometry."
-        )
     if args.action_pose_mode == "direct" and args.command_is_velocity:
         raise SystemExit(
             "--action_pose_mode=direct with --command_is_velocity is "
             "contradictory: direct mode sends absolute target poses, but the "
             "velocity flag tells the receiver to integrate commands as rates."
+        )
+    if has_dr and args.action_pose_mode == "direct":
+        logger.warning(
+            "--dead-reckoning + --action_pose_mode=direct: DR will track the "
+            "model's predicted target pose each step, which assumes perfect "
+            "tracking. Real tracking error and drift will accumulate. Prefer "
+            "--odom_http_url / --odom_udp_port when an odometry feed is "
+            "available."
         )
 
     llm_model = args.llm_model
