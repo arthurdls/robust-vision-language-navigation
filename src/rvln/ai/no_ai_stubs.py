@@ -272,6 +272,13 @@ class ManualGoalAdherenceMonitor:
     def max_corrections(self) -> int:
         return self._max_corrections
 
+    def reset_grace_state(self) -> None:
+        """Mirror of GoalAdherenceMonitor.reset_grace_state. The stub has
+        no async checkpoint history but does track _corrections_used, so
+        we reset that. interface.py calls this when the operator picks
+        'continue' so the next prompt does not re-fire instantly."""
+        self._corrections_used = 0
+
     @property
     def corrections_exhausted(self) -> bool:
         return self._corrections_used >= self._max_corrections

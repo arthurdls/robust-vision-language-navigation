@@ -893,10 +893,22 @@ def _convergence_loop(
     frame_path,
     subgoal_rel_pose: List[float],
 ) -> Optional[Dict[str, Any]]:
-    """Send zero-velocity commands while waiting for convergence VLM result."""
+    """Send a single zero-velocity command, then wait quietly for the
+    convergence VLM result.
+
+    Earlier this sent zero_cmd every command_dt_s for the entire poll
+    duration. The drone receiver holds the last commanded velocity, so a
+    single zero is enough to bring it to a hover; spamming repeats just
+    floods the wire with redundant traffic and makes the trajectory_log
+    harder to read. We send one zero up front, integrate it once into the
+    pose estimate so dead-reckoning stays consistent, and poll the
+    monitor at command_dt_s without sending anything else.
+    """
     monitor.request_convergence(frame_path, list(subgoal_rel_pose))
     zero_cmd = np.array([0.0, 0.0, 0.0, 0.0], dtype=np.float32)
     global_frame_idx = frame_offset + step
+    control.send_command(global_frame_idx, zero_cmd)
+    pose_manager.update_from_command(zero_cmd, command_dt_s)
 
     while not stop_capture:
         result = monitor.poll_result()
@@ -920,8 +932,6 @@ def _convergence_loop(
                 "completion_pct": result.completion_pct,
                 "ask_help_header": getattr(result, "ask_help_header", "") or "",
             }
-        control.send_command(global_frame_idx, zero_cmd)
-        pose_manager.update_from_command(zero_cmd, command_dt_s)
         time.sleep(command_dt_s)
 
     return None
@@ -976,10 +986,16 @@ def _ask_operator_for_help(
     print("[1] New low-level instruction (e.g. 'move forward 1m')")
     print("[2] Override current subgoal")
     print("[3] Replan from new high-level instruction")
-    print("[4] Skip (continue/end subgoal)")
+    print("[4] End subgoal (skip remaining, advance the planner)")
     print("[5] Abort mission")
+    print("[6] Continue with current low-level instruction (default; press Enter)")
     while True:
-        choice = _interruptible_input("Choice [1/2/3/4/5]: ").strip()
+        # Empty input == press Enter == default to continue, the safest
+        # option when the operator wants to glance at the prompt and let
+        # the run keep going.
+        choice = _interruptible_input("Choice [1/2/3/4/5/6, default=6]: ").strip()
+        if not choice:
+            choice = "6"
         if choice == "1":
             instr = _interruptible_input("Instruction: ").strip()
             if not instr:
@@ -1002,8 +1018,10 @@ def _ask_operator_for_help(
             return ("skip", "")
         elif choice == "5":
             return ("abort", "")
+        elif choice == "6":
+            return ("continue", "")
         else:
-            print("Invalid choice, please enter 1, 2, 3, 4, or 5.")
+            print("Invalid choice, please enter 1, 2, 3, 4, 5, or 6.")
 
 
 @dataclass
@@ -1077,6 +1095,20 @@ def _handle_ask_help(
             stop_reason=None, replan_instruction="",
             new_instruction=value, new_subgoal=None, reasoning=reasoning,
         )
+    elif choice == "continue":
+        logger.info(
+            "Operator dismissed help prompt at step %d; continuing with "
+            "current instruction '%s'.", step, current_instruction,
+        )
+        # No state change. The caller distinguishes this from "instruction"
+        # by stop_reason=None AND new_instruction=None: keep current
+        # instruction, do not reset openvla, but do clear stall/correction
+        # grace state on the monitor so the prompt does not re-fire on the
+        # very next checkpoint or convergence.
+        return OperatorHelpResult(
+            stop_reason=None, replan_instruction="",
+            new_instruction=None, new_subgoal=None, reasoning=reasoning,
+        )
     else:
         logger.info("Operator skipped at step %d.", step)
         # Map the human-readable header to a canonical machine-readable
@@ -1099,6 +1131,54 @@ def _handle_ask_help(
             replan_instruction="", new_instruction=None,
             new_subgoal=None, reasoning=reasoning,
         )
+
+
+def _apply_help_result_post(
+    help_result: OperatorHelpResult,
+    *,
+    override_history: List[Dict[str, Any]],
+    step: int,
+    current_instruction: str,
+    openvla,
+    monitor,
+) -> str:
+    """Update post-prompt state for a non-stop help_result. Returns the new
+    current_instruction.
+
+    Two flavors:
+    - help_result.new_instruction is None  -> operator chose "continue":
+      log an "operator_continue" event, leave current_instruction alone,
+      DO NOT reset openvla, and call monitor.reset_grace_state() so the
+      next checkpoint / convergence does not immediately re-fire ask_help.
+    - help_result.new_instruction is set    -> operator gave a new
+      low-level instruction: log an "operator_help" event, swap in the
+      new instruction, and reset openvla so its proprio history starts
+      fresh.
+
+    Per-loop pose / correction-cooldown state (openvla_pose_origin,
+    small_count, last_pose, last_correction_time, last_correction_step,
+    subgoal_start_time) is intentionally NOT touched here -- different
+    call sites update different subsets of those, so the caller does it.
+    """
+    if help_result.new_instruction is None:
+        override_history.append({
+            "step": step,
+            "type": "operator_continue",
+            "old_instruction": current_instruction,
+            "new_instruction": current_instruction,
+            "reasoning": help_result.reasoning,
+        })
+        monitor.reset_grace_state()
+        return current_instruction
+    override_history.append({
+        "step": step,
+        "type": "operator_help",
+        "old_instruction": current_instruction,
+        "new_instruction": help_result.new_instruction,
+        "reasoning": help_result.reasoning,
+    })
+    openvla.reset_model()
+    return help_result.new_instruction
 
 
 def run_subgoal(
@@ -1230,14 +1310,14 @@ def run_subgoal(
                         new_subgoal_override = help_result.new_subgoal or ""
                         total_steps = step
                         break
-                    override_history.append({
-                        "step": step,
-                        "type": "operator_help",
-                        "old_instruction": current_instruction,
-                        "new_instruction": help_result.new_instruction,
-                        "reasoning": help_result.reasoning,
-                    })
-                    current_instruction = help_result.new_instruction
+                    current_instruction = _apply_help_result_post(
+                        help_result,
+                        override_history=override_history,
+                        step=step,
+                        current_instruction=current_instruction,
+                        openvla=openvla,
+                        monitor=monitor,
+                    )
                     openvla_pose_origin = list(subgoal_rel_pose)
                     small_count = 0
                     last_pose = None
@@ -1245,7 +1325,6 @@ def run_subgoal(
                         last_correction_time = time.time()
                     last_correction_step = step
                     subgoal_start_time = time.time()
-                    openvla.reset_model()
                     continue
 
                 # 2. Async mode: poll for pending monitor results
@@ -1291,20 +1370,19 @@ def run_subgoal(
                                     new_subgoal_override = help_result.new_subgoal or ""
                                     total_steps = step
                                     break
-                                override_history.append({
-                                    "step": step,
-                                    "type": "operator_help",
-                                    "old_instruction": current_instruction,
-                                    "new_instruction": help_result.new_instruction,
-                                    "reasoning": help_result.reasoning,
-                                })
-                                current_instruction = help_result.new_instruction
+                                current_instruction = _apply_help_result_post(
+                                    help_result,
+                                    override_history=override_history,
+                                    step=step,
+                                    current_instruction=current_instruction,
+                                    openvla=openvla,
+                                    monitor=monitor,
+                                )
                                 openvla_pose_origin = list(subgoal_rel_pose)
                                 small_count = 0
                                 last_pose = None
                                 last_correction_time = time.time()
                                 last_correction_step = step
-                                openvla.reset_model()
                             elif conv_dict.get("new_instruction"):
                                 override_history.append({
                                     "step": step,
@@ -1336,20 +1414,19 @@ def run_subgoal(
                                 new_subgoal_override = help_result.new_subgoal or ""
                                 total_steps = step
                                 break
-                            override_history.append({
-                                "step": step,
-                                "type": "operator_help",
-                                "old_instruction": current_instruction,
-                                "new_instruction": help_result.new_instruction,
-                                "reasoning": help_result.reasoning,
-                            })
-                            current_instruction = help_result.new_instruction
+                            current_instruction = _apply_help_result_post(
+                                help_result,
+                                override_history=override_history,
+                                step=step,
+                                current_instruction=current_instruction,
+                                openvla=openvla,
+                                monitor=monitor,
+                            )
                             openvla_pose_origin = list(subgoal_rel_pose)
                             small_count = 0
                             last_pose = None
                             last_correction_time = time.time()
                             last_correction_step = step
-                            openvla.reset_model()
 
                 # 3. Grab frame, compute pose
                 ok, frame = camera.read()
@@ -1401,14 +1478,14 @@ def run_subgoal(
                             new_subgoal_override = help_result.new_subgoal or ""
                             total_steps = step
                             break
-                        override_history.append({
-                            "step": step,
-                            "type": "operator_help",
-                            "old_instruction": current_instruction,
-                            "new_instruction": help_result.new_instruction,
-                            "reasoning": help_result.reasoning,
-                        })
-                        current_instruction = help_result.new_instruction
+                        current_instruction = _apply_help_result_post(
+                            help_result,
+                            override_history=override_history,
+                            step=step,
+                            current_instruction=current_instruction,
+                            openvla=openvla,
+                            monitor=monitor,
+                        )
                         openvla_pose_origin = list(subgoal_rel_pose)
                         small_count = 0
                         last_pose = None
@@ -1565,20 +1642,19 @@ def run_subgoal(
                                 new_subgoal_override = help_result.new_subgoal or ""
                                 total_steps = step
                                 break
-                            override_history.append({
-                                "step": step,
-                                "type": "operator_help",
-                                "old_instruction": current_instruction,
-                                "new_instruction": help_result.new_instruction,
-                                "reasoning": help_result.reasoning,
-                            })
-                            current_instruction = help_result.new_instruction
+                            current_instruction = _apply_help_result_post(
+                                help_result,
+                                override_history=override_history,
+                                step=step,
+                                current_instruction=current_instruction,
+                                openvla=openvla,
+                                monitor=monitor,
+                            )
                             openvla_pose_origin = list(subgoal_rel_pose)
                             small_count = 0
                             last_pose = None
                             last_correction_time = time.time()
                             last_correction_step = step
-                            openvla.reset_model()
                         elif conv_dict.get("new_instruction"):
                             override_history.append({
                                 "step": step,
@@ -1655,19 +1731,18 @@ def run_subgoal(
                                 new_subgoal_override = help_result.new_subgoal or ""
                                 total_steps = step
                                 break
-                            override_history.append({
-                                "step": step,
-                                "type": "operator_help",
-                                "old_instruction": current_instruction,
-                                "new_instruction": help_result.new_instruction,
-                                "reasoning": help_result.reasoning,
-                            })
-                            current_instruction = help_result.new_instruction
+                            current_instruction = _apply_help_result_post(
+                                help_result,
+                                override_history=override_history,
+                                step=step,
+                                current_instruction=current_instruction,
+                                openvla=openvla,
+                                monitor=monitor,
+                            )
                             openvla_pose_origin = list(subgoal_rel_pose)
                             small_count = 0
                             last_pose = None
                             last_correction_step = step
-                            openvla.reset_model()
                         elif conv_result.new_instruction:
                             override_history.append({
                                 "step": step,
@@ -1698,14 +1773,14 @@ def run_subgoal(
                     new_subgoal_override = help_result.new_subgoal or ""
                     total_steps = step + 1
                     break
-                override_history.append({
-                    "step": step,
-                    "type": "operator_help",
-                    "old_instruction": current_instruction,
-                    "new_instruction": help_result.new_instruction,
-                    "reasoning": help_result.reasoning,
-                })
-                current_instruction = help_result.new_instruction
+                current_instruction = _apply_help_result_post(
+                    help_result,
+                    override_history=override_history,
+                    step=step,
+                    current_instruction=current_instruction,
+                    openvla=openvla,
+                    monitor=monitor,
+                )
                 openvla_pose_origin = list(subgoal_rel_pose)
                 small_count = 0
                 last_pose = None
@@ -1713,7 +1788,6 @@ def run_subgoal(
                     last_correction_time = time.time()
                 last_correction_step = step
                 step_base = step + 1
-                openvla.reset_model()
                 continue
             break
     finally:
@@ -2461,6 +2535,18 @@ def main() -> None:
             # the moov atom is written even if the rest of teardown fails.
             video_recorder.close()
             pose_manager.close()
+            # Safety: send one final zero-velocity command before closing
+            # the wire. A SIGINT / SIGTERM / exception can leave the drone
+            # mid-action with the last commanded velocity held by the
+            # receiver; this guarantees a graceful hover on the way out.
+            # Wrapped in try/except because the control socket may already
+            # be in a bad state (that's why we're tearing down).
+            try:
+                control.send_command(
+                    0, np.array([0.0, 0.0, 0.0, 0.0], dtype=np.float32),
+                )
+            except Exception as exc:
+                logger.warning("Final zero-command send failed (%s).", exc)
             control.close()
             camera.release()
             cv2.destroyAllWindows()
