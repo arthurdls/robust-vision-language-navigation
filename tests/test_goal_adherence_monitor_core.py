@@ -276,8 +276,11 @@ class TestOnConvergence:
     @patch("rvln.ai.goal_adherence_monitor.query_vlm")
     @patch("rvln.ai.goal_adherence_monitor.build_frame_grid")
     @patch("rvln.ai.goal_adherence_monitor.sample_frames_every_n")
-    def test_diagnosis_complete_returns_stop(self, mock_sample, mock_grid, mock_vlm):
-        """Even if 'complete' is false, diagnosis='complete' should stop."""
+    def test_diagnosis_complete_with_no_corrective_stops(self, mock_sample, mock_grid, mock_vlm):
+        """complete=False with diagnosis='complete' and no corrective should
+        still terminate the subgoal (after a retry that also yields no
+        corrective). This is convergence_no_corrective territory: the VLM gave
+        contradictory output, but with nothing to act on we have to stop."""
         m = self._setup_monitor()
         mock_sample.return_value = m._frame_paths[-4:]
         mock_grid.return_value = MagicMock()
@@ -290,6 +293,33 @@ class TestOnConvergence:
 
         result = m.on_convergence(Path("/tmp/f3.png"))
         assert result.action == "stop"
+
+    @patch("rvln.ai.goal_adherence_monitor.query_vlm")
+    @patch("rvln.ai.goal_adherence_monitor.build_frame_grid")
+    @patch("rvln.ai.goal_adherence_monitor.sample_frames_every_n")
+    def test_diagnosis_complete_with_corrective_applies_corrective(
+        self, mock_sample, mock_grid, mock_vlm,
+    ):
+        """Regression: the VLM can return contradictory output where
+        complete=False but diagnosis='complete' alongside a real
+        corrective_instruction. The corrective MUST be applied; previously the
+        diagnosis short-circuited convergence into a premature stop and the
+        operator would see 'task finished' even though a corrective had been
+        proposed."""
+        m = self._setup_monitor()
+        mock_sample.return_value = m._frame_paths[-4:]
+        mock_grid.return_value = MagicMock()
+        mock_vlm.return_value = json.dumps({
+            "complete": False,
+            "completion_percentage": 0.85,
+            "diagnosis": "complete",
+            "corrective_instruction": "turn left 15 degrees toward the tree",
+        })
+
+        result = m.on_convergence(Path("/tmp/f3.png"))
+        assert result.action == "command"
+        assert "tree" in result.new_instruction
+        assert m._corrections_used == 1
 
 
 # -------------------------------------------------------------------------

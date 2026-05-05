@@ -793,6 +793,18 @@ def _convergence_loop(
     while not stop_capture:
         result = monitor.poll_result()
         if result is not None:
+            extra = (
+                f"new_instruction: {result.new_instruction}"
+                if result.new_instruction
+                else ""
+            )
+            _print_monitor_event(
+                "CONVERGENCE",
+                result.action,
+                result.reasoning,
+                result.completion_pct,
+                extra,
+            )
             return {
                 "action": result.action,
                 "new_instruction": result.new_instruction,
@@ -804,6 +816,28 @@ def _convergence_loop(
         time.sleep(command_dt_s)
 
     return None
+
+
+def _print_monitor_event(
+    label: str,
+    action: str,
+    reasoning: str,
+    completion_pct: float,
+    extra: str = "",
+) -> None:
+    """Print a monitor event to stdout so the operator sees what each VLM
+    decided and why. Includes the global checkpoint reasoning (which is also
+    forwarded into the convergence prompt) and the convergence VLM's own
+    reasoning, so an operator can correlate the two end to end."""
+    print(f"\n[{label}] action={action} completion={completion_pct:.0%}")
+    if extra:
+        print(f"  {extra}")
+    if reasoning:
+        # Truncate long reasoning blobs (raw VLM JSON can be hundreds of chars
+        # and obscures the terminal); 600 chars is enough for the diagnosis
+        # plus a glimpse of the raw response.
+        snippet = reasoning if len(reasoning) <= 600 else reasoning[:597] + "..."
+        print(f"  Reasoning: {snippet}")
 
 
 def _ask_operator_for_help(
@@ -1103,6 +1137,12 @@ def run_subgoal(
                 if use_async:
                     async_result = monitor.poll_result()
                     if async_result is not None:
+                        _print_monitor_event(
+                            "GLOBAL",
+                            async_result.action,
+                            async_result.reasoning,
+                            async_result.completion_pct,
+                        )
                         if async_result.action == "stop":
                             stop_reason = "monitor_complete"
                             total_steps = step
@@ -1210,6 +1250,14 @@ def run_subgoal(
 
                 # 4. Call monitor.on_frame
                 result = monitor.on_frame(frame_path, displacement=list(subgoal_rel_pose))
+
+                if not use_async and result.action != "continue":
+                    _print_monitor_event(
+                        "GLOBAL",
+                        result.action,
+                        result.reasoning,
+                        result.completion_pct,
+                    )
 
                 if not use_async:
                     # Sync mode: on_frame may return "stop" or "force_converge"
@@ -1425,6 +1473,18 @@ def run_subgoal(
                     if converged:
                         conv_result = monitor.on_convergence(
                             frame_path, displacement=list(subgoal_rel_pose)
+                        )
+                        extra = (
+                            f"new_instruction: {conv_result.new_instruction}"
+                            if conv_result.new_instruction
+                            else ""
+                        )
+                        _print_monitor_event(
+                            "CONVERGENCE",
+                            conv_result.action,
+                            conv_result.reasoning,
+                            conv_result.completion_pct,
+                            extra,
                         )
 
                         if conv_result.action == "stop":
