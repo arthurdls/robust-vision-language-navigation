@@ -2000,6 +2000,14 @@ def parse_args() -> argparse.Namespace:
         help="Python logging verbosity. (default: %(default)s)",
     )
     g_misc.add_argument(
+        "-v", "--verbose", action="store_true",
+        help=(
+            "Shorthand for --log_level DEBUG. Useful for diagnosing monitor "
+            "races, VLM responses, and OpenVLA round-trips. Wins if both "
+            "this and --log_level are passed."
+        ),
+    )
+    g_misc.add_argument(
         "--no-ai", dest="no_ai", action="store_true",
         help=(
             "Run without OpenAI. The LTL planner, subgoal converter, and "
@@ -2016,8 +2024,9 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     global stop_capture
     args = parse_args()
+    log_level = "DEBUG" if getattr(args, "verbose", False) else args.log_level
     logging.basicConfig(
-        level=getattr(logging, args.log_level),
+        level=getattr(logging, log_level),
         format="[%(levelname)s] %(asctime)s - %(name)s - %(message)s",
     )
 

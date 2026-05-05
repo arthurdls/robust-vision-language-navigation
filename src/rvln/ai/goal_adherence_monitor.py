@@ -220,6 +220,12 @@ class GoalAdherenceMonitor:
         self._stop_event = threading.Event()
         self._pending_result: Optional[DiaryCheckResult] = None
         self._convergence_request: Optional[Tuple[Path, List[float]]] = None
+        # True from request_convergence() until the matching convergence
+        # result is committed. While set, any in-flight checkpoint that
+        # finishes later must NOT overwrite _pending_result -- otherwise
+        # _convergence_loop's poll picks up a stale checkpoint result and
+        # the run incorrectly stops with convergence_no_command.
+        self._awaiting_convergence: bool = False
         self._last_checkpoint_time: float = time.time()
         self._monitor_thread: Optional[threading.Thread] = None
 
@@ -286,9 +292,19 @@ class GoalAdherenceMonitor:
     def request_convergence(
         self, frame_path: Union[Path, str], displacement: List[float],
     ) -> None:
-        """Queue a convergence check for the background thread."""
+        """Queue a convergence check for the background thread.
+
+        Also discards any pending checkpoint result. Without this,
+        _convergence_loop's tight poll could pick up a stale checkpoint
+        force_converge that landed between the caller's last poll and now,
+        and treat it as the convergence verdict; downstream that surfaces
+        as 'convergence_no_command' (force_converge has empty
+        new_instruction) and the subgoal incorrectly terminates.
+        """
         with self._lock:
             self._convergence_request = (Path(frame_path), list(displacement))
+            self._pending_result = None
+            self._awaiting_convergence = True
 
     def on_frame(
         self,
@@ -1325,6 +1341,7 @@ class GoalAdherenceMonitor:
                     )
                 with self._lock:
                     self._pending_result = result
+                    self._awaiting_convergence = False
                 continue
 
             # Check if checkpoint interval has elapsed
@@ -1342,7 +1359,12 @@ class GoalAdherenceMonitor:
                         completion_pct=self._last_completion_pct,
                     )
                 with self._lock:
-                    self._pending_result = result
+                    # If a convergence was requested while this checkpoint
+                    # was in flight, drop the result -- the operator-visible
+                    # next event must be the convergence verdict, not a
+                    # stale force_converge.
+                    if not self._awaiting_convergence:
+                        self._pending_result = result
                 self._last_checkpoint_time = now
 
     def _parse_global_response(

@@ -88,6 +88,8 @@ CONFIG = {
     # ---- Misc -----------------------------------------------------------
     "extra_env_file": None,
     "log_level": "INFO",
+    # Shortcut: True == --log_level DEBUG. Same effect as passing -v on the CLI.
+    "verbose": False,
 }
 
 # argparse uses dashes for these flags but Python identifiers can't have
