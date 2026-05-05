@@ -243,8 +243,8 @@ def run_integrated_control_loop(
                 f"[REPLAN #{replan_count}] " if replan_count > 0 else "",
                 instruction,
             )
-            llm_interface = LLMUserInterface(model=llm_model)
-            planner = LTLSymbolicPlanner(llm_interface)
+            llm_interface = LLMUserInterface(model=llm_model, use_constraints=False)
+            planner = LTLSymbolicPlanner(llm_interface, use_constraints=False)
             planner.plan_from_natural_language(instruction)
 
             ltl_plan = {
@@ -271,12 +271,7 @@ def run_integrated_control_loop(
                 safe_name = sanitize_run_label(current_subgoal, fallback="subgoal")
                 subgoal_dir = run_dir / f"subgoal_{subgoal_index:02d}_{safe_name}"
 
-                active_constraints = planner.get_active_constraints()
-                if active_constraints:
-                    logger.info(
-                        "Active constraints for subgoal %d: %s",
-                        subgoal_index, active_constraints,
-                    )
+                active_constraints: List[Any] = []
 
                 logger.info(
                     "--- Subgoal %d: '%s' ---", subgoal_index, current_subgoal,
@@ -285,7 +280,7 @@ def run_integrated_control_loop(
                 try:
                     sg_config = SubgoalConfig(
                         monitor_mode="full",
-                        use_constraints=True,
+                        use_constraints=False,
                         check_interval=check_interval,
                         max_steps=max_steps_per_subgoal,
                         max_corrections=max_corrections,

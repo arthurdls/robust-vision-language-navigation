@@ -1962,9 +1962,9 @@ def main() -> None:
         from rvln.ai.llm_interface import LLMUserInterface
         from rvln.ai.ltl_planner import LTLSymbolicPlanner
 
-        llm_interface = LLMUserInterface(model=llm_model)
+        llm_interface = LLMUserInterface(model=llm_model, use_constraints=False)
         recorder_ctx["llm_interface"] = llm_interface
-        planner = LTLSymbolicPlanner(llm_interface)
+        planner = LTLSymbolicPlanner(llm_interface, use_constraints=False)
         planner.plan_from_natural_language(instruction)
 
         ltl_plan = {
@@ -1988,12 +1988,7 @@ def main() -> None:
         while current_subgoal is not None and not stop_capture:
             subgoal_index += 1
 
-            active_constraints = planner.get_active_constraints()
-            if active_constraints:
-                logger.info(
-                    "Active constraints for subgoal %d: %s",
-                    subgoal_index, active_constraints,
-                )
+            active_constraints: List[Any] = []
 
             logger.info("Running subgoal %d: %s", subgoal_index, current_subgoal)
             result = run_subgoal(
@@ -2036,9 +2031,9 @@ def main() -> None:
                     instruction, new_instruction,
                 )
                 instruction = new_instruction
-                llm_interface = LLMUserInterface(model=llm_model)
+                llm_interface = LLMUserInterface(model=llm_model, use_constraints=False)
                 recorder_ctx["llm_interface"] = llm_interface
-                planner = LTLSymbolicPlanner(llm_interface)
+                planner = LTLSymbolicPlanner(llm_interface, use_constraints=False)
                 planner.plan_from_natural_language(new_instruction)
                 ltl_plan = {
                     "ltl_nl_formula": llm_interface.ltl_nl_formula.get("ltl_nl_formula", ""),
