@@ -13,30 +13,110 @@ yaw_rate is in rad/s. Per-step velocities are derived from OpenVLA's
 predicted target pose and clipped to <=50 cm/s linear and <=20 deg/s
 yaw before being sent.
 
-Defaults target the Jetson + MiniNav drone: USB camera index 4, control
-server at 192.168.0.101:8080, OpenVLA at 127.0.0.1:5007.
-
-Usage (from repo root):
-  # Live flight (USB camera + real drone):
-  python scripts/run_hardware.py --instruction "take off and circle the red cone"
-
-  # Fully simulated:
-  #   terminal 1: python scripts/start_mock_hardware.py
-  #   terminal 2: python scripts/start_server.py
-  #   terminal 3:
-  python scripts/run_hardware.py \
-      --control_host 127.0.0.1 \
-      --control_port 8080 \
-      --camera_url http://127.0.0.1:8081/frame \
-      --openvla_predict_url http://127.0.0.1:5007/predict \
-      --initial_position 0,0,0,0 \
-      --instruction "Move forward 10.0 meters, then turn toward the red car"
-
-All flags are forwarded to rvln.mininav.interface.
+Configure runs by editing the CONFIG block below. Hardware always runs in
+time-based monitor mode; frame-mode options are intentionally absent.
+Anything passed on the command line still wins over CONFIG (handy for
+one-off overrides without editing the file). Keys set to None fall back
+to the upstream default in src/rvln/mininav/interface.py.
 """
 
 import sys
 from pathlib import Path
+
+# ============================================================================
+# CONFIG -- edit these for your run, then `python scripts/run_hardware.py`.
+# ============================================================================
+
+CONFIG = {
+    # ---- Task ------------------------------------------------------------
+    # Mission instruction (None -> prompted on stdin at startup).
+    "instruction": None,
+    # Starting world pose: "x,y,z,yaw_deg".
+    "initial_position": "0,0,0,0",
+    # Run-output directory (None -> results/hardware/).
+    "results_dir": None,
+
+    # ---- Camera (set exactly one source) ---------------------------------
+    # Local cv2 device index (USB / V4L2). Default 4 = MiniNav USB cam.
+    "camera": 4,
+    # HTTP frame source, e.g. "http://127.0.0.1:8081/frame" for the mock.
+    "camera_url": None,
+    # GStreamer pipeline (Jetson MIPI-CSI). Must end in 'appsink'.
+    "camera_pipeline": None,
+    # Capture target rate (None -> default DEFAULT_CAMERA_FPS).
+    "fps": None,
+    "camera_retries": None,
+    "camera_init_timeout": None,
+
+    # ---- Recording -------------------------------------------------------
+    # Persist frames + per-step metadata under run_dir/.
+    "record": False,
+    # When recording, throttle log entries to this rate.
+    "record_fps": None,
+
+    # ---- Control server (boieng wire) ------------------------------------
+    "control_host": None,        # default: 192.168.0.101
+    "control_port": None,        # default: 8080
+    "control_retries": None,
+    "control_retry_sleep": None,
+    "command_dt_s": None,
+
+    # ---- OpenVLA ---------------------------------------------------------
+    "openvla_predict_url": None,  # default: http://127.0.0.1:5007/predict
+
+    # ---- LTL planner / subgoal converter ---------------------------------
+    "llm_model": None,           # default: DEFAULT_LLM_MODEL
+
+    # ---- Goal-adherence monitor (TIME MODE ONLY) -------------------------
+    "monitor_model": None,                     # default: DEFAULT_VLM_MODEL
+    "diary_check_interval_s": None,            # seconds between checkpoints
+    "max_steps_per_subgoal": None,
+    "max_seconds_per_subgoal": None,
+    "max_corrections": None,
+    "stall_window": None,
+    "stall_threshold": None,
+    "stall_completion_floor": None,
+
+    # ---- Pose source (one of these is required) -------------------------
+    "odom_http_url": None,
+    "odom_udp_host": None,
+    "odom_udp_port": None,
+    "odom_stale_timeout_s": None,
+    "odom_poll_hz": None,
+    "dead_reckoning": False,
+
+    # ---- Misc -----------------------------------------------------------
+    "extra_env_file": None,
+    "log_level": "INFO",
+}
+
+# argparse uses dashes for these flags but Python identifiers can't have
+# dashes, so we keep underscore keys in CONFIG and translate at flag-build
+# time.
+_DASHED_FLAGS = {
+    "dead_reckoning": "dead-reckoning",
+    "extra_env_file": "extra-env-file",
+}
+
+
+def _build_argv(cfg: dict) -> list[str]:
+    """Translate CONFIG into argv flags for rvln.mininav.interface.main.
+
+    Hardware always runs time-based monitoring, so --diary-mode is forced
+    to 'time' here; remove it from CONFIG to avoid surprising overrides.
+    """
+    argv: list[str] = ["--diary-mode", "time"]
+    for key, value in cfg.items():
+        if value is None:
+            continue
+        flag = "--" + _DASHED_FLAGS.get(key, key)
+        if isinstance(value, bool):
+            if value:
+                argv.append(flag)
+            continue
+        argv.extend([flag, str(value)])
+    return argv
+
 
 # src/ layout: allow `python scripts/run_hardware.py` without `pip install -e .`
 _SRC = Path(__file__).resolve().parent.parent / "src"
@@ -47,4 +127,7 @@ from rvln.mininav.interface import main
 
 
 if __name__ == "__main__":
+    # CONFIG first so CLI overrides win (argparse takes the last value for
+    # repeated options). --help still works because it's a CLI arg.
+    sys.argv = [sys.argv[0]] + _build_argv(CONFIG) + sys.argv[1:]
     main()
