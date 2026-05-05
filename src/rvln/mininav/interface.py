@@ -1119,7 +1119,7 @@ def run_subgoal(
     trajectory_log: List[Dict[str, Any]],
     check_interval_s: Optional[float] = None,
     max_seconds: Optional[float] = None,
-    stall_window: int = 10,
+    stall_window: int = DEFAULT_STALL_WINDOW,
     stall_threshold: float = 0.05,
     stall_completion_floor: float = 0.8,
     constraints: Optional[List[Any]] = None,
@@ -1198,6 +1198,12 @@ def run_subgoal(
     subgoal_start_time = time.time()
     subgoal_rel_pose = [0.0, 0.0, 0.0, 0.0]
     frame_path = None
+
+    # Verbose status throttling: log a single readable status line at most
+    # once per second so a 10 Hz control loop doesn't flood the terminal.
+    last_status_t = 0.0
+    last_cmd_sent: Optional[np.ndarray] = None
+    last_openvla_rtt: float = 0.0
 
     step_base = 0
     try:
@@ -1409,11 +1415,13 @@ def run_subgoal(
 
                 # 5. openvla.predict() and send commands (identical for both modes)
                 openvla_pose = [c - o for c, o in zip(subgoal_rel_pose, openvla_pose_origin)]
+                openvla_t0 = time.time()
                 response = openvla.predict(
                     image_bgr=frame,
                     proprio=state_for_openvla(openvla_pose),
                     instr=current_instruction.strip().lower(),
                 )
+                last_openvla_rtt = time.time() - openvla_t0
 
                 action_poses = response.get("action")
                 if not isinstance(action_poses, list) or len(action_poses) == 0:
@@ -1462,6 +1470,7 @@ def run_subgoal(
                     current_world = pose_manager.get_world_pose()
                     current_rel = relative_pose(current_world, origin_world)
                     cmd = to_command_from_action_pose(action_pose, current_rel)
+                    last_cmd_sent = cmd
                     control.send_command(global_frame_idx, cmd)
                     pose_manager.update_from_command(cmd, command_dt_s)
                     updated_rel = relative_pose(pose_manager.get_world_pose(), origin_world)
@@ -1472,6 +1481,37 @@ def run_subgoal(
                         ]
                     })
                     time.sleep(command_dt_s)
+
+                # Verbose: one human-readable status line per second showing
+                # the live state an operator wants to monitor -- which subgoal
+                # we're on, what instruction OpenVLA is being asked for, the
+                # last velocity command actually sent on the wire, the
+                # subgoal-relative pose, OpenVLA round-trip time, and the
+                # monitor's last completion estimate.
+                now = time.time()
+                if logger.isEnabledFor(logging.DEBUG) and (now - last_status_t) >= 1.0:
+                    if last_cmd_sent is not None:
+                        cmd_str = (
+                            f"[vx={last_cmd_sent[0]:+6.1f}, "
+                            f"vy={last_cmd_sent[1]:+6.1f}, "
+                            f"vz={last_cmd_sent[2]:+6.1f} cm/s, "
+                            f"yaw={last_cmd_sent[3]:+5.2f} rad/s]"
+                        )
+                    else:
+                        cmd_str = "(no command sent yet)"
+                    logger.debug(
+                        "subgoal %d step %d  instr=%r  pose=[%+6.2f, %+6.2f, %+6.2f m, %+6.1f deg]  "
+                        "cmd=%s  openvla_rtt=%.0f ms  compl=%.0f%%",
+                        subgoal_index, step, current_instruction,
+                        subgoal_rel_pose[0] / 100.0,
+                        subgoal_rel_pose[1] / 100.0,
+                        subgoal_rel_pose[2] / 100.0,
+                        subgoal_rel_pose[3],
+                        cmd_str,
+                        last_openvla_rtt * 1000.0,
+                        monitor.last_completion_pct * 100.0,
+                    )
+                    last_status_t = now
 
                 # 6. Convergence detection
                 total_steps = step + 1
@@ -2077,9 +2117,20 @@ def main() -> None:
     global stop_capture
     args = parse_args()
     log_level = "DEBUG" if getattr(args, "verbose", False) else args.log_level
+    # Verbose mode prints a status line every ~1s plus per-event breadcrumbs;
+    # the standard noisy "[INFO] 2025-... - rvln.mininav.interface - msg"
+    # format makes that hard to scan, so swap to a compact "HH:MM:SS LEVEL msg"
+    # for DEBUG runs while keeping the original at INFO and above.
+    if log_level == "DEBUG":
+        log_format = "%(asctime)s %(levelname)-5s %(message)s"
+        log_datefmt = "%H:%M:%S"
+    else:
+        log_format = "[%(levelname)s] %(asctime)s - %(name)s - %(message)s"
+        log_datefmt = None
     logging.basicConfig(
         level=getattr(logging, log_level),
-        format="[%(levelname)s] %(asctime)s - %(name)s - %(message)s",
+        format=log_format,
+        datefmt=log_datefmt,
     )
 
     # Register interrupt handlers here (not at import time) so importing this

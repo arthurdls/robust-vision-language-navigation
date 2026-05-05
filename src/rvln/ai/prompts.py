@@ -179,7 +179,8 @@ Respond with EXACTLY ONE JSON object (no markdown fences):
   "complete": true/false,
   "completion_percentage": 0.0 to 1.0,
   "diagnosis": "stopped_short" or "overshot" or "complete",
-  "corrective_instruction": "..." or null
+  "corrective_instruction": "..." or null,
+  "reasoning": "..."
 }}
 
 - "complete": true ONLY if you are highly confident the subgoal has been fully
@@ -195,6 +196,12 @@ Respond with EXACTLY ONE JSON object (no markdown fences):
 - "corrective_instruction": REQUIRED if not complete -- a single-action drone
   command to fix the biggest gap (not compound -- one action per correction).
   null only if complete.
+- "reasoning": one or two sentences in plain English explaining WHY you chose
+  this verdict and corrective. Reference specific things you saw in the frames
+  or diary (e.g., "tree is centered and within 3 m, so subgoal is complete" or
+  "red cone is off-screen to the left, so turning left to reacquire"). This
+  is shown directly to the human operator, so be concrete; do not echo the
+  raw JSON fields back.
 
   Useful corrective patterns:
     * "Turn toward <landmark>" -- re-orient the drone toward a visible or
@@ -243,7 +250,8 @@ Respond with EXACTLY ONE JSON object (no markdown fences):
   "complete": true/false,
   "completion_percentage": 0.0 to 1.0,
   "diagnosis": "stopped_short" or "overshot" or "complete" or "constraint_violated",
-  "corrective_instruction": "..." or null
+  "corrective_instruction": "..." or null,
+  "reasoning": "..."
 }}
 
 - "complete": true ONLY if you are highly confident the subgoal has been fully
@@ -265,6 +273,11 @@ Respond with EXACTLY ONE JSON object (no markdown fences):
   maintenance constraints (e.g., "stay above 10 meters"), restore the
   required condition (e.g., "ascend 2 meters").
   null only if complete.
+- "reasoning": one or two sentences in plain English explaining WHY you chose
+  this verdict and corrective. Reference specific things you saw in the
+  frames, diary, or any constraint that was breached. This is shown directly
+  to the human operator, so be concrete; do not echo the raw JSON fields
+  back.
 
   Useful corrective patterns:
     * "Turn toward <landmark>" -- re-orient the drone toward a visible or
@@ -1025,7 +1038,8 @@ Respond with EXACTLY ONE JSON object (no markdown fences):
   "complete": true/false,
   "completion_percentage": 0.0 to 1.0,
   "diagnosis": "stopped_short" or "overshot" or "complete",
-  "corrective_instruction": "..." or null
+  "corrective_instruction": "..." or null,
+  "reasoning": "..."
 }}
 
 - "complete": true ONLY if the diary and displacement strongly indicate
@@ -1033,7 +1047,10 @@ Respond with EXACTLY ONE JSON object (no markdown fences):
 - "diagnosis": "complete" if done, "stopped_short" if more progress needed,
   "overshot" if too far.
 - "corrective_instruction": REQUIRED if not complete. A single-action drone
-  command. null only if complete."""
+  command. null only if complete.
+- "reasoning": one or two sentences in plain English explaining WHY you
+  chose this verdict and corrective. Reference specific diary entries or
+  the displacement; this text is shown directly to the operator."""
 
 TEXT_ONLY_CONVERGENCE_PROMPT_WITH_CONSTRAINTS = """\
 Subgoal: {subgoal}
@@ -1054,7 +1071,8 @@ Respond with EXACTLY ONE JSON object (no markdown fences):
   "complete": true/false,
   "completion_percentage": 0.0 to 1.0,
   "diagnosis": "stopped_short" or "overshot" or "complete" or "constraint_violated",
-  "corrective_instruction": "..." or null
+  "corrective_instruction": "..." or null,
+  "reasoning": "..."
 }}
 
 - "complete": true ONLY if the diary and displacement strongly indicate
@@ -1067,4 +1085,8 @@ Respond with EXACTLY ONE JSON object (no markdown fences):
   restore compliance: move away from a forbidden region for avoidance
   constraints, or restore the required condition for maintenance constraints
   (e.g., "ascend 2 meters" to regain an altitude constraint).
-  null only if complete."""
+  null only if complete.
+- "reasoning": one or two sentences in plain English explaining WHY you
+  chose this verdict and corrective. Reference specific diary entries, the
+  displacement, or the violated constraint; this text is shown directly to
+  the operator."""
