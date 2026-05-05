@@ -80,6 +80,23 @@ DEFAULT_CONTROL_HOST = "192.168.0.101"
 DEFAULT_CONTROL_PORT = 8080
 DEFAULT_CONTROL_RETRIES = 10
 DEFAULT_CONTROL_RETRY_SLEEP = 2.0
+# Wire-output scaling. The internal pipeline keeps OpenVLA's cm-emission
+# convention end-to-end; these multipliers are applied at the wire
+# boundary in DroneControlClient.send_command so the drone sees its own
+# preferred units. Defaults convert cm/s -> m/s for translation and leave
+# rad/s for rotation.
+DEFAULT_SCALE_OUTPUT_TRANSLATION = 0.01
+DEFAULT_SCALE_OUTPUT_ROTATION = 1.0
+# Per-step safety clip applied in _clip_velocity BEFORE wire scaling.
+# User-facing units: meters/second for translation, degrees/second for
+# rotation. The internal pipeline still works in cm/s + rad/s
+# (OpenVLA's emission convention), so main() multiplies the m/s value
+# by 100 and the deg/s value by math.pi/180 before threading through
+# to run_subgoal. Defaults give 0.5 m/s + 20 deg/s on the wire with
+# the default output scales -- raising them allows faster motion;
+# do not exceed what the airframe can safely command.
+DEFAULT_MAX_TRANSLATION_M_S = 0.5
+DEFAULT_MAX_ROTATION_DEG_S = 20.0
 DEFAULT_CAMERA_RETRIES = 15
 DEFAULT_CAMERA_INIT_TIMEOUT = 8.0
 DEFAULT_CAMERA_FPS = 30

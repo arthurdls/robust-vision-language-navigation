@@ -70,13 +70,17 @@ from rvln.config import (
     DEFAULT_HARDWARE_DIARY_MODE,
     DEFAULT_LLM_MODEL,
     DEFAULT_MAX_CORRECTIONS,
+    DEFAULT_MAX_ROTATION_DEG_S,
     DEFAULT_MAX_SECONDS_PER_SUBGOAL,
     DEFAULT_MAX_STEPS_PER_SUBGOAL,
+    DEFAULT_MAX_TRANSLATION_M_S,
     DEFAULT_ODOM_STALE_TIMEOUT_S,
     DEFAULT_ODOM_UDP_HOST,
     DEFAULT_ODOM_UDP_PORT,
     DEFAULT_OPENVLA_PREDICT_URL,
     DEFAULT_CONTROL_HOST,
+    DEFAULT_SCALE_OUTPUT_ROTATION,
+    DEFAULT_SCALE_OUTPUT_TRANSLATION,
     DEFAULT_STALL_COMPLETION_FLOOR,
     DEFAULT_STALL_THRESHOLD,
     DEFAULT_STALL_WINDOW,
@@ -561,11 +565,25 @@ class VideoRecorder:
 
 
 class DroneControlClient:
-    def __init__(self, host: str, port: int, connect_retries: int, retry_sleep_s: float):
+    def __init__(
+        self,
+        host: str,
+        port: int,
+        connect_retries: int,
+        retry_sleep_s: float,
+        scale_translation: float = 1.0,
+        scale_rotation: float = 1.0,
+    ):
         self.host = host
         self.port = port
         self.connect_retries = connect_retries
         self.retry_sleep_s = retry_sleep_s
+        # Wire-output scales applied inside send_command: vx/vy/vz are
+        # multiplied by scale_translation, yaw_rate by scale_rotation.
+        # Defaults of 1.0 leave the internal cm/s + rad/s units; main()
+        # passes 0.01 + 1.0 to convert cm/s -> m/s on the wire.
+        self.scale_translation = float(scale_translation)
+        self.scale_rotation = float(scale_rotation)
         self.sock: Optional[socket.socket] = None
 
     def connect(self) -> None:
@@ -587,18 +605,22 @@ class DroneControlClient:
         """Send a velocity command on the wire.
 
         Internal pipeline units are cm/s for vx/vy/vz (matching OpenVLA's
-        cm-emission convention) and rad/s for yaw_rate; the drone receiver
-        expects m/s + rad/s, so we divide the linear axes by 100 at this
-        boundary. Doing the conversion here (rather than in
-        to_command_from_action_pose or _clip_velocity) keeps every other
-        consumer of the command in cm/s -- safety caps, dead-reckoning
-        integration, trajectory_log, and verbose status output all stay
-        consistent with the OpenVLA proprio frame.
+        cm-emission convention) and rad/s for yaw_rate. At the wire
+        boundary we apply scale_translation to vx/vy/vz and
+        scale_rotation to yaw_rate so the drone sees its own preferred
+        units. With the defaults wired up by main()
+        (DEFAULT_SCALE_OUTPUT_TRANSLATION = 0.01,
+        DEFAULT_SCALE_OUTPUT_ROTATION = 1.0) that is m/s + rad/s on the
+        wire while every internal consumer of `command` stays in cm/s
+        + rad/s -- safety caps, dead-reckoning integration,
+        trajectory_log, and verbose status output remain consistent with
+        the OpenVLA proprio frame.
         """
         if self.sock is None:
             raise RuntimeError("Control socket not connected")
         wire = command.astype(np.float32, copy=True)
-        wire[0:3] = wire[0:3] / 100.0
+        wire[0:3] = wire[0:3] * self.scale_translation
+        wire[3] = wire[3] * self.scale_rotation
         payload = np.array([frame_count, *wire.tolist()], dtype=np.float32).tobytes()
         self.sock.sendall(payload)
 
@@ -838,36 +860,54 @@ class PoseManager:
 
 # Safety caps on the velocity command sent over the wire. OpenVLA emits
 # translations in cm and yaw in radians, and we treat the per-step delta
-# as the per-step velocity (cm/s, rad/s) without dividing by dt. These
-# caps mirror the boieng_mininav.py reference, which also drives the
-# drone with a fixed yaw rate of 20 deg/s during scripted turns.
-MAX_LINEAR_CM_S = 50.0
-MAX_YAW_RAD_S = math.radians(20.0)
+# as the per-step velocity (cm/s, rad/s) without dividing by dt. The
+# safety caps below default to 50 cm/s + 20 deg/s, mirroring the
+# boieng_mininav.py reference; both are configurable via run_hardware
+# CONFIG (max_translation_cm_s, max_rotation_deg_s) and survive into
+# DroneControlClient.send_command unchanged -- the wire scaling
+# (DEFAULT_SCALE_OUTPUT_*) is applied AFTER clipping, so the wire view
+# is naturally bounded by max_internal * scale (default 0.5 m/s + the
+# corresponding rad/s).
 
 
 def _clip_velocity(
     vx: float, vy: float, vz: float, vyaw: float,
+    max_translation_cm_s: float,
+    max_rotation_rad_s: float,
 ) -> Tuple[float, float, float, float]:
-    """Clip a velocity command to the per-axis safety caps.
+    """Clip a velocity command to the configured safety caps **by magnitude**.
 
-    Translation is clipped by **magnitude** so the direction is preserved
-    (a diagonal command at the limit isn't allowed to outrun a single-axis
-    one). Yaw rate is clipped per-axis since it's a scalar.
+    Both axes preserve direction; only the speed is reduced to the cap:
+
+    - Translation: compute the 3D vector magnitude
+      sqrt(vx**2 + vy**2 + vz**2). If it exceeds max_translation_cm_s,
+      scale (vx, vy, vz) uniformly by max/mag so the heading is exactly
+      unchanged and the new magnitude equals the cap. Crucially this
+      means a diagonal command at the limit cannot outrun a single-axis
+      one (per-axis clipping would have let it).
+    - Yaw rate (scalar): clamp to +-max_rotation_rad_s; the sign of the
+      original vyaw is preserved, only its magnitude is capped.
+
+    Caps are passed in instead of using module-level constants so an
+    operator can tune them via the run_hardware CONFIG without monkey-
+    patching the module.
     """
     mag = math.sqrt(vx * vx + vy * vy + vz * vz)
-    if mag > MAX_LINEAR_CM_S and mag > 0.0:
-        scale = MAX_LINEAR_CM_S / mag
+    if mag > max_translation_cm_s and mag > 0.0:
+        scale = max_translation_cm_s / mag
         vx, vy, vz = vx * scale, vy * scale, vz * scale
-    if vyaw > MAX_YAW_RAD_S:
-        vyaw = MAX_YAW_RAD_S
-    elif vyaw < -MAX_YAW_RAD_S:
-        vyaw = -MAX_YAW_RAD_S
+    if vyaw > max_rotation_rad_s:
+        vyaw = max_rotation_rad_s
+    elif vyaw < -max_rotation_rad_s:
+        vyaw = -max_rotation_rad_s
     return vx, vy, vz, vyaw
 
 
 def to_command_from_action_pose(
     action_pose: List[float],
     current_relative_pose: List[float],
+    max_translation_cm_s: float,
+    max_rotation_rad_s: float,
 ) -> np.ndarray:
     """Convert an OpenVLA target pose into a velocity wire command.
 
@@ -876,8 +916,10 @@ def to_command_from_action_pose(
     those values as velocities. OpenVLA emits an absolute target pose in
     the subgoal-relative frame, with translations in cm and yaw in
     radians. The per-step delta to that target is approximately the
-    per-step velocity, so we send it directly as ``[vx (cm/s), vy (cm/s),
-    vz (cm/s), yaw_rate (rad/s)]`` after clipping to the safety caps.
+    per-step velocity, so this function emits ``[vx (cm/s), vy (cm/s),
+    vz (cm/s), yaw_rate (rad/s)]`` after clipping to the configured
+    safety caps. The wire-side unit conversion (cm/s -> m/s by default)
+    is applied later in DroneControlClient.send_command.
     """
     x = float(action_pose[0])
     y = float(action_pose[1])
@@ -888,7 +930,9 @@ def to_command_from_action_pose(
     vz = z - float(current_relative_pose[2])
     # current_relative_pose stores yaw in degrees; OpenVLA emits radians.
     vyaw = yaw - math.radians(float(current_relative_pose[3]))
-    vx, vy, vz, vyaw = _clip_velocity(vx, vy, vz, vyaw)
+    vx, vy, vz, vyaw = _clip_velocity(
+        vx, vy, vz, vyaw, max_translation_cm_s, max_rotation_rad_s,
+    )
     return np.array([vx, vy, vz, vyaw], dtype=np.float32)
 
 
@@ -1220,6 +1264,8 @@ def run_subgoal(
     constraints: Optional[List[Any]] = None,
     recorder: Optional["FrameRecorder"] = None,
     no_ai: bool = False,
+    max_translation_cm_s: float = 50.0,
+    max_rotation_rad_s: float = math.radians(20.0),
 ) -> Dict[str, Any]:
     """Execute a single subgoal with OpenVLA, goal adherence monitoring, and operator help.
 
@@ -1562,7 +1608,10 @@ def run_subgoal(
                         continue
                     current_world = pose_manager.get_world_pose()
                     current_rel = relative_pose(current_world, origin_world)
-                    cmd = to_command_from_action_pose(action_pose, current_rel)
+                    cmd = to_command_from_action_pose(
+                        action_pose, current_rel,
+                        max_translation_cm_s, max_rotation_rad_s,
+                    )
                     last_cmd_sent = cmd
                     control.send_command(global_frame_idx, cmd)
                     pose_manager.update_from_command(cmd, command_dt_s)
@@ -1584,15 +1633,18 @@ def run_subgoal(
                 now = time.time()
                 if logger.isEnabledFor(logging.DEBUG) and (now - last_status_t) >= 1.0:
                     if last_cmd_sent is not None:
-                        # Show the actual wire values (m/s); last_cmd_sent
-                        # is in internal cm/s, so divide by 100 to match
-                        # what DroneControlClient.send_command put on the
-                        # wire. yaw_rate is rad/s in both representations.
+                        # Show the wire view -- apply the same scales the
+                        # control client uses so the operator sees what
+                        # the drone receives. With default scales that's
+                        # m/s + rad/s; if the operator overrode the
+                        # scales the displayed numbers track those.
+                        scale_t = control.scale_translation
+                        scale_r = control.scale_rotation
                         cmd_str = (
-                            f"[vx={last_cmd_sent[0]/100.0:+5.2f}, "
-                            f"vy={last_cmd_sent[1]/100.0:+5.2f}, "
-                            f"vz={last_cmd_sent[2]/100.0:+5.2f} m/s, "
-                            f"yaw={last_cmd_sent[3]:+5.2f} rad/s]"
+                            f"[vx={last_cmd_sent[0] * scale_t:+5.2f}, "
+                            f"vy={last_cmd_sent[1] * scale_t:+5.2f}, "
+                            f"vz={last_cmd_sent[2] * scale_t:+5.2f}, "
+                            f"yaw={last_cmd_sent[3] * scale_r:+5.2f}] (wire)"
                         )
                     else:
                         cmd_str = "(no command sent yet)"
@@ -2037,6 +2089,49 @@ def parse_args() -> argparse.Namespace:
             "(default: %(default)s)"
         ),
     )
+    g_control.add_argument(
+        "--scale_output_translation", type=float,
+        default=DEFAULT_SCALE_OUTPUT_TRANSLATION,
+        help=(
+            "Multiplier applied to vx/vy/vz at the wire boundary. The "
+            "internal pipeline keeps OpenVLA's cm/s convention; the "
+            "default 0.01 converts cm/s -> m/s for the drone. Set to 1.0 "
+            "to keep cm/s on the wire, or any other value for a custom "
+            "wire unit. (default: %(default)s)"
+        ),
+    )
+    g_control.add_argument(
+        "--scale_output_rotation", type=float,
+        default=DEFAULT_SCALE_OUTPUT_ROTATION,
+        help=(
+            "Multiplier applied to yaw_rate at the wire boundary. Default "
+            "1.0 keeps rad/s; use math.degrees(1) ~= 57.296 to send deg/s "
+            "etc. (default: %(default)s)"
+        ),
+    )
+    g_control.add_argument(
+        "--max_translation_m_s", type=float,
+        default=DEFAULT_MAX_TRANSLATION_M_S,
+        help=(
+            "Magnitude cap on translation per step, in meters/second. "
+            "The internal pipeline runs in cm/s (OpenVLA's emission "
+            "convention) so this is multiplied by 100 before clipping; "
+            "with the default scale 0.01 the wire view stays bounded by "
+            "this same value in m/s. Magnitude-clipped on the 3D vector "
+            "norm so heading is preserved when the cap fires. "
+            "(default: %(default)s)"
+        ),
+    )
+    g_control.add_argument(
+        "--max_rotation_deg_s", type=float,
+        default=DEFAULT_MAX_ROTATION_DEG_S,
+        help=(
+            "Cap on yaw rate per step, in deg/s (converted to rad/s "
+            "internally). Default 20 deg/s ~= 0.349 rad/s. Sign of "
+            "vyaw is preserved; only the magnitude is clipped. "
+            "(default: %(default)s)"
+        ),
+    )
 
     g_openvla = parser.add_argument_group("OpenVLA")
     g_openvla.add_argument(
@@ -2321,11 +2416,25 @@ def main() -> None:
         reason = camera.failure_reason or "camera failed to initialize"
         raise RuntimeError(reason)
 
+    # Internal pipeline runs in cm/s + rad/s (OpenVLA's emission units),
+    # so convert the user-facing m/s + deg/s caps once here and use the
+    # cm/s + rad/s values everywhere downstream.
+    max_translation_cm_s = float(args.max_translation_m_s) * 100.0
+    max_rotation_rad_s = math.radians(float(args.max_rotation_deg_s))
+    logger.info(
+        "Output: scale_translation=%g, scale_rotation=%g, "
+        "max_translation=%.3f m/s, max_rotation=%.1f deg/s",
+        args.scale_output_translation, args.scale_output_rotation,
+        args.max_translation_m_s, args.max_rotation_deg_s,
+    )
+
     control = DroneControlClient(
         host=args.control_host,
         port=args.control_port,
         connect_retries=args.control_retries,
         retry_sleep_s=args.control_retry_sleep,
+        scale_translation=args.scale_output_translation,
+        scale_rotation=args.scale_output_rotation,
     )
     control.connect()
 
@@ -2441,6 +2550,8 @@ def main() -> None:
                 constraints=active_constraints,
                 recorder=recorder,
                 no_ai=args.no_ai,
+                max_translation_cm_s=max_translation_cm_s,
+                max_rotation_rad_s=max_rotation_rad_s,
             )
             frame_offset += result["total_steps"]
             subgoal_summaries.append(result)

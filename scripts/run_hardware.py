@@ -63,6 +63,19 @@ CONFIG = {
     "control_retries": None,
     "control_retry_sleep": None,
     "command_dt_s": None,
+    # Wire-output scaling: multipliers applied to vx/vy/vz and yaw_rate
+    # at the wire boundary. Internal pipeline runs in cm/s + rad/s
+    # (OpenVLA's emission units); the defaults convert vx/vy/vz to m/s
+    # for the drone and leave yaw_rate as rad/s.
+    "scale_output_translation": None,  # default 0.01 (cm/s -> m/s on wire)
+    "scale_output_rotation": None,     # default 1.0 (rad/s unchanged)
+    # Per-step magnitude clip applied BEFORE wire scaling. User-facing
+    # units: meters/second for translation, degrees/second for rotation.
+    # Defaults give 0.5 m/s + 20 deg/s on the wire with the default
+    # output scales. Translation is clipped on the 3D vector norm
+    # (heading preserved); yaw is sign-preserved.
+    "max_translation_m_s": None,       # default 0.5
+    "max_rotation_deg_s": None,        # default 20.0
 
     # ---- OpenVLA ---------------------------------------------------------
     "openvla_predict_url": None,  # default: http://127.0.0.1:5007/predict
