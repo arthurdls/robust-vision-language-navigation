@@ -132,6 +132,11 @@ CONFIG = {
     # Shortcut: True == --log_level DEBUG. Same effect as passing -v on
     # the CLI. Suppresses third-party HTTP / image-encoding debug noise.
     "verbose": False,
+    # Live monitor dashboard (Tkinter popup) showing the last
+    # checkpoint's local + global prompt images, the diary, the last
+    # global response, and the last convergence. Set to False for
+    # headless / SSH runs without a display.
+    "dashboard": True,
 }
 
 # argparse uses dashes for these flags but Python identifiers can't have
@@ -140,6 +145,13 @@ CONFIG = {
 _DASHED_FLAGS = {
     "dead_reckoning": "dead-reckoning",
     "extra_env_file": "extra-env-file",
+}
+
+# CONFIG keys whose argparse counterpart is a "store_false" / "disable"
+# flag with default True. CONFIG reads naturally as "enabled by default";
+# we translate False -> "--<flag>" and True -> "(nothing, rely on default)".
+_INVERTED_BOOL_FLAGS = {
+    "dashboard": "no-dashboard",
 }
 
 
@@ -156,6 +168,12 @@ def _build_argv(cfg: dict) -> list[str]:
     argv: list[str] = ["--diary-mode", "time"]
     for key, value in cfg.items():
         if value == "":
+            continue
+        if key in _INVERTED_BOOL_FLAGS:
+            # Default-true flag whose CLI form turns it OFF. Skip when
+            # True; pass --no-X when False.
+            if value is False:
+                argv.append("--" + _INVERTED_BOOL_FLAGS[key])
             continue
         flag = "--" + _DASHED_FLAGS.get(key, key)
         if isinstance(value, bool):

@@ -2334,6 +2334,18 @@ def parse_args() -> argparse.Namespace:
             "supported in this mode)."
         ),
     )
+    g_misc.add_argument(
+        "--no-dashboard", dest="dashboard", action="store_false",
+        default=True,
+        help=(
+            "Disable the live monitor dashboard popup. Default ON: a "
+            "Tkinter window opens at run start showing the last "
+            "checkpoint's local + global prompt images, the diary, the "
+            "last global response, and the last convergence (with wall-"
+            "clock timestamps). Pass --no-dashboard for headless / SSH "
+            "runs without a display."
+        ),
+    )
 
     return parser.parse_args()
 
@@ -2405,6 +2417,16 @@ def main() -> None:
     run_stamp = datetime.now().strftime("%Y_%m_%d_%H_%M_%S_%f")
     run_dir = Path(args.results_dir) / f"run_{run_stamp}"
     run_dir.mkdir(parents=True, exist_ok=True)
+
+    # Live operator dashboard (Tkinter popup). Reads artifacts off disk
+    # so it never touches the live monitor object; close() in the outer
+    # finally block tears it down. Disabled with --no-dashboard for
+    # headless / SSH runs.
+    dashboard = None
+    if args.dashboard:
+        from rvln.mininav.dashboard import MonitorDashboard
+        dashboard = MonitorDashboard(run_dir=run_dir)
+        dashboard.start()
 
     # Frames must always be on disk for the goal-adherence monitor's VLM
     # calls. With --record they live under run_dir/frames; without --record
@@ -2697,6 +2719,10 @@ def main() -> None:
         finally:
             stop_capture = True
             recorder.close()
+            # Close the dashboard early in teardown so its polling thread
+            # stops before run_dir disappears or files start getting moved.
+            if dashboard is not None:
+                dashboard.close()
             # Finalize the playback video before tearing down the camera so
             # the moov atom is written even if the rest of teardown fails.
             video_recorder.close()
