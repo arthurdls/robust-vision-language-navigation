@@ -68,6 +68,11 @@ DEFAULT_SIM_CONTROLLER_PORT = int(os.environ.get("SIM_CONTROLLER_PORT", "9002"))
 DEFAULT_TIME_DILATION = 10
 DEFAULT_SEED = 0
 PROPRIO_LEN = 4
+# Wall-clock pause inside /step between set_obj_location/set_rotation and
+# the post-step image capture. Lower = faster control loop. 0.02 has
+# been validated for teleport-style movement; raise if you see motion
+# blur or stale frames.
+DEFAULT_STEP_SLEEP_S: float = 0.02
 
 # ---------------------------------------------------------------------------
 # OpenVLA server
@@ -135,8 +140,3 @@ DEFAULT_FRAME_SAMPLE_CAP = 200
 IMG_INPUT_SIZE = (224, 224)
 SLEEP_SHORT_S: float = 1.0
 SLEEP_AFTER_RESET_S: float = 2.0
-# Wall-clock pause inside /step between set_obj_location/set_rotation and
-# the post-step image capture. Lower = faster control loop. 0.02 has
-# been validated for teleport-style movement; raise if you see motion
-# blur or stale frames.
-DEFAULT_STEP_SLEEP_S: float = 0.02
