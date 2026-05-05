@@ -84,3 +84,34 @@ def test_apply_action_returns_post_step_image() -> None:
 
     assert image is fake_image, "image returned must be the one from /step"
     assert steps == 1
+
+
+def test_async_frame_writer_writes_in_background(tmp_path: Path) -> None:
+    import numpy as np
+
+    from rvln.eval.async_frame_writer import AsyncFrameWriter
+
+    writer = AsyncFrameWriter(tmp_path, enabled=True)
+    img = np.full((10, 10, 3), 7, dtype=np.uint8)
+
+    t0 = time.perf_counter()
+    for i in range(20):
+        writer.write(f"frame_{i:06d}.png", img)
+    submit_ms = (time.perf_counter() - t0) * 1000
+    assert submit_ms < 20, "submit must be near-instant; was %.1fms" % submit_ms
+
+    writer.close()  # blocks until queue drains
+
+    assert sum(1 for _ in tmp_path.glob("frame_*.png")) == 20
+
+
+def test_async_frame_writer_disabled_is_noop(tmp_path: Path) -> None:
+    import numpy as np
+
+    from rvln.eval.async_frame_writer import AsyncFrameWriter
+
+    writer = AsyncFrameWriter(tmp_path, enabled=False)
+    writer.write("x.png", np.zeros((4, 4, 3), dtype=np.uint8))
+    writer.close()
+
+    assert list(tmp_path.glob("*.png")) == []

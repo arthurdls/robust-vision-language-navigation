@@ -83,6 +83,7 @@ def run_open_loop_control_loop(
     llm_model, converter_model, drone_cam_id,
     save_mp4=False, mp4_fps=10.0,
     seed=DEFAULT_SEED, time_dilation=DEFAULT_TIME_DILATION, env_id="",
+    save_frames=True,
 ):
     from rvln.ai.llm_interface import LLMUserInterface
     from rvln.ai.ltl_planner import LTLSymbolicPlanner
@@ -102,7 +103,9 @@ def run_open_loop_control_loop(
     start_ts = datetime.now().isoformat()
 
     from rvln.eval.step_timer import StepTimer
+    from rvln.eval.async_frame_writer import AsyncFrameWriter
     _step_timer = StepTimer(run_dir / "step_timings.jsonl")
+    _frame_writer = AsyncFrameWriter(frames_dir, enabled=save_frames)
 
     logger.info("Planning instruction: '%s'", instruction)
     llm_interface = LLMUserInterface(model=llm_model)
@@ -166,11 +169,7 @@ def run_open_loop_control_loop(
                 global_frame_idx = total_frame_count + step
                 frame_path = frames_dir / f"frame_{global_frame_idx:06d}.png"
                 with _step_timer.phase("frame_write"):
-                    try:
-                        import cv2
-                        cv2.imwrite(str(frame_path), image)
-                    except Exception:
-                        pass
+                    _frame_writer.write(f"frame_{global_frame_idx:06d}.png", image)
 
                 with _step_timer.phase("predict"):
                     response = batch.send_prediction_request(
@@ -253,6 +252,7 @@ def run_open_loop_control_loop(
         current_subgoal = planner.get_next_predicate()
 
     _step_timer.close()
+    _frame_writer.close()
 
     end_ts = datetime.now().isoformat()
 
@@ -346,6 +346,8 @@ def main():
     parser.add_argument("-o", "--results_dir", default=str(CONDITION3_RESULTS_DIR))
     parser.add_argument("--save-mp4", action="store_true")
     parser.add_argument("--mp4-fps", type=float, default=10.0)
+    parser.add_argument("--no-save-frames", action="store_true",
+                        help="Skip per-step PNG writes (faster benchmarks)")
     parser.add_argument("--select-cam", action="store_true",
                         help="Interactively pick the drone camera instead of auto-detecting")
     parser.add_argument("--log_level", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"])
@@ -403,6 +405,7 @@ def main():
                     drone_cam_id=drone_cam_id, save_mp4=args.save_mp4, mp4_fps=args.mp4_fps,
                     seed=args.seed, time_dilation=args.time_dilation,
                     env_id=map_info.env_id,
+                    save_frames=not args.no_save_frames,
                 )
                 logger.info("Run saved to %s (%d subgoals, %d total steps)",
                             run_dir, run_info["subgoal_count"], run_info["total_steps"])

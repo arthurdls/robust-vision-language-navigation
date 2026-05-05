@@ -42,6 +42,7 @@ class SubgoalConfig:
     max_corrections: int = DEFAULT_MAX_CORRECTIONS
     check_interval_s: Optional[float] = None
     max_seconds: Optional[float] = None
+    save_frames: bool = True
 
 
 # ---------------------------------------------------------------------------
@@ -425,7 +426,9 @@ def run_subgoal(
     step = 0
 
     from rvln.eval.step_timer import StepTimer
+    from rvln.eval.async_frame_writer import AsyncFrameWriter
     _step_timer = StepTimer(frames_dir.parent / "step_timings.jsonl")
+    _frame_writer = AsyncFrameWriter(frames_dir, enabled=config.save_frames)
 
     def _process_help(completion_pct: float, reasoning: str, trigger: str) -> str:
         nonlocal current_instruction, subgoal_nl, converted_instruction
@@ -585,11 +588,7 @@ def run_subgoal(
             global_frame_idx = frame_offset + step
             frame_path = frames_dir / f"frame_{global_frame_idx:06d}.png"
             with _step_timer.phase("frame_write"):
-                try:
-                    import cv2
-                    cv2.imwrite(str(frame_path), image)
-                except Exception as e:
-                    logger.debug("Failed to save frame %s: %s", frame_path, e)
+                _frame_writer.write(f"frame_{global_frame_idx:06d}.png", image)
 
             with _step_timer.phase("monitor_on_frame"):
                 if monitor:
@@ -723,11 +722,7 @@ def run_subgoal(
                 conv_frame = set_drone_cam_and_get_image(env, cam_id)
                 if conv_frame is not None:
                     conv_path = frames_dir / f"frame_conv_{global_frame_idx:06d}.png"
-                    try:
-                        import cv2
-                        cv2.imwrite(str(conv_path), conv_frame)
-                    except Exception:
-                        conv_path = frame_path
+                    _frame_writer.write(f"frame_conv_{global_frame_idx:06d}.png", conv_frame)
                 else:
                     conv_path = frame_path
 
@@ -794,6 +789,7 @@ def run_subgoal(
         total_steps = config.max_steps
 
     _step_timer.close()
+    _frame_writer.close()
 
     # Collect metrics
     all_vlm_call_records = []
