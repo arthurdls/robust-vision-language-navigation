@@ -27,6 +27,13 @@ DEFAULT_DIARY_CHECK_INTERVAL = 10
 # Time-mode budget / checkpoint interval
 DEFAULT_MAX_SECONDS_PER_SUBGOAL = 120.0
 DEFAULT_DIARY_CHECK_INTERVAL_S = 3.0
+# Spacing between samples in the global VLM grid, in seconds. None ->
+# fall through to DEFAULT_DIARY_CHECK_INTERVAL_S so the global grid
+# covers ~9 * check_interval seconds of recent history. Set bigger to
+# widen the visual context window (e.g. 6.0 with 3.0 check_interval =
+# ~54 s of visible history); set smaller for finer-grained recent
+# motion. Independent from the diary check cadence.
+DEFAULT_GLOBAL_GRID_SPACING_S: "float | None" = None
 
 # Shared
 DEFAULT_MAX_CORRECTIONS = 20

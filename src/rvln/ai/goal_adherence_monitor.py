@@ -168,6 +168,7 @@ class GoalAdherenceMonitor:
         artifacts_dir: Optional[Path] = None,
         max_corrections: int = DEFAULT_MAX_CORRECTIONS,
         check_interval_s: Optional[float] = None,
+        global_grid_spacing_s: Optional[float] = None,
         stall_window: int = DEFAULT_STALL_WINDOW,
         stall_threshold: float = DEFAULT_STALL_THRESHOLD,
         stall_completion_floor: float = DEFAULT_STALL_COMPLETION_FLOOR,
@@ -200,6 +201,19 @@ class GoalAdherenceMonitor:
         # Time-based mode configuration
         self._time_based: bool = check_interval_s is not None
         self._check_interval_s: Optional[float] = check_interval_s
+        # Spacing (in seconds) between samples in the global VLM grid.
+        # None falls back to the diary-check interval, so the
+        # historical default (sample once per checkpoint) is preserved.
+        # Setting it independently lets the global grid cover a wider
+        # or narrower time window than the checkpoint cadence -- useful
+        # when you want frequent monitor checks (small
+        # check_interval_s) but a wider visual context window (larger
+        # global_grid_spacing_s).
+        self._global_grid_spacing_s: Optional[float] = (
+            global_grid_spacing_s
+            if global_grid_spacing_s is not None
+            else check_interval_s
+        )
 
         self._llm: BaseLLM = self._make_llm(model)
         self._frame_paths: List[Path] = []
@@ -717,33 +731,44 @@ class GoalAdherenceMonitor:
     ) -> List[Path]:
         """Select frames closest to each ``check_interval_s`` boundary.
 
-        Boundaries are placed at t=0, t=interval, t=2*interval, ... from the
-        first timestamp. For each boundary, the frame with the smallest
-        absolute time difference is chosen. The result is deduplicated while
+        Boundaries are placed strictly at t=0, t=interval, t=2*interval, ...
+        from the first timestamp -- they are FIXED across checkpoints.
+        Earlier versions also appended a boundary at t_last (the most
+        recent frame's timestamp) so the latest frame would always be
+        in the grid; that broke consistency, since t_last moves every
+        checkpoint and so the second-to-last grid cell jumped around
+        instead of being a stable shift-by-one. With fixed boundaries
+        every existing grid cell shows the same frame at every
+        checkpoint, and a new cell is appended only when a new boundary
+        is crossed (~once per checkpoint at the default 3 s cadence).
+
+        For each boundary, the frame with the smallest absolute time
+        difference is chosen. The result is deduplicated while
         preserving order.
 
-        ``frame_paths`` and ``frame_timestamps`` may be pre-snapshotted copies
-        taken under the lock by callers running on background threads.
+        ``frame_paths`` and ``frame_timestamps`` may be pre-snapshotted
+        copies taken under the lock by callers running on background
+        threads.
         """
         paths = frame_paths if frame_paths is not None else self._frame_paths
         timestamps = frame_timestamps if frame_timestamps is not None else self._frame_timestamps
 
-        if not timestamps or self._check_interval_s is None:
+        interval = self._global_grid_spacing_s
+        if not timestamps or interval is None:
             return list(paths)
 
         t0 = timestamps[0]
         t_last = timestamps[-1]
-        interval = self._check_interval_s
 
-        # Build boundary times: t0, t0+interval, t0+2*interval, ...
+        # Build boundary times at FIXED multiples of interval. Do NOT
+        # append t_last as a final boundary -- that would make the
+        # rightmost grid cell move every checkpoint and defeat the
+        # shift-by-one consistency property.
         boundaries: List[float] = []
         b = t0
         while b <= t_last:
             boundaries.append(b)
             b += interval
-        # Always include a boundary at or beyond the last timestamp
-        if not boundaries or boundaries[-1] < t_last:
-            boundaries.append(t_last)
 
         selected: List[Path] = []
         seen_indices: set = set()
