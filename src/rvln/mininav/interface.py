@@ -451,6 +451,59 @@ class FrameRecorder:
             self._fh = None
 
 
+class VideoRecorder:
+    """Stream captured frames into a single playback video as the run progresses.
+
+    The OpenVLA / goal-adherence monitor pipeline still writes per-step PNGs
+    (the VLM needs frames on disk), but those typically live in a temp dir
+    and get discarded. This class adds a permanent run_dir/playback.<ext>
+    file that survives the run regardless of --record.
+
+    The writer opens lazily on the first frame so we don't commit to a size
+    before the camera has produced anything, and close() runs from the main
+    finally block so SIGINT / SIGTERM / errors all yield a playable file
+    (the moov atom for mp4 is only written on release).
+    """
+
+    def __init__(self, video_path: Path, fps: float):
+        self.video_path = video_path
+        # Some codecs reject fps <= 0; clamp to 1 fps as a safety floor.
+        self.fps = float(fps) if fps and fps > 0 else 1.0
+        self._writer: Optional[cv2.VideoWriter] = None
+        self._open_failed = False
+
+    def _open(self, frame_bgr: np.ndarray) -> None:
+        h, w = frame_bgr.shape[:2]
+        fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+        writer = cv2.VideoWriter(str(self.video_path), fourcc, self.fps, (w, h))
+        if not writer.isOpened():
+            logger.warning(
+                "VideoRecorder: failed to open writer for %s (fourcc=mp4v, "
+                "%dx%d @ %.2f fps). Skipping video output.",
+                self.video_path, w, h, self.fps,
+            )
+            self._open_failed = True
+            return
+        self._writer = writer
+
+    def write(self, frame_bgr: np.ndarray) -> None:
+        if self._open_failed:
+            return
+        if self._writer is None:
+            self._open(frame_bgr)
+            if self._writer is None:
+                return
+        try:
+            self._writer.write(frame_bgr)
+        except Exception as exc:
+            logger.warning("VideoRecorder: write failed (%s).", exc)
+
+    def close(self) -> None:
+        if self._writer is not None:
+            self._writer.release()
+            self._writer = None
+
+
 class DroneControlClient:
     def __init__(self, host: str, port: int, connect_retries: int, retry_sleep_s: float):
         self.host = host
@@ -1016,6 +1069,7 @@ def run_subgoal(
     stall_completion_floor: float = 0.8,
     constraints: Optional[List[Any]] = None,
     recorder: Optional["FrameRecorder"] = None,
+    video_recorder: Optional["VideoRecorder"] = None,
     no_ai: bool = False,
 ) -> Dict[str, Any]:
     """Execute a single subgoal with OpenVLA, goal adherence monitoring, and operator help.
@@ -1247,6 +1301,8 @@ def run_subgoal(
                 global_frame_idx = frame_offset + step
                 frame_path = frames_dir / f"frame_{global_frame_idx:06d}.png"
                 cv2.imwrite(str(frame_path), frame)
+                if video_recorder is not None:
+                    video_recorder.write(frame)
 
                 # 4. Call monitor.on_frame
                 result = monitor.on_frame(frame_path, displacement=list(subgoal_rel_pose))
@@ -1666,6 +1722,7 @@ def parse_args() -> argparse.Namespace:
         "  trajectory_log.json  per-step state vector\n"
         "  run_info.json        full run summary (LTL plan, subgoal results, token totals)\n"
         "  subgoal_<NN>_*/      per-subgoal artifacts (diary, monitor reasoning)\n"
+        "  playback.mp4         single video of all captured frames (always)\n"
         "  frames/              camera frames (only if --record)\n"
         "  recording_log.jsonl  one entry per recorded frame (only if --record)\n"
     )
@@ -2082,6 +2139,14 @@ def main() -> None:
         record_fps=args.record_fps,
         ctx=recorder_ctx,
     )
+    # Always save a single playback video to the run dir, regardless of
+    # --record. This is what survives a Ctrl-C / kill: per-step PNGs may be
+    # in a temp dir that gets wiped, but the video is finalized in the
+    # finally block so even partial runs are reviewable.
+    video_recorder = VideoRecorder(
+        video_path=run_dir / "playback.mp4",
+        fps=args.fps,
+    )
 
     try:
         if args.no_ai:
@@ -2151,6 +2216,7 @@ def main() -> None:
                 stall_completion_floor=args.stall_completion_floor,
                 constraints=active_constraints,
                 recorder=recorder,
+                video_recorder=video_recorder,
                 no_ai=args.no_ai,
             )
             frame_offset += result["total_steps"]
@@ -2261,6 +2327,9 @@ def main() -> None:
         finally:
             stop_capture = True
             recorder.close()
+            # Finalize the playback video before tearing down the camera so
+            # the moov atom is written even if the rest of teardown fails.
+            video_recorder.close()
             pose_manager.close()
             control.close()
             camera.release()
