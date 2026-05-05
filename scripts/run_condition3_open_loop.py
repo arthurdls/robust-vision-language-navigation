@@ -99,6 +99,9 @@ def run_open_loop_control_loop(
 
     start_ts = datetime.now().isoformat()
 
+    from rvln.eval.step_timer import StepTimer
+    _step_timer = StepTimer(run_dir / "step_timings.jsonl")
+
     logger.info("Planning instruction: '%s'", instruction)
     llm_interface = LLMUserInterface(model=llm_model)
     planner = LTLSymbolicPlanner(llm_interface)
@@ -143,67 +146,75 @@ def run_open_loop_control_loop(
         total_steps = 0
 
         for step in range(max_steps_per_subgoal):
-            image = set_drone_cam_and_get_image(env, drone_cam_id)
-            if image is None:
-                stop_reason = "no_image"
-                total_steps = step
-                break
-
-            global_frame_idx = total_frame_count + step
-            frame_path = frames_dir / f"frame_{global_frame_idx:06d}.png"
+            _step_timer.start_step(total_frame_count + step)
             try:
-                import cv2
-                cv2.imwrite(str(frame_path), image)
-            except Exception:
-                pass
-
-            response = batch.send_prediction_request(
-                image=Image.fromarray(image),
-                proprio=state_for_openvla(current_pose),
-                instr=converted_instruction.strip().lower(),
-                server_url=server_url,
-            )
-
-            if response is None:
-                stop_reason = "no_response"
-                total_steps = step
-                break
-
-            action_poses = response.get("action")
-            if not isinstance(action_poses, list) or len(action_poses) == 0:
-                stop_reason = "empty_action"
-                total_steps = step
-                break
-
-            try:
-                new_image, current_pose, steps_added = apply_action_poses(
-                    env, action_poses, origin_x, origin_y, origin_z, origin_yaw,
-                    trajectory_log=trajectory_log, sleep_s=0.1, drone_cam_id=drone_cam_id,
-                )
-            except Exception as e:
-                logger.error("Error executing action at step %d: %s", step, e)
-                stop_reason = "action_error"
-                total_steps = step
-                break
-
-            total_steps = step + 1
-
-            if last_pose is not None:
-                diffs = [abs(a - b) for a, b in zip(current_pose, last_pose)]
-                if all(d < ACTION_SMALL_DELTA_POS for d in diffs[:3]) and diffs[3] < ACTION_SMALL_DELTA_YAW:
-                    small_count += 1
-                else:
-                    small_count = 0
-                if small_count >= batch.ACTION_SMALL_STEPS:
-                    logger.info("Convergence at step %d, advancing subgoal.", step)
-                    stop_reason = "convergence"
+                with _step_timer.phase("get_frame"):
+                    image = set_drone_cam_and_get_image(env, drone_cam_id)
+                if image is None:
+                    stop_reason = "no_image"
+                    total_steps = step
                     break
-            last_pose = list(current_pose)
 
-            if response.get("done") is True:
-                logger.info("Model reported done at step %d.", step)
-                stop_reason = "model_done"
-                break
+                global_frame_idx = total_frame_count + step
+                frame_path = frames_dir / f"frame_{global_frame_idx:06d}.png"
+                with _step_timer.phase("frame_write"):
+                    try:
+                        import cv2
+                        cv2.imwrite(str(frame_path), image)
+                    except Exception:
+                        pass
+
+                with _step_timer.phase("predict"):
+                    response = batch.send_prediction_request(
+                        image=Image.fromarray(image),
+                        proprio=state_for_openvla(current_pose),
+                        instr=converted_instruction.strip().lower(),
+                        server_url=server_url,
+                    )
+
+                if response is None:
+                    stop_reason = "no_response"
+                    total_steps = step
+                    break
+
+                action_poses = response.get("action")
+                if not isinstance(action_poses, list) or len(action_poses) == 0:
+                    stop_reason = "empty_action"
+                    total_steps = step
+                    break
+
+                with _step_timer.phase("apply_action"):
+                    try:
+                        new_image, current_pose, steps_added = apply_action_poses(
+                            env, action_poses, origin_x, origin_y, origin_z, origin_yaw,
+                            trajectory_log=trajectory_log, sleep_s=0.1, drone_cam_id=drone_cam_id,
+                        )
+                    except Exception as e:
+                        logger.error("Error executing action at step %d: %s", step, e)
+                        stop_reason = "action_error"
+                        total_steps = step
+                        break
+
+                total_steps = step + 1
+
+                if last_pose is not None:
+                    diffs = [abs(a - b) for a, b in zip(current_pose, last_pose)]
+                    if all(d < ACTION_SMALL_DELTA_POS for d in diffs[:3]) and diffs[3] < ACTION_SMALL_DELTA_YAW:
+                        small_count += 1
+                    else:
+                        small_count = 0
+                    if small_count >= batch.ACTION_SMALL_STEPS:
+                        logger.info("Convergence at step %d, advancing subgoal.", step)
+                        stop_reason = "convergence"
+                        break
+                last_pose = list(current_pose)
+
+                if response.get("done") is True:
+                    logger.info("Model reported done at step %d.", step)
+                    stop_reason = "model_done"
+                    break
+            finally:
+                _step_timer.end_step()
         else:
             stop_reason = "max_steps"
             total_steps = max_steps_per_subgoal
@@ -230,6 +241,8 @@ def run_open_loop_control_loop(
         )
         planner.advance_state(current_subgoal)
         current_subgoal = planner.get_next_predicate()
+
+    _step_timer.close()
 
     end_ts = datetime.now().isoformat()
 

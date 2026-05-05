@@ -422,6 +422,9 @@ def run_subgoal(
     result = None
     step = 0
 
+    from rvln.eval.step_timer import StepTimer
+    _step_timer = StepTimer(frames_dir.parent / "step_timings.jsonl")
+
     def _process_help(completion_pct: float, reasoning: str, trigger: str) -> str:
         nonlocal current_instruction, subgoal_nl, converted_instruction
         nonlocal openvla_pose_origin, small_count, last_pose
@@ -537,57 +540,62 @@ def run_subgoal(
         return "break"
 
     while step < config.max_steps:
-        if config.max_seconds is not None and (time.time() - subgoal_start_time) >= config.max_seconds:
-            logger.info("Max seconds (%.1f) reached at step %d.", config.max_seconds, step)
-            stop_reason = "max_seconds"
-            total_steps = step
-            break
-
-        async_force_converge = False
-        if use_async and monitor:
-            async_result = monitor.poll_result()
-            if async_result is not None:
-                if async_result.action == "stop":
-                    stop_reason = "monitor_complete"
-                    total_steps = step
-                    break
-                if async_result.action == "ask_help":
-                    if _process_help(async_result.completion_pct, async_result.reasoning, "async_monitor") == "retry":
-                        continue
-                    break
-                if async_result.action == "force_converge":
-                    override_history.append({
-                        "step": step,
-                        "type": "force_converge",
-                        "reasoning": async_result.reasoning,
-                    })
-                    async_force_converge = True
-
-        image = set_drone_cam_and_get_image(env, cam_id)
-        if image is None:
-            logger.warning("No image at step %d, ending subgoal.", step)
-            stop_reason = "no_image"
-            break
-
-        global_frame_idx = frame_offset + step
-        frame_path = frames_dir / f"frame_{global_frame_idx:06d}.png"
+        _step_timer.start_step(step)
         try:
-            import cv2
-            cv2.imwrite(str(frame_path), image)
-        except Exception as e:
-            logger.debug("Failed to save frame %s: %s", frame_path, e)
+            if config.max_seconds is not None and (time.time() - subgoal_start_time) >= config.max_seconds:
+                logger.info("Max seconds (%.1f) reached at step %d.", config.max_seconds, step)
+                stop_reason = "max_seconds"
+                total_steps = step
+                break
 
-        if monitor:
-            try:
-                result = monitor.on_frame(frame_path, displacement=list(current_pose))
-            except Exception as e:
-                logger.error("monitor.on_frame failed at step %d: %s", step, e)
-                result = DiaryCheckResult(
-                    action="continue", new_instruction="", reasoning="",
-                    diary_entry="", completion_pct=monitor.last_completion_pct,
-                )
+            async_force_converge = False
+            if use_async and monitor:
+                async_result = monitor.poll_result()
+                if async_result is not None:
+                    if async_result.action == "stop":
+                        stop_reason = "monitor_complete"
+                        total_steps = step
+                        break
+                    if async_result.action == "ask_help":
+                        if _process_help(async_result.completion_pct, async_result.reasoning, "async_monitor") == "retry":
+                            continue
+                        break
+                    if async_result.action == "force_converge":
+                        override_history.append({
+                            "step": step,
+                            "type": "force_converge",
+                            "reasoning": async_result.reasoning,
+                        })
+                        async_force_converge = True
 
-            if not use_async:
+            with _step_timer.phase("get_frame"):
+                image = set_drone_cam_and_get_image(env, cam_id)
+            if image is None:
+                logger.warning("No image at step %d, ending subgoal.", step)
+                stop_reason = "no_image"
+                break
+
+            global_frame_idx = frame_offset + step
+            frame_path = frames_dir / f"frame_{global_frame_idx:06d}.png"
+            with _step_timer.phase("frame_write"):
+                try:
+                    import cv2
+                    cv2.imwrite(str(frame_path), image)
+                except Exception as e:
+                    logger.debug("Failed to save frame %s: %s", frame_path, e)
+
+            with _step_timer.phase("monitor_on_frame"):
+                if monitor:
+                    try:
+                        result = monitor.on_frame(frame_path, displacement=list(current_pose))
+                    except Exception as e:
+                        logger.error("monitor.on_frame failed at step %d: %s", step, e)
+                        result = DiaryCheckResult(
+                            action="continue", new_instruction="", reasoning="",
+                            diary_entry="", completion_pct=monitor.last_completion_pct,
+                        )
+
+            if monitor and not use_async:
                 if result.action == "stop":
                     stop_reason = "monitor_complete"
                     total_steps = step
@@ -603,165 +611,169 @@ def run_subgoal(
                         "reasoning": result.reasoning,
                     })
 
-        openvla_pose = [c - o for c, o in zip(current_pose, openvla_pose_origin)]
-        response = batch.send_prediction_request(
-            image=Image.fromarray(image),
-            proprio=state_for_openvla(openvla_pose),
-            instr=current_instruction.strip().lower(),
-            server_url=server_url,
-        )
+            openvla_pose = [c - o for c, o in zip(current_pose, openvla_pose_origin)]
+            with _step_timer.phase("predict"):
+                response = batch.send_prediction_request(
+                    image=Image.fromarray(image),
+                    proprio=state_for_openvla(openvla_pose),
+                    instr=current_instruction.strip().lower(),
+                    server_url=server_url,
+                )
 
-        if response is None:
-            logger.warning("No VLA response at step %d, ending subgoal.", step)
-            stop_reason = "no_response"
-            total_steps = step
-            break
-
-        action_poses = response.get("action")
-        if not isinstance(action_poses, list) or len(action_poses) == 0:
-            logger.warning("Empty action at step %d, ending subgoal.", step)
-            stop_reason = "empty_action"
-            total_steps = step
-            break
-
-        if any(o != 0.0 for o in openvla_pose_origin):
-            yaw_origin_rad = math.radians(openvla_pose_origin[3])
-            reframed_poses = []
-            for pose in action_poses:
-                if isinstance(pose, (list, tuple)) and len(pose) >= 4:
-                    reframed_poses.append([
-                        float(pose[0]) + openvla_pose_origin[0],
-                        float(pose[1]) + openvla_pose_origin[1],
-                        float(pose[2]) + openvla_pose_origin[2],
-                        float(pose[3]) + yaw_origin_rad,
-                    ])
-                else:
-                    reframed_poses.append(pose)
-            action_poses = reframed_poses
-
-        try:
-            new_image, current_pose, steps_added = apply_action_poses(
-                env,
-                action_poses,
-                origin_x,
-                origin_y,
-                origin_z,
-                origin_yaw,
-                trajectory_log=trajectory_log,
-                sleep_s=0.1,
-                drone_cam_id=cam_id,
-            )
-        except Exception as e:
-            logger.error("Error executing action at step %d: %s", step, e)
-            stop_reason = "action_error"
-            total_steps = step
-            break
-
-        total_steps = step + 1
-
-        # --- Convergence detection ---
-        # Note: checkpoints (monitor.on_frame above) still fire during
-        # corrective instruction execution, but they evaluate the *subgoal*,
-        # not the corrective micro-command. The convergence guard below
-        # (steps_since_correction >= check_interval) is the only mechanism
-        # that distinguishes correction-phase from normal execution: it
-        # suppresses the small-motion convergence detector to let the new
-        # instruction take effect. See the "Correction-awareness gap"
-        # section in goal_adherence_monitor.py for details.
-        converged = False
-        if not use_async:
-            if monitor and result is not None and result.action == "force_converge":
-                converged = True
-            steps_since_correction = step - last_correction_step
-            if last_pose is not None and steps_since_correction >= config.check_interval:
-                diffs = [abs(a - b) for a, b in zip(current_pose, last_pose)]
-                if all(d < ACTION_SMALL_DELTA_POS for d in diffs[:3]) and diffs[3] < ACTION_SMALL_DELTA_YAW:
-                    small_count += 1
-                else:
-                    small_count = 0
-                if small_count >= batch.ACTION_SMALL_STEPS:
-                    converged = True
-        else:
-            if async_force_converge:
-                converged = True
-            elapsed_since_correction = time.time() - last_correction_time
-            if last_pose is not None and elapsed_since_correction >= config.check_interval_s:
-                diffs = [abs(a - b) for a, b in zip(current_pose, last_pose)]
-                if all(d < ACTION_SMALL_DELTA_POS for d in diffs[:3]) and diffs[3] < ACTION_SMALL_DELTA_YAW:
-                    small_count += 1
-                else:
-                    small_count = 0
-                if small_count >= batch.ACTION_SMALL_STEPS:
-                    converged = True
-        last_pose = list(current_pose)
-
-        if converged:
-            if not monitor:
-                # No monitor (C3 open-loop): convergence = done
-                stop_reason = "convergence"
-                total_steps = step + 1
+            if response is None:
+                logger.warning("No VLA response at step %d, ending subgoal.", step)
+                stop_reason = "no_response"
+                total_steps = step
                 break
 
-            conv_frame = set_drone_cam_and_get_image(env, cam_id)
-            if conv_frame is not None:
-                conv_path = frames_dir / f"frame_conv_{global_frame_idx:06d}.png"
+            action_poses = response.get("action")
+            if not isinstance(action_poses, list) or len(action_poses) == 0:
+                logger.warning("Empty action at step %d, ending subgoal.", step)
+                stop_reason = "empty_action"
+                total_steps = step
+                break
+
+            if any(o != 0.0 for o in openvla_pose_origin):
+                yaw_origin_rad = math.radians(openvla_pose_origin[3])
+                reframed_poses = []
+                for pose in action_poses:
+                    if isinstance(pose, (list, tuple)) and len(pose) >= 4:
+                        reframed_poses.append([
+                            float(pose[0]) + openvla_pose_origin[0],
+                            float(pose[1]) + openvla_pose_origin[1],
+                            float(pose[2]) + openvla_pose_origin[2],
+                            float(pose[3]) + yaw_origin_rad,
+                        ])
+                    else:
+                        reframed_poses.append(pose)
+                action_poses = reframed_poses
+
+            with _step_timer.phase("apply_action"):
                 try:
-                    import cv2
-                    cv2.imwrite(str(conv_path), conv_frame)
-                except Exception:
-                    conv_path = frame_path
-            else:
-                conv_path = frame_path
-
-            try:
-                conv_result = monitor.on_convergence(
-                    conv_path, displacement=list(current_pose),
-                )
-            except Exception as e:
-                logger.error("monitor.on_convergence failed at step %d: %s", step, e)
-                conv_result = DiaryCheckResult(
-                    action="stop", new_instruction="",
-                    reasoning="LLM error on convergence",
-                    diary_entry="",
-                    completion_pct=monitor.last_completion_pct,
-                )
-
-            if conv_result.action == "stop":
-                in_correction = False
-                stop_reason = "monitor_complete"
-                break
-
-            elif conv_result.action == "ask_help":
-                in_correction = False
-                help_decision = _process_help(
-                    conv_result.completion_pct, conv_result.reasoning, "convergence",
-                )
-                if help_decision == "break":
+                    new_image, current_pose, steps_added = apply_action_poses(
+                        env,
+                        action_poses,
+                        origin_x,
+                        origin_y,
+                        origin_z,
+                        origin_yaw,
+                        trajectory_log=trajectory_log,
+                        sleep_s=0.1,
+                        drone_cam_id=cam_id,
+                    )
+                except Exception as e:
+                    logger.error("Error executing action at step %d: %s", step, e)
+                    stop_reason = "action_error"
+                    total_steps = step
                     break
 
-            elif conv_result.new_instruction:
-                override_history.append({
-                    "step": step,
-                    "type": f"convergence_{conv_result.action}",
-                    "old_instruction": current_instruction,
-                    "new_instruction": conv_result.new_instruction,
-                    "reasoning": conv_result.reasoning,
-                })
-                current_instruction = conv_result.new_instruction
-                in_correction = True
-                last_correction_step = step
-                if use_async:
-                    last_correction_time = time.time()
-                openvla_pose_origin = list(current_pose)
-                small_count = 0
-                last_pose = None
-                batch.reset_model(server_url)
-            else:
-                in_correction = False
-                stop_reason = "convergence_no_command"
-                break
+            total_steps = step + 1
 
-        step += 1
+            # --- Convergence detection ---
+            # Note: checkpoints (monitor.on_frame above) still fire during
+            # corrective instruction execution, but they evaluate the *subgoal*,
+            # not the corrective micro-command. The convergence guard below
+            # (steps_since_correction >= check_interval) is the only mechanism
+            # that distinguishes correction-phase from normal execution: it
+            # suppresses the small-motion convergence detector to let the new
+            # instruction take effect. See the "Correction-awareness gap"
+            # section in goal_adherence_monitor.py for details.
+            converged = False
+            if not use_async:
+                if monitor and result is not None and result.action == "force_converge":
+                    converged = True
+                steps_since_correction = step - last_correction_step
+                if last_pose is not None and steps_since_correction >= config.check_interval:
+                    diffs = [abs(a - b) for a, b in zip(current_pose, last_pose)]
+                    if all(d < ACTION_SMALL_DELTA_POS for d in diffs[:3]) and diffs[3] < ACTION_SMALL_DELTA_YAW:
+                        small_count += 1
+                    else:
+                        small_count = 0
+                    if small_count >= batch.ACTION_SMALL_STEPS:
+                        converged = True
+            else:
+                if async_force_converge:
+                    converged = True
+                elapsed_since_correction = time.time() - last_correction_time
+                if last_pose is not None and elapsed_since_correction >= config.check_interval_s:
+                    diffs = [abs(a - b) for a, b in zip(current_pose, last_pose)]
+                    if all(d < ACTION_SMALL_DELTA_POS for d in diffs[:3]) and diffs[3] < ACTION_SMALL_DELTA_YAW:
+                        small_count += 1
+                    else:
+                        small_count = 0
+                    if small_count >= batch.ACTION_SMALL_STEPS:
+                        converged = True
+            last_pose = list(current_pose)
+
+            if converged:
+                if not monitor:
+                    # No monitor (C3 open-loop): convergence = done
+                    stop_reason = "convergence"
+                    total_steps = step + 1
+                    break
+
+                conv_frame = set_drone_cam_and_get_image(env, cam_id)
+                if conv_frame is not None:
+                    conv_path = frames_dir / f"frame_conv_{global_frame_idx:06d}.png"
+                    try:
+                        import cv2
+                        cv2.imwrite(str(conv_path), conv_frame)
+                    except Exception:
+                        conv_path = frame_path
+                else:
+                    conv_path = frame_path
+
+                try:
+                    conv_result = monitor.on_convergence(
+                        conv_path, displacement=list(current_pose),
+                    )
+                except Exception as e:
+                    logger.error("monitor.on_convergence failed at step %d: %s", step, e)
+                    conv_result = DiaryCheckResult(
+                        action="stop", new_instruction="",
+                        reasoning="LLM error on convergence",
+                        diary_entry="",
+                        completion_pct=monitor.last_completion_pct,
+                    )
+
+                if conv_result.action == "stop":
+                    in_correction = False
+                    stop_reason = "monitor_complete"
+                    break
+
+                elif conv_result.action == "ask_help":
+                    in_correction = False
+                    help_decision = _process_help(
+                        conv_result.completion_pct, conv_result.reasoning, "convergence",
+                    )
+                    if help_decision == "break":
+                        break
+
+                elif conv_result.new_instruction:
+                    override_history.append({
+                        "step": step,
+                        "type": f"convergence_{conv_result.action}",
+                        "old_instruction": current_instruction,
+                        "new_instruction": conv_result.new_instruction,
+                        "reasoning": conv_result.reasoning,
+                    })
+                    current_instruction = conv_result.new_instruction
+                    in_correction = True
+                    last_correction_step = step
+                    if use_async:
+                        last_correction_time = time.time()
+                    openvla_pose_origin = list(current_pose)
+                    small_count = 0
+                    last_pose = None
+                    batch.reset_model(server_url)
+                else:
+                    in_correction = False
+                    stop_reason = "convergence_no_command"
+                    break
+
+            step += 1
+        finally:
+            _step_timer.end_step()
     else:
         # Reached the step ceiling without completing. Counted as an
         # ask-for-help event and aborts the mission at the episode level.
@@ -772,6 +784,8 @@ def run_subgoal(
         )
         stop_reason = "ask_help"
         total_steps = config.max_steps
+
+    _step_timer.close()
 
     # Collect metrics
     all_vlm_call_records = []
