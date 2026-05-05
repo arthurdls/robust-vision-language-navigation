@@ -6,6 +6,7 @@ blocks on disk I/O. close() drains the queue.
 
 from __future__ import annotations
 
+import logging
 import queue
 import threading
 from pathlib import Path
@@ -14,6 +15,7 @@ from typing import Optional
 import cv2
 import numpy as np
 
+logger = logging.getLogger(__name__)
 
 _SENTINEL = object()
 
@@ -48,11 +50,13 @@ class AsyncFrameWriter:
             filename, image = item
             try:
                 cv2.imwrite(str(self._dir / filename), image)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.warning("AsyncFrameWriter: failed to write %s: %s", filename, exc)
 
     def close(self) -> None:
         if self._q is None or self._thread is None:
             return
         self._q.put(_SENTINEL)
         self._thread.join(timeout=30.0)
+        self._q = None
+        self._thread = None

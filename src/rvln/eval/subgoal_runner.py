@@ -593,7 +593,7 @@ def run_subgoal(
             with _step_timer.phase("monitor_on_frame"):
                 if monitor:
                     try:
-                        result = monitor.on_frame(frame_path, displacement=list(current_pose))
+                        result = monitor.on_frame(image, displacement=list(current_pose))
                     except Exception as e:
                         logger.error("monitor.on_frame failed at step %d: %s", step, e)
                         result = DiaryCheckResult(
@@ -721,14 +721,14 @@ def run_subgoal(
 
                 conv_frame = set_drone_cam_and_get_image(env, cam_id)
                 if conv_frame is not None:
-                    conv_path = frames_dir / f"frame_conv_{global_frame_idx:06d}.png"
                     _frame_writer.write(f"frame_conv_{global_frame_idx:06d}.png", conv_frame)
+                    monitor_input = conv_frame
                 else:
-                    conv_path = frame_path
+                    monitor_input = image  # fall back to last loop frame
 
                 try:
                     conv_result = monitor.on_convergence(
-                        conv_path, displacement=list(current_pose),
+                        monitor_input, displacement=list(current_pose),
                     )
                 except Exception as e:
                     logger.error("monitor.on_convergence failed at step %d: %s", step, e)
