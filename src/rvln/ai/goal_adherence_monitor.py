@@ -454,12 +454,15 @@ class GoalAdherenceMonitor:
         self._peak_completion = max(self._peak_completion, pct)
 
         corrective = (parsed.get("corrective_instruction") or "").strip()
+        parsed_for_reasoning = parsed
 
         if parsed.get("complete", False) and not corrective:
             return DiaryCheckResult(
                 action="stop",
                 new_instruction="",
-                reasoning=f"Subgoal complete on convergence. Raw: {response}",
+                reasoning=self._compose_convergence_reasoning(
+                    parsed, "convergence: complete",
+                ),
                 diary_entry="",
                 completion_pct=pct,
             )
@@ -483,11 +486,15 @@ class GoalAdherenceMonitor:
                 return DiaryCheckResult(
                     action="stop",
                     new_instruction="",
-                    reasoning=f"Subgoal complete on convergence (retry). Raw: {response}",
+                    reasoning=self._compose_convergence_reasoning(
+                        parsed_retry, "convergence: complete (on retry)",
+                    ),
                     diary_entry="",
                     completion_pct=pct_r,
                 )
             corrective = corrective_retry
+            if corrective and parsed_retry is not None:
+                parsed_for_reasoning = parsed_retry
             if not corrective:
                 logger.warning(
                     "Convergence retry returned no corrective instruction; "
@@ -509,7 +516,9 @@ class GoalAdherenceMonitor:
         return DiaryCheckResult(
             action="command",
             new_instruction=corrective,
-            reasoning=f"Convergence diagnosis: {parsed.get('diagnosis', 'unknown')}. Raw: {response}",
+            reasoning=self._compose_convergence_reasoning(
+                parsed_for_reasoning, "convergence",
+            ),
             diary_entry="",
             completion_pct=pct,
         )
@@ -599,12 +608,15 @@ class GoalAdherenceMonitor:
         self._peak_completion = max(self._peak_completion, pct)
 
         corrective = (parsed.get("corrective_instruction") or "").strip()
+        parsed_for_reasoning = parsed
 
         if parsed.get("complete", False) and not corrective:
             return DiaryCheckResult(
                 action="stop",
                 new_instruction="",
-                reasoning=f"Text-only convergence: complete. Raw: {response}",
+                reasoning=self._compose_convergence_reasoning(
+                    parsed, "text-only convergence: complete",
+                ),
                 diary_entry="",
                 completion_pct=pct,
             )
@@ -633,11 +645,15 @@ class GoalAdherenceMonitor:
                 return DiaryCheckResult(
                     action="stop",
                     new_instruction="",
-                    reasoning=f"Text-only convergence: complete (retry). Raw: {response}",
+                    reasoning=self._compose_convergence_reasoning(
+                        parsed_retry, "text-only convergence: complete (on retry)",
+                    ),
                     diary_entry="",
                     completion_pct=pct_r,
                 )
             corrective = corrective_retry
+            if corrective and parsed_retry is not None:
+                parsed_for_reasoning = parsed_retry
             if not corrective:
                 logger.warning(
                     "Text-only convergence retry: no corrective instruction; "
@@ -659,7 +675,9 @@ class GoalAdherenceMonitor:
         return DiaryCheckResult(
             action="command",
             new_instruction=corrective,
-            reasoning=f"Text-only convergence: {parsed.get('diagnosis', 'unknown')}. Raw: {response}",
+            reasoning=self._compose_convergence_reasoning(
+                parsed_for_reasoning, "text-only convergence",
+            ),
             diary_entry="",
             completion_pct=pct,
         )
@@ -796,6 +814,22 @@ class GoalAdherenceMonitor:
         reason = self._last_should_stop_reasoning or ""
         self._last_should_stop_reasoning = None
         return reason
+
+    @staticmethod
+    def _compose_convergence_reasoning(parsed: dict, label: str) -> str:
+        """Build the operator-facing reasoning string for a convergence verdict.
+
+        Prefers the VLM's own "reasoning" field (a plain-English explanation
+        the prompt asks for) so the [CONVERGENCE] terminal print shows what
+        the VLM actually saw, not just the diagnosis label. Raw response text
+        is intentionally NOT embedded -- the full JSON lives in the saved
+        convergence artifact files for forensic review.
+        """
+        diagnosis = str(parsed.get("diagnosis", "unknown"))
+        vlm_reasoning = (parsed.get("reasoning") or "").strip()
+        if vlm_reasoning:
+            return f"{label} ({diagnosis}): {vlm_reasoning}"
+        return f"{label} ({diagnosis}); no reasoning provided"
 
     def _format_convergence_prompt(
         self, diary_blob: str, disp_str: str, stop_reason: Optional[str] = None,
@@ -1256,12 +1290,15 @@ class GoalAdherenceMonitor:
         self._peak_completion = max(self._peak_completion, pct)
 
         corrective = (parsed.get("corrective_instruction") or "").strip()
+        parsed_for_reasoning = parsed
 
         if parsed.get("complete", False) and not corrective:
             return DiaryCheckResult(
                 action="stop",
                 new_instruction="",
-                reasoning=f"Subgoal complete on async convergence. Raw: {response}",
+                reasoning=self._compose_convergence_reasoning(
+                    parsed, "async convergence: complete",
+                ),
                 diary_entry="",
                 completion_pct=pct,
             )
@@ -1285,11 +1322,15 @@ class GoalAdherenceMonitor:
                 return DiaryCheckResult(
                     action="stop",
                     new_instruction="",
-                    reasoning=f"Subgoal complete on async convergence (retry). Raw: {response}",
+                    reasoning=self._compose_convergence_reasoning(
+                        parsed_retry, "async convergence: complete (on retry)",
+                    ),
                     diary_entry="",
                     completion_pct=pct_r,
                 )
             corrective = corrective_retry
+            if corrective and parsed_retry is not None:
+                parsed_for_reasoning = parsed_retry
             if not corrective:
                 logger.warning(
                     "Async convergence retry returned no corrective instruction; "
@@ -1310,7 +1351,9 @@ class GoalAdherenceMonitor:
         return DiaryCheckResult(
             action="command",
             new_instruction=corrective,
-            reasoning=f"Async convergence diagnosis: {parsed.get('diagnosis', 'unknown')}. Raw: {response}",
+            reasoning=self._compose_convergence_reasoning(
+                parsed_for_reasoning, "async convergence",
+            ),
             diary_entry="",
             completion_pct=pct,
         )
