@@ -51,7 +51,7 @@ CONFIG = {
 
     # ---- Camera (set exactly one source) ---------------------------------
     # Local cv2 device index (USB / V4L2). 4 = MiniNav USB cam on Jetson.
-    "camera": 4,
+    "camera": 0,
     # HTTP frame source, e.g. "http://127.0.0.1:8081/frame" for the mock.
     # Set this XOR camera_pipeline to override the cv2 capture.
     "camera_url": "",
@@ -77,13 +77,13 @@ CONFIG = {
     # at the wire boundary. Internal pipeline runs in cm/s + rad/s;
     # defaults convert vx/vy/vz to m/s and leave yaw_rate as rad/s.
     "scale_output_translation": 0.01,
-    "scale_output_rotation": 1.0,
+    "scale_output_rotation": -3.0,
     # Per-step magnitude clip applied BEFORE wire scaling. User-facing
     # units: meters/second for translation, degrees/second for rotation.
     # Defaults give 0.5 m/s + 20 deg/s on the wire with the default
     # output scales. Translation is clipped on the 3D vector norm so
     # heading is preserved; yaw is sign-preserved.
-    "max_translation_m_s": 0.5,
+    "max_translation_m_s": 0.6,
     "max_rotation_deg_s": 20.0,
 
     # ---- OpenVLA ---------------------------------------------------------
@@ -96,7 +96,7 @@ CONFIG = {
     # degrees; action_small_steps is the consecutive-step count.
     "action_small_delta_pos": 3.0,
     "action_small_delta_yaw": 1.0,
-    "action_small_steps": 10,
+    "action_small_steps": 1000,
 
     # ---- LTL planner / subgoal converter ---------------------------------
     "llm_model": "gpt-5.4",
@@ -110,7 +110,7 @@ CONFIG = {
     # the grid will only shift by one cell when a new spacing boundary
     # is crossed (consistent past frames across consecutive
     # checkpoints). "" -> inherit diary_check_interval_s.
-    "global_grid_spacing_s": "",
+    "global_grid_spacing_s": 6.0,
     # Spacing (seconds) between the prev and curr frames in the 2-frame
     # local "what changed" VLM grid. Without this the local prompt
     # compared two ~100 ms-apart frames (essentially identical) and the
