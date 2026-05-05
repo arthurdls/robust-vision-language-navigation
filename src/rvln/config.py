@@ -17,7 +17,7 @@ DEFAULT_VLM_FALLBACK_MODEL = "gpt-4o"
 # ---------------------------------------------------------------------------
 # Diary monitoring
 # ---------------------------------------------------------------------------
-DEFAULT_DIARY_MODE = "frame"  # "frame" (sync, step-based) or "time" (async, time-based)
+DEFAULT_DIARY_MODE = "time"  # was "frame"; sim now matches hardware
 DEFAULT_HARDWARE_DIARY_MODE = "time"  # hardware default: time-based (async) cadence
 
 # Frame-mode budget / checkpoint interval
