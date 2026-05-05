@@ -1960,11 +1960,11 @@ def main() -> None:
 
     try:
         from rvln.ai.llm_interface import LLMUserInterface
-        from rvln.ai.ltl_planner import LTLSymbolicPlanner
+        from rvln.ai.sequential_ltl_planner import SequentialLTLPlanner
 
         llm_interface = LLMUserInterface(model=llm_model, use_constraints=False)
         recorder_ctx["llm_interface"] = llm_interface
-        planner = LTLSymbolicPlanner(llm_interface, use_constraints=False)
+        planner = SequentialLTLPlanner(llm_interface)
         planner.plan_from_natural_language(instruction)
 
         ltl_plan = {
@@ -2033,7 +2033,7 @@ def main() -> None:
                 instruction = new_instruction
                 llm_interface = LLMUserInterface(model=llm_model, use_constraints=False)
                 recorder_ctx["llm_interface"] = llm_interface
-                planner = LTLSymbolicPlanner(llm_interface, use_constraints=False)
+                planner = SequentialLTLPlanner(llm_interface)
                 planner.plan_from_natural_language(new_instruction)
                 ltl_plan = {
                     "ltl_nl_formula": llm_interface.ltl_nl_formula.get("ltl_nl_formula", ""),

@@ -203,7 +203,7 @@ def run_integrated_control_loop(
     Returns the run_info dict written to disk.
     """
     from rvln.ai.llm_interface import LLMUserInterface
-    from rvln.ai.ltl_planner import LTLSymbolicPlanner
+    from rvln.ai.sequential_ltl_planner import SequentialLTLPlanner
     from rvln.eval.batch_runner import CUDAOutOfMemoryError
 
     instruction = task["instruction"]
@@ -244,7 +244,7 @@ def run_integrated_control_loop(
                 instruction,
             )
             llm_interface = LLMUserInterface(model=llm_model, use_constraints=False)
-            planner = LTLSymbolicPlanner(llm_interface, use_constraints=False)
+            planner = SequentialLTLPlanner(llm_interface)
             planner.plan_from_natural_language(instruction)
 
             ltl_plan = {

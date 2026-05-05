@@ -52,18 +52,13 @@ class LTLSymbolicPlanner:
     to manage the automaton state and determine the next action.
     """
 
-    def __init__(
-        self,
-        llm_interface: LLMUserInterface,
-        use_constraints: bool = True,
-    ):
+    def __init__(self, llm_interface: LLMUserInterface):
         if spot is None:
             raise ImportError(
                 "The 'spot' library is required for LTLSymbolicPlanner. "
                 "Install via the rvln-sim conda environment."
             )
         self.llm_interface = llm_interface
-        self.use_constraints = use_constraints
         self.current_automaton_state = 0
         self.automaton = None
         self._sink_state: Optional[int] = None
@@ -123,10 +118,7 @@ class LTLSymbolicPlanner:
         )
         # Classify before adding the sink state (ordering is harmless since
         # formula-structural classification doesn't inspect the automaton).
-        if self.use_constraints:
-            self.constraint_predicates = self._classify_predicates()
-        else:
-            self.constraint_predicates = {}
+        self.constraint_predicates = self._classify_predicates()
         self._add_sink_state()
         self.current_automaton_state = self.automaton.get_init_state_number()
         self.finished = False
