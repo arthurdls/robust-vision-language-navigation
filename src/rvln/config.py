@@ -34,6 +34,14 @@ DEFAULT_DIARY_CHECK_INTERVAL_S = 3.0
 # ~54 s of visible history); set smaller for finer-grained recent
 # motion. Independent from the diary check cadence.
 DEFAULT_GLOBAL_GRID_SPACING_S: "float | None" = None
+# Spacing between the two frames in the local "what changed" VLM grid,
+# in seconds. None -> inherit DEFAULT_GLOBAL_GRID_SPACING_S, which itself
+# inherits DEFAULT_DIARY_CHECK_INTERVAL_S. The "prev" frame is whichever
+# captured frame is closest to (t_last - local_grid_spacing_s); "curr"
+# is the latest frame. Without this knob the time-mode local grid was
+# comparing two ~100 ms-apart frames, which is too small a delta for
+# the local VLM to extract meaningful "what changed".
+DEFAULT_LOCAL_GRID_SPACING_S: "float | None" = None
 
 # Shared
 DEFAULT_MAX_CORRECTIONS = 20

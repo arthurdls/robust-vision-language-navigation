@@ -169,6 +169,7 @@ class GoalAdherenceMonitor:
         max_corrections: int = DEFAULT_MAX_CORRECTIONS,
         check_interval_s: Optional[float] = None,
         global_grid_spacing_s: Optional[float] = None,
+        local_grid_spacing_s: Optional[float] = None,
         stall_window: int = DEFAULT_STALL_WINDOW,
         stall_threshold: float = DEFAULT_STALL_THRESHOLD,
         stall_completion_floor: float = DEFAULT_STALL_COMPLETION_FLOOR,
@@ -213,6 +214,18 @@ class GoalAdherenceMonitor:
             global_grid_spacing_s
             if global_grid_spacing_s is not None
             else check_interval_s
+        )
+        # Spacing (in seconds) between the prev and curr frames in the
+        # 2-frame local "what changed" VLM grid (time-mode only). None
+        # cascades down: local_grid_spacing_s -> global_grid_spacing_s
+        # -> check_interval_s. Without this the time-mode local prompt
+        # always compared the literal last two captured frames, which
+        # are typically ~100 ms apart at 10 Hz capture -- too small a
+        # delta for the VLM to articulate motion.
+        self._local_grid_spacing_s: Optional[float] = (
+            local_grid_spacing_s
+            if local_grid_spacing_s is not None
+            else self._global_grid_spacing_s
         )
 
         self._llm: BaseLLM = self._make_llm(model)
@@ -724,6 +737,38 @@ class GoalAdherenceMonitor:
     # Internal helpers
     # ------------------------------------------------------------------
 
+    def _pick_local_prev_path(
+        self,
+        frame_paths: List[Path],
+        frame_timestamps: List[float],
+    ) -> Optional[Path]:
+        """Pick the prev-frame for the time-mode local 'what changed' grid.
+
+        Looks `local_grid_spacing_s` seconds back from the most recent
+        timestamp and returns the frame whose timestamp is closest to
+        that target. If the spacing is None (or zero) or the history
+        doesn't go back that far, falls back to the literal previous
+        frame (legacy behavior).
+        """
+        if not frame_paths or not frame_timestamps:
+            return None
+        spacing = self._local_grid_spacing_s
+        if spacing is None or spacing <= 0:
+            return frame_paths[-2] if len(frame_paths) >= 2 else frame_paths[-1]
+        target = frame_timestamps[-1] - spacing
+        if target <= frame_timestamps[0]:
+            return frame_paths[0]
+        # Linear scan; checkpoint cadence keeps frame_paths small enough
+        # that this is cheap and avoids bisect bookkeeping.
+        best_idx = 0
+        best_diff = abs(frame_timestamps[0] - target)
+        for i, ts in enumerate(frame_timestamps):
+            diff = abs(ts - target)
+            if diff < best_diff:
+                best_diff = diff
+                best_idx = i
+        return frame_paths[best_idx]
+
     def _sample_frames_by_time(
         self,
         frame_paths: Optional[List[Path]] = None,
@@ -1162,12 +1207,18 @@ class GoalAdherenceMonitor:
                     diary_entry="",
                     completion_pct=self._last_completion_pct,
                 )
-            prev_path = self._frame_paths[-2]
             curr_path = self._frame_paths[-1]
             step = self._step
             displacement = list(self._last_displacement)
             frame_paths_snap = list(self._frame_paths)
             frame_timestamps_snap = list(self._frame_timestamps)
+        # Pick prev OUTSIDE the lock to avoid holding it while doing the
+        # linear scan. The snapshots above are immutable copies.
+        prev_path = self._pick_local_prev_path(
+            frame_paths_snap, frame_timestamps_snap,
+        )
+        if prev_path is None:
+            prev_path = curr_path
 
         # --- Local query: what changed (skipped in single_frame_mode) ---
         d = displacement
