@@ -1266,6 +1266,9 @@ def run_subgoal(
     no_ai: bool = False,
     max_translation_cm_s: float = 50.0,
     max_rotation_rad_s: float = math.radians(20.0),
+    action_small_delta_pos: float = ACTION_SMALL_DELTA_POS,
+    action_small_delta_yaw: float = ACTION_SMALL_DELTA_YAW,
+    action_small_steps: int = ACTION_SMALL_STEPS,
 ) -> Dict[str, Any]:
     """Execute a single subgoal with OpenVLA, goal adherence monitoring, and operator help.
 
@@ -1680,11 +1683,11 @@ def run_subgoal(
                         and elapsed_since_correction >= check_interval_s
                     ):
                         diffs = [abs(a - b) for a, b in zip(subgoal_rel_pose, last_pose)]
-                        if all(d < ACTION_SMALL_DELTA_POS for d in diffs[:3]) and diffs[3] < ACTION_SMALL_DELTA_YAW:
+                        if all(d < action_small_delta_pos for d in diffs[:3]) and diffs[3] < action_small_delta_yaw:
                             small_count += 1
                         else:
                             small_count = 0
-                        if small_count >= ACTION_SMALL_STEPS:
+                        if small_count >= action_small_steps:
                             converged = True
                     last_pose = list(subgoal_rel_pose)
 
@@ -1759,11 +1762,11 @@ def run_subgoal(
                         and steps_since_correction >= check_interval
                     ):
                         diffs = [abs(a - b) for a, b in zip(subgoal_rel_pose, last_pose)]
-                        if all(d < ACTION_SMALL_DELTA_POS for d in diffs[:3]) and diffs[3] < ACTION_SMALL_DELTA_YAW:
+                        if all(d < action_small_delta_pos for d in diffs[:3]) and diffs[3] < action_small_delta_yaw:
                             small_count += 1
                         else:
                             small_count = 0
-                        if small_count >= ACTION_SMALL_STEPS:
+                        if small_count >= action_small_steps:
                             converged = True
                     last_pose = list(subgoal_rel_pose)
 
@@ -1914,50 +1917,53 @@ def parse_args() -> argparse.Namespace:
     )
 
     epilog = (
-        "Examples:\n"
-        "  # Live flight (Jetson USB camera at index 4, drone at 192.168.0.101)\n"
-        "  python scripts/run_hardware.py \\\n"
-        "      --instruction \"take off and circle the red cone\" \\\n"
-        "      --odom_http_url http://192.168.0.101:8090/pose\n"
+        "Configuration:\n"
+        "  Most operators edit the CONFIG block at the top of\n"
+        "  scripts/run_hardware.py and run with no flags. Every CLI flag\n"
+        "  below has a literal default copied into that CONFIG block;\n"
+        "  flags passed on the command line still win (argparse takes the\n"
+        "  last value for repeated options).\n"
         "\n"
-        "  # Fully simulated (start_mock_hardware.py + start_server.py running)\n"
+        "Examples:\n"
+        "  # Live flight (default Jetson USB camera, drone at 192.168.0.101,\n"
+        "  # dead-reckoning pose) -- edit CONFIG['instruction'] or pass it:\n"
+        "  python scripts/run_hardware.py --instruction \"circle the red cone\"\n"
+        "\n"
+        "  # Fully simulated (start_mock_hardware.py + start_server.py running):\n"
         "  python scripts/run_hardware.py \\\n"
         "      --control_host 127.0.0.1 \\\n"
-        "      --control_port 8080 \\\n"
         "      --camera_url http://127.0.0.1:8081/frame \\\n"
-        "      --odom_http_url http://127.0.0.1:8081/pose \\\n"
-        "      --openvla_predict_url http://127.0.0.1:5007/predict \\\n"
-        "      --initial_position 0,0,0,0 \\\n"
         "      --instruction \"move forward 10m, then turn toward the red car\"\n"
         "\n"
-        "  # Live flight on Jetson with the onboard CSI camera\n"
+        "  # Live flight on Jetson with the onboard CSI camera + real odometry:\n"
         "  python scripts/run_hardware.py \\\n"
         "      --camera_pipeline 'nvarguscamerasrc sensor-id=0 ! ... ! appsink' \\\n"
-        "      --odom_http_url http://192.168.0.101:8090/pose \\\n"
-        "      --instruction \"...\"\n"
+        "      --odom_http_url http://192.168.0.101:8090/pose --no-dead-reckoning\n"
         "\n"
-        "  # Same, with a 5fps recording for cost analysis\n"
-        "  python scripts/run_hardware.py ... --record --record_fps 5\n"
+        "  # Verbose monitoring -- one human-readable status line per second:\n"
+        "  python scripts/run_hardware.py -v --instruction \"...\"\n"
         "\n"
         "Wire format (matches boieng_mininav.py):\n"
         "  Each packet is 5 float32 values: [frame_count, vx, vy, vz, yaw_rate].\n"
-        "  vx/vy/vz are linear velocities in m/s, yaw_rate is in rad/s. The\n"
-        "  drone (and the simulated mock) integrate these as velocities.\n"
-        "  Internally the pipeline keeps OpenVLA's cm emission convention\n"
-        "  for safety clipping (<=50 cm/s linear, <=20 deg/s yaw) and dead-\n"
-        "  reckoning; vx/vy/vz are divided by 100 at the wire boundary so\n"
-        "  the drone sees m/s.\n"
+        "  Internally the pipeline keeps OpenVLA's cm/s + rad/s convention\n"
+        "  for clipping (--max_translation_m_s, --max_rotation_deg_s) and\n"
+        "  dead-reckoning. At the wire boundary vx/vy/vz are multiplied by\n"
+        "  --scale_output_translation (default 0.01 -> m/s) and yaw_rate\n"
+        "  by --scale_output_rotation (default 1.0 -> rad/s untouched).\n"
+        "  Translation clip is applied on the 3D vector norm so heading is\n"
+        "  preserved; yaw clip is sign-preserved.\n"
         "\n"
-        "Pose source:\n"
-        "  Preferred:    --odom_http_url <url>   external odometry feed\n"
-        "  Fallback:     --dead-reckoning        integrate commanded velocities\n"
-        "                                        (drifts; use only when no odom)\n"
+        "Pose source (exactly one):\n"
+        "  --dead-reckoning       integrate commanded velocities (default; drifts)\n"
+        "  --odom_http_url <url>  external odometry feed\n"
+        "  --odom_udp_port <N>    external odometry over UDP\n"
         "\n"
         "Failure semantics: there is no silent fallback. A stale odometry\n"
         "sample, an unreachable control host, an LLM/VLM failure, or a\n"
         "missing OpenVLA /reset endpoint surfaces as an error, not a\n"
-        "transparent retry to a different code path. Dead-reckoning is a\n"
-        "deliberate choice via --dead-reckoning, not a hidden fallback.\n"
+        "transparent retry to a different code path. Convergence parse\n"
+        "failures and missing correctives surface as ask_help prompts so\n"
+        "the operator can recover the run.\n"
         "\n"
         "Outputs (under --results_dir/run_<YYYY_MM_DD_HH_MM_SS_us>/):\n"
         "  trajectory_log.json  per-step state vector\n"
@@ -2142,6 +2148,33 @@ def parse_args() -> argparse.Namespace:
             "the server has no /reset (e.g. raw OpenVLA without "
             "scripts/start_server.py's patch) it's silently skipped. "
             "(default: %(default)s)"
+        ),
+    )
+
+    g_converge = parser.add_argument_group(
+        "Small-motion auto-converge (post-OpenVLA convergence detector)",
+    )
+    g_converge.add_argument(
+        "--action_small_delta_pos", type=float, default=ACTION_SMALL_DELTA_POS,
+        help=(
+            "Per-axis position threshold (cm) below which a step counts as "
+            "'small'. When N consecutive steps are small, the run forces a "
+            "convergence VLM call. (default: %(default)s)"
+        ),
+    )
+    g_converge.add_argument(
+        "--action_small_delta_yaw", type=float, default=ACTION_SMALL_DELTA_YAW,
+        help=(
+            "Yaw delta threshold (degrees) below which a step counts as "
+            "'small'. (default: %(default)s)"
+        ),
+    )
+    g_converge.add_argument(
+        "--action_small_steps", type=int, default=ACTION_SMALL_STEPS,
+        help=(
+            "Number of consecutive 'small' steps before the auto-converge "
+            "detector fires. Increase to be less trigger-happy on a "
+            "drifting drone. (default: %(default)s)"
         ),
     )
 
@@ -2552,6 +2585,9 @@ def main() -> None:
                 no_ai=args.no_ai,
                 max_translation_cm_s=max_translation_cm_s,
                 max_rotation_rad_s=max_rotation_rad_s,
+                action_small_delta_pos=args.action_small_delta_pos,
+                action_small_delta_yaw=args.action_small_delta_yaw,
+                action_small_steps=args.action_small_steps,
             )
             frame_offset += result["total_steps"]
             subgoal_summaries.append(result)
