@@ -27,7 +27,7 @@ import cv2
 import numpy as np
 from flask import Flask, jsonify, request
 
-from rvln.config import SLEEP_SHORT_S
+from rvln.config import SLEEP_SHORT_S, DEFAULT_STEP_SLEEP_S
 
 logger = logging.getLogger(__name__)
 
@@ -209,7 +209,7 @@ def handle_step():
     data = request.get_json(force=True)
     positions = data["positions"]
     cam_id = int(data.get("cam_id", 0))
-    sleep_s = float(data.get("sleep_s", 0.1))
+    sleep_s = float(data.get("sleep_s", DEFAULT_STEP_SLEEP_S))
 
     steps_applied = 0
     for i, pose in enumerate(positions):

@@ -665,7 +665,6 @@ def run_subgoal(
                         origin_z,
                         origin_yaw,
                         trajectory_log=trajectory_log,
-                        sleep_s=0.1,
                         drone_cam_id=cam_id,
                     )
                 except Exception as e:
