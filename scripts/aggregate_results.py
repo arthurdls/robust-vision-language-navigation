@@ -2023,7 +2023,7 @@ def main():
         "--output_dir",
         type=str,
         default=None,
-        help="Directory for output files (default: same as results_dir)",
+        help="Directory for output files (default: <results_dir>/aggregation)",
     )
     parser.add_argument(
         "--conditions",
@@ -2049,7 +2049,8 @@ def main():
     args = parser.parse_args()
 
     results_dir = args.results_dir
-    output_dir = args.output_dir or results_dir
+    output_dir = args.output_dir or os.path.join(results_dir, "aggregation")
+    os.makedirs(output_dir, exist_ok=True)
 
     print(f"Scanning results in: {os.path.abspath(results_dir)}")
     print()
