@@ -25,6 +25,8 @@ from ..paths import FORMULA_CACHE_DIR
 from .prompts import (
     LTL_NL_SYSTEM_PROMPT,
     LTL_NL_EXAMPLES_PROMPT,
+    LTL_NL_SYSTEM_PROMPT_SEQUENTIAL,
+    LTL_NL_EXAMPLES_PROMPT_SEQUENTIAL,
     LTL_NL_RESTATED_TASK_PROMPT,
     LTL_NL_CHECK_PREDICATES_PROMPT,
     LTL_NL_CHECK_SEMANTICS_PROMPT,
@@ -52,41 +54,32 @@ logger = logging.getLogger(__name__)
 # Disable via environment variable RVLN_IGNORE_FORMULA_CACHE=1 or by passing
 # ``ignore_cache=True`` to ``make_natural_language_request``.
 
-_PROMPT_VERSION_CACHE: Optional[str] = None
-
-
-def _prompt_version() -> str:
-    global _PROMPT_VERSION_CACHE
-    if _PROMPT_VERSION_CACHE is not None:
-        return _PROMPT_VERSION_CACHE
+def _prompt_version_for(prompts: tuple) -> str:
     h = hashlib.sha1()
-    for prompt in (
-        LTL_NL_SYSTEM_PROMPT,
-        LTL_NL_EXAMPLES_PROMPT,
-        LTL_NL_RESTATED_TASK_PROMPT,
-    ):
+    for prompt in prompts:
         h.update(prompt.encode("utf-8"))
-    _PROMPT_VERSION_CACHE = h.hexdigest()[:12]
-    return _PROMPT_VERSION_CACHE
+    return h.hexdigest()[:12]
 
 
-def _formula_cache_key(instruction: str, model: str) -> str:
+def _formula_cache_key(instruction: str, model: str, prompt_version: str) -> str:
     payload = json.dumps({
         "model": model,
-        "prompt_version": _prompt_version(),
+        "prompt_version": prompt_version,
         "instruction": instruction.strip(),
     }, sort_keys=True)
     return hashlib.sha1(payload.encode("utf-8")).hexdigest()
 
 
-def _formula_cache_path(instruction: str, model: str) -> Path:
-    return FORMULA_CACHE_DIR / f"{_formula_cache_key(instruction, model)}.json"
+def _formula_cache_path(instruction: str, model: str, prompt_version: str) -> Path:
+    return FORMULA_CACHE_DIR / f"{_formula_cache_key(instruction, model, prompt_version)}.json"
 
 
-def _load_cached_formula(instruction: str, model: str) -> Optional[Dict[str, Any]]:
+def _load_cached_formula(
+    instruction: str, model: str, prompt_version: str,
+) -> Optional[Dict[str, Any]]:
     if os.environ.get("RVLN_IGNORE_FORMULA_CACHE") == "1":
         return None
-    path = _formula_cache_path(instruction, model)
+    path = _formula_cache_path(instruction, model, prompt_version)
     if not path.exists():
         return None
     try:
@@ -103,13 +96,14 @@ def _load_cached_formula(instruction: str, model: str) -> Optional[Dict[str, Any
 
 
 def _save_cached_formula(
-    instruction: str, model: str, formula: Dict[str, Any], raw_response: str,
+    instruction: str, model: str, prompt_version: str,
+    formula: Dict[str, Any], raw_response: str,
 ) -> None:
     FORMULA_CACHE_DIR.mkdir(parents=True, exist_ok=True)
-    path = _formula_cache_path(instruction, model)
+    path = _formula_cache_path(instruction, model, prompt_version)
     payload = {
         "model": model,
-        "prompt_version": _prompt_version(),
+        "prompt_version": prompt_version,
         "instruction": instruction.strip(),
         "ltl_nl_formula": formula.get("ltl_nl_formula", ""),
         "pi_predicates": formula.get("pi_predicates", {}),
@@ -145,15 +139,26 @@ class LLMUserInterface():
     }
     """
 
-    def __init__(self, model: str = DEFAULT_LLM_MODEL):
+    def __init__(self, model: str = DEFAULT_LLM_MODEL, use_constraints: bool = True):
         self._model = model
+        self._use_constraints = use_constraints
         self._base_llm = LLMFactory.create(model=model, rate_limit_seconds=0.0)
 
+        if use_constraints:
+            system_prompt = LTL_NL_SYSTEM_PROMPT
+            examples_prompt = LTL_NL_EXAMPLES_PROMPT
+        else:
+            system_prompt = LTL_NL_SYSTEM_PROMPT_SEQUENTIAL
+            examples_prompt = LTL_NL_EXAMPLES_PROMPT_SEQUENTIAL
+
         self._initial_context = [
-            {"role": "system", "content": LTL_NL_SYSTEM_PROMPT},
-            {"role": "system", "content": LTL_NL_EXAMPLES_PROMPT},
+            {"role": "system", "content": system_prompt},
+            {"role": "system", "content": examples_prompt},
             {"role": "system", "content": LTL_NL_RESTATED_TASK_PROMPT},
         ]
+        self._prompt_version = _prompt_version_for(
+            (system_prompt, examples_prompt, LTL_NL_RESTATED_TASK_PROMPT)
+        )
 
         self._history = list(self._initial_context)
         self.ltl_nl_formula = {}
@@ -179,7 +184,9 @@ class LLMUserInterface():
         """
         self.reset_to_baseline_context()
 
-        cached = None if ignore_cache else _load_cached_formula(request, self._model)
+        cached = None if ignore_cache else _load_cached_formula(
+            request, self._model, self._prompt_version,
+        )
         if cached is not None:
             self.ltl_nl_formula = {
                 "ltl_nl_formula": cached["ltl_nl_formula"],
@@ -226,7 +233,9 @@ class LLMUserInterface():
             })
 
         if not ignore_cache and isinstance(ltl_nl, dict):
-            _save_cached_formula(request, self._model, ltl_nl, response_text)
+            _save_cached_formula(
+                request, self._model, self._prompt_version, ltl_nl, response_text,
+            )
 
         return self.ltl_nl_to_string()
 
