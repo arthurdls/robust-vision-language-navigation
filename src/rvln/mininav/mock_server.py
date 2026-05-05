@@ -621,7 +621,7 @@ def _print_connection_info(
     print("Mock drone ready. On the client machine run:")
     print()
     print(f"  python scripts/run_hardware.py \\")
-    print(f"      --preferred_server_host {local_ip} \\")
+    print(f"      --control_host {local_ip} \\")
     print(f"      --control_port {tcp_port} \\")
     print(f"      --camera_url http://{local_ip}:{frame_port}/frame \\")
     print(f"      --odom_http_url http://{local_ip}:{frame_port}/pose \\")

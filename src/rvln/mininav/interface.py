@@ -63,7 +63,6 @@ from rvln.config import (
     DEFAULT_DIARY_CHECK_INTERVAL,
     DEFAULT_DIARY_CHECK_INTERVAL_S,
     DEFAULT_DIARY_MODE,
-    DEFAULT_LLM_FALLBACK_MODEL,
     DEFAULT_LLM_MODEL,
     DEFAULT_MAX_CORRECTIONS,
     DEFAULT_MAX_SECONDS_PER_SUBGOAL,
@@ -72,20 +71,16 @@ from rvln.config import (
     DEFAULT_ODOM_UDP_HOST,
     DEFAULT_ODOM_UDP_PORT,
     DEFAULT_OPENVLA_PREDICT_URL,
-    DEFAULT_PREFERRED_SERVER_HOST,
+    DEFAULT_CONTROL_HOST,
     DEFAULT_STALL_COMPLETION_FLOOR,
     DEFAULT_STALL_THRESHOLD,
     DEFAULT_STALL_WINDOW,
-    DEFAULT_VLM_FALLBACK_MODEL,
     DEFAULT_VLM_MODEL,
     IMG_INPUT_SIZE,
 )
 from rvln.paths import REPO_ROOT, load_env_vars
 from rvln.sim.env_setup import state_for_openvla
 from rvln.sim.transforms import normalize_angle, parse_position, relative_pose
-from rvln.ai.utils.llm_providers import LLMFactory
-
-
 logger = logging.getLogger(__name__)
 
 DEFAULT_RESULTS_DIR = REPO_ROOT / "results" / "hardware"
@@ -277,26 +272,23 @@ class OpenVLAClient:
 
     @property
     def reset_url(self) -> str:
-        return self.predict_url.replace("/predict", "/reset")
+        # rsplit so a host segment that happens to contain '/predict' (e.g.
+        # http://predict.example.com/predict) doesn't get its host clobbered.
+        head, _, tail = self.predict_url.rpartition("/predict")
+        if not head:
+            return self.predict_url + "/reset"
+        return head + "/reset" + tail
 
     def reset_model(self) -> None:
         try:
             resp = requests.post(self.reset_url, timeout=10)
-        except Exception as exc:
-            raise RuntimeError(f"OpenVLA model reset failed: {exc}") from exc
-        if resp.status_code == 404:
-            # OpenVLA's bare /predict server doesn't expose /reset;
-            # scripts/start_server.py patches it in. Treat absence as a no-op
-            # rather than aborting every subgoal.
-            logger.warning(
-                "OpenVLA server has no /reset endpoint at %s; skipping reset.",
-                self.reset_url,
-            )
-            return
-        try:
             resp.raise_for_status()
         except Exception as exc:
-            raise RuntimeError(f"OpenVLA model reset failed: {exc}") from exc
+            raise RuntimeError(
+                f"OpenVLA model reset failed at {self.reset_url}: {exc}. "
+                "Start the server via scripts/start_server.py, which "
+                "exposes /reset."
+            ) from exc
         logger.info("Model reset: %s", resp.status_code)
 
     def predict(self, image_bgr: np.ndarray, proprio: np.ndarray, instr: str) -> Optional[Dict[str, Any]]:
@@ -411,36 +403,6 @@ class FrameRecorder:
             self._fh = None
 
 
-def get_local_ip() -> str:
-    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    try:
-        sock.connect(("8.8.8.8", 80))
-        return sock.getsockname()[0]
-    except OSError as exc:
-        logger.warning("Could not detect local IP (%s), defaulting to 127.0.0.1", exc)
-        return "127.0.0.1"
-    finally:
-        sock.close()
-
-
-def resolve_server_address(preferred_host: str, preferred_port: int, timeout_s: float = 0.75) -> Tuple[str, int]:
-    probe = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    probe.settimeout(timeout_s)
-    try:
-        probe.connect((preferred_host, preferred_port))
-        logger.info("Using preferred control server %s:%d", preferred_host, preferred_port)
-        return preferred_host, preferred_port
-    except OSError:
-        local_ip = get_local_ip()
-        logger.warning(
-            "Preferred server %s:%d unreachable. Falling back to local IP %s:%d",
-            preferred_host, preferred_port, local_ip, preferred_port,
-        )
-        return local_ip, preferred_port
-    finally:
-        probe.close()
-
-
 class DroneControlClient:
     def __init__(self, host: str, port: int, connect_retries: int, retry_sleep_s: float):
         self.host = host
@@ -520,9 +482,14 @@ class OdometryPoseProvider:
         self.last_sample: Optional[PoseSample] = None
         self._udp_sock: Optional[socket.socket] = None
         if udp_port > 0:
-            self._udp_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            self._udp_sock.bind((udp_host, udp_port))
-            self._udp_sock.setblocking(False)
+            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            try:
+                sock.bind((udp_host, udp_port))
+                sock.setblocking(False)
+            except Exception:
+                sock.close()
+                raise
+            self._udp_sock = sock
             logger.info("Listening for odometry UDP packets on %s:%d", udp_host, udp_port)
 
         self._stop = threading.Event()
@@ -688,53 +655,43 @@ class DeadReckoningPoseProvider:
 
 
 class PoseManager:
-    def __init__(self, odom: Optional[OdometryPoseProvider], dr: DeadReckoningPoseProvider):
+    """Single pose source. Either external odometry OR dead-reckoning, not both.
+
+    There is no silent failover from odometry to DR: if odometry was the
+    configured source and the latest sample is stale, ``get_world_pose``
+    raises ``RuntimeError`` so the run aborts with a visible error instead
+    of pretending to know where the drone is.
+    """
+
+    def __init__(
+        self,
+        odom: Optional[OdometryPoseProvider],
+        dr: Optional[DeadReckoningPoseProvider],
+    ):
+        if (odom is None) == (dr is None):
+            raise ValueError("PoseManager requires exactly one of odom or dr.")
         self.odom = odom
         self.dr = dr
         self.mode = "odometry" if odom is not None else "dead_reckoning"
-        self._failed_over = False
 
     def get_world_pose(self) -> List[float]:
-        if self.mode == "odometry" and self.odom is not None:
+        if self.mode == "odometry":
             pose = self.odom.get_pose()
-            if pose is not None:
-                self.dr.set_world_pose(pose)
-                return pose
-            self.mode = "dead_reckoning"
-            self._failed_over = True
-            logger.warning("Odometry unavailable/stale. Falling back to dead-reckoning.")
+            if pose is None:
+                raise RuntimeError(
+                    "Odometry sample is stale or missing. Check the odometry "
+                    "feed configured by --odom_http_url / --odom_udp_port."
+                )
+            return pose
         return self.dr.get_pose()
 
     def update_from_command(self, command: np.ndarray, dt_s: float) -> None:
-        self.dr.update_from_command(command, dt_s)
-
-    @property
-    def failed_over(self) -> bool:
-        return self._failed_over
+        if self.dr is not None:
+            self.dr.update_from_command(command, dt_s)
 
     def close(self) -> None:
         if self.odom is not None:
             self.odom.close()
-
-
-def resolve_model_with_fallback(primary_model: str, fallback_model: str) -> str:
-    try:
-        LLMFactory.create("openai", model=primary_model)
-        return primary_model
-    except Exception as exc:
-        logger.warning(
-            "Model '%s' unavailable (%s). Trying fallback '%s'.",
-            primary_model, exc, fallback_model,
-        )
-        try:
-            LLMFactory.create("openai", model=fallback_model)
-        except Exception as fallback_exc:
-            raise RuntimeError(
-                f"Neither primary model '{primary_model}' nor fallback model "
-                f"'{fallback_model}' is available: {fallback_exc}"
-            ) from fallback_exc
-        logger.info("Using fallback model '%s'.", fallback_model)
-        return fallback_model
 
 
 def to_command_from_action_pose(action_pose: List[float], current_relative_pose: List[float], mode: str) -> np.ndarray:
@@ -921,8 +878,23 @@ def _handle_ask_help(
         )
     else:
         logger.info("Operator skipped at step %d.", step)
+        # Map the human-readable header to a canonical machine-readable
+        # stop_reason. The header sometimes carries dynamic suffixes
+        # (e.g. "MAX TIME REACHED (12.3s)") which would otherwise leak
+        # parentheses and floats into the stop_reason string and break
+        # downstream string matches in aggregators.
+        if header.startswith("MAX TIME REACHED"):
+            mapped = "max_seconds"
+        elif header.startswith("MAX STEPS REACHED"):
+            mapped = "max_steps"
+        elif header.startswith("MAX CORRECTIONS REACHED"):
+            mapped = "max_corrections"
+        elif header.startswith("STALL DETECTED"):
+            mapped = "stall"
+        else:
+            mapped = "ask_help"
         return OperatorHelpResult(
-            stop_reason=header.lower().replace(" ", "_").strip("_"),
+            stop_reason=mapped,
             replan_instruction="", new_instruction=None,
             new_subgoal=None, reasoning=reasoning,
         )
@@ -974,14 +946,17 @@ def run_subgoal(
     from rvln.ai.goal_adherence_monitor import DiaryCheckResult, GoalAdherenceMonitor
     from rvln.ai.subgoal_converter import SubgoalConverter
 
+    # Create the subgoal directory before calling converter/monitor so the
+    # finally-block diary write at the bottom always has a valid target,
+    # even if converter.convert() raises.
+    subgoal_dir = run_dir / f"subgoal_{subgoal_index:02d}_{sanitize_name(subgoal_nl)}"
+    diary_artifacts = subgoal_dir / "diary_artifacts"
+    diary_artifacts.mkdir(parents=True, exist_ok=True)
+
     converter = SubgoalConverter(model=llm_model)
     conversion = converter.convert(subgoal_nl)
     converted_instruction = conversion.instruction
     current_instruction = converted_instruction
-
-    subgoal_dir = run_dir / f"subgoal_{subgoal_index:02d}_{sanitize_name(subgoal_nl)}"
-    diary_artifacts = subgoal_dir / "diary_artifacts"
-    diary_artifacts.mkdir(parents=True, exist_ok=True)
     monitor = GoalAdherenceMonitor(
         subgoal=subgoal_nl,
         check_interval=check_interval,
@@ -1222,6 +1197,27 @@ def run_subgoal(
                     total_steps = step
                     break
 
+                # The OpenVLA server returns action in the proprio-relative
+                # frame (origin = openvla_pose_origin). Once a correction has
+                # rebased that origin off zero, action_poses are not in the
+                # subgoal-relative frame the wire/converter expect. Add the
+                # origin back to put them in subgoal-relative coords.
+                # Mirrors src/rvln/eval/subgoal_runner.py:627-640.
+                if any(o != 0.0 for o in openvla_pose_origin):
+                    yaw_origin_rad = math.radians(openvla_pose_origin[3])
+                    reframed = []
+                    for pose in action_poses:
+                        if isinstance(pose, (list, tuple)) and len(pose) >= 4:
+                            reframed.append([
+                                float(pose[0]) + openvla_pose_origin[0],
+                                float(pose[1]) + openvla_pose_origin[1],
+                                float(pose[2]) + openvla_pose_origin[2],
+                                float(pose[3]) + yaw_origin_rad,
+                            ])
+                        else:
+                            reframed.append(pose)
+                    action_poses = reframed
+
                 if recorder is not None and recorder.enabled:
                     recorder.maybe_log(
                         step=step,
@@ -1424,30 +1420,32 @@ def run_subgoal(
                 openvla.reset_model()
                 continue
             break
-    except Exception as exc:
-        stop_reason = f"error: {exc}"
-        logger.error("run_subgoal failed at step %d: %s", total_steps, exc)
-
-    all_llm_records = converter.llm_call_records + monitor.vlm_rtts
-    write_json(
-        subgoal_dir / "diary_summary.json",
-        {
-            "subgoal": subgoal_nl,
-            "converted_instruction": converted_instruction,
-            "diary": monitor.diary,
-            "override_history": override_history,
-            "corrections_used": monitor.corrections_used,
-            "last_completion_pct": monitor.last_completion_pct,
-            "peak_completion": monitor.peak_completion,
-            "parse_failures": monitor.parse_failures,
-            "vlm_calls": monitor.vlm_calls,
-            "vlm_rtts": monitor.vlm_rtts,
-            "llm_call_records": all_llm_records,
-            "stop_reason": stop_reason,
-            "total_steps": total_steps,
-        },
-    )
-    monitor.cleanup()
+    finally:
+        # Always persist what we have so a hardware error doesn't lose the
+        # subgoal-level state (diary, monitor reasoning, partial token log).
+        try:
+            all_llm_records = converter.llm_call_records + monitor.vlm_rtts
+            write_json(
+                subgoal_dir / "diary_summary.json",
+                {
+                    "subgoal": subgoal_nl,
+                    "converted_instruction": converted_instruction,
+                    "diary": monitor.diary,
+                    "override_history": override_history,
+                    "corrections_used": monitor.corrections_used,
+                    "last_completion_pct": monitor.last_completion_pct,
+                    "peak_completion": monitor.peak_completion,
+                    "parse_failures": monitor.parse_failures,
+                    "vlm_calls": monitor.vlm_calls,
+                    "vlm_rtts": monitor.vlm_rtts,
+                    "llm_call_records": all_llm_records,
+                    "stop_reason": stop_reason,
+                    "total_steps": total_steps,
+                },
+            )
+        except Exception as exc:
+            logger.error("Failed to write diary summary: %s", exc)
+        monitor.cleanup()
 
     next_world_origin = pose_manager.get_world_pose()
     return {
@@ -1484,7 +1482,7 @@ def parse_args() -> argparse.Namespace:
         "\n"
         "  # Fully simulated (start_mock_hardware.py + start_server.py running)\n"
         "  python scripts/run_hardware.py \\\n"
-        "      --preferred_server_host 127.0.0.1 \\\n"
+        "      --control_host 127.0.0.1 \\\n"
         "      --control_port 8080 \\\n"
         "      --camera_url http://127.0.0.1:8081/frame \\\n"
         "      --odom_http_url http://127.0.0.1:8081/pose \\\n"
@@ -1496,6 +1494,22 @@ def parse_args() -> argparse.Namespace:
         "\n"
         "  # Same, with a 5fps recording for cost analysis\n"
         "  python scripts/run_hardware.py ... --record --record_fps 5\n"
+        "\n"
+        "Pose source / wire-format modes:\n"
+        "  Live drone (default):\n"
+        "    --odom_http_url <url>     # external odometry is the only pose source\n"
+        "    --action_pose_mode direct # ship absolute target poses verbatim\n"
+        "    (no --command_is_velocity, no --dead-reckoning)\n"
+        "  Sim mock:\n"
+        "    --action_pose_mode delta_from_pose --command_is_velocity\n"
+        "  Pure dead-reckoning (no external pose feed):\n"
+        "    --dead-reckoning --action_pose_mode delta_from_pose\n"
+        "    (--command_is_velocity if the receiver integrates as velocity)\n"
+        "\n"
+        "Failure semantics: there is no silent fallback. A stale odometry\n"
+        "sample, an unreachable control host, an LLM/VLM failure, or a\n"
+        "missing OpenVLA /reset endpoint surfaces as an error, not a\n"
+        "transparent retry to a different code path.\n"
         "\n"
         "Outputs (under --results_dir/run_<YYYY_MM_DD_HH_MM_SS_us>/):\n"
         "  trajectory_log.json  per-step state vector\n"
@@ -1586,11 +1600,11 @@ def parse_args() -> argparse.Namespace:
 
     g_control = parser.add_argument_group("Control server (boieng wire)")
     g_control.add_argument(
-        "--preferred_server_host", type=str, default=DEFAULT_PREFERRED_SERVER_HOST,
+        "--control_host", type=str, default=DEFAULT_CONTROL_HOST,
         help=(
-            "Tried first; if unreachable in 0.75s, falls back to this "
-            "machine's LAN IP. Set to 127.0.0.1 for local mock. "
-            "(default: %(default)s)"
+            "Hostname or IP of the drone control server. Connect failures "
+            "are reported directly; there is no silent fallback. Set to "
+            "127.0.0.1 for the local mock. (default: %(default)s)"
         ),
     )
     g_control.add_argument(
@@ -1616,20 +1630,27 @@ def parse_args() -> argparse.Namespace:
     g_control.add_argument(
         "--action_pose_mode", choices=["direct", "delta_from_pose"], default="direct",
         help=(
-            "How to convert each OpenVLA action pose into a 4-float boieng "
-            "command. 'direct': send the action pose verbatim (live drone, "
-            "absolute pose). 'delta_from_pose': send (action - current "
-            "world pose), used by the simulated mock_server. "
+            "How to turn each OpenVLA prediction into a 4-float boieng "
+            "command. The OpenVLA model itself emits a per-step delta in "
+            "the robot frame; the OpenVLA HTTP server (server/openvla.py) "
+            "rotates that delta by the current yaw and adds the current "
+            "proprio, returning an *absolute* target pose in subgoal-"
+            "relative coordinates as response['action']. 'direct' ships "
+            "that absolute pose verbatim (live drone receiver expects an "
+            "absolute target). 'delta_from_pose' subtracts the runner's "
+            "tracked relative pose to recover a per-step delta (sim mock). "
             "(default: %(default)s)"
         ),
     )
     g_control.add_argument(
         "--command_is_velocity", action="store_true",
         help=(
-            "Treat each sent command as a velocity (m/s, rad/s) rather than "
-            "an absolute pose. Required for the simulated mock_server (which "
-            "integrates incoming commands as velocities) and for sane "
-            "dead-reckoning."
+            "Tells the *receiver* to integrate each wire command as a "
+            "velocity (m/s, rad/s) instead of treating it as an absolute "
+            "pose or per-step delta. Required for the simulated mock_server "
+            "(mock_server.py:66-75 integrates vx/vy/vz/yaw_rate * dt). The "
+            "real drone control server expects absolute poses, so leave "
+            "this off for live flight."
         ),
     )
 
@@ -1653,22 +1674,11 @@ def parse_args() -> argparse.Namespace:
             "OpenVLA-instruction conversion. (default: %(default)s)"
         ),
     )
-    g_planner.add_argument(
-        "--llm_fallback_model", type=str, default=DEFAULT_LLM_FALLBACK_MODEL,
-        help=(
-            "Used if the primary LLM is unreachable. Set to '' to disable "
-            "fallback. (default: %(default)s)"
-        ),
-    )
 
     g_monitor = parser.add_argument_group("Goal-adherence monitor (VLM)")
     g_monitor.add_argument(
         "--monitor_model", type=str, default=DEFAULT_VLM_MODEL,
         help="VLM that scores progress and detects stalls. (default: %(default)s)",
-    )
-    g_monitor.add_argument(
-        "--monitor_fallback_model", type=str, default=DEFAULT_VLM_FALLBACK_MODEL,
-        help="VLM fallback model. (default: %(default)s)",
     )
     g_monitor.add_argument(
         "--diary-mode", choices=("frame", "time"), default=DEFAULT_DIARY_MODE,
@@ -1807,8 +1817,13 @@ def main() -> None:
 
     # Register interrupt handlers here (not at import time) so importing this
     # module from tests/notebooks doesn't hijack SIGINT/SIGTERM globally.
-    signal.signal(signal.SIGINT, signal_handler)
-    signal.signal(signal.SIGTERM, signal_handler)
+    # signal.signal only works from the main thread of the main interpreter;
+    # gracefully degrade when invoked otherwise (notebooks, threaded tests).
+    try:
+        signal.signal(signal.SIGINT, signal_handler)
+        signal.signal(signal.SIGTERM, signal_handler)
+    except ValueError as exc:
+        logger.warning("Could not register signal handlers (%s); Ctrl-C may not stop cleanly.", exc)
 
     load_env_vars(args.extra_env_file)
     initial_world_pose = parse_position(args.initial_position)
@@ -1828,31 +1843,24 @@ def main() -> None:
             "external odometry, or --dead-reckoning for estimated poses."
         )
 
-    # Surface flag combinations that look inconsistent. We warn rather than
-    # fail so live-hardware operators (the priority path) can override if they
-    # know what they're doing, but the misconfiguration is loud.
-    if has_dr and args.action_pose_mode == "direct" and not args.command_is_velocity:
-        logger.warning(
-            "Primary --dead-reckoning with --action_pose_mode=direct is not "
-            "physically meaningful (the wire command is an absolute target, "
-            "not a delta or velocity). DR will hold the initial pose and not "
-            "advance until odometry is provided."
-        )
-    if args.action_pose_mode == "delta_from_pose" and not args.command_is_velocity and not has_odom:
-        logger.warning(
-            "Sim-style --action_pose_mode=delta_from_pose typically pairs "
-            "with --command_is_velocity for a usable DR fallback."
+    # Reject flag combinations that have no coherent interpretation.
+    if has_dr and args.action_pose_mode == "direct":
+        raise SystemExit(
+            "--dead-reckoning is incompatible with --action_pose_mode=direct: "
+            "the wire command in direct mode is an absolute target pose, which "
+            "DR cannot integrate without the subgoal origin. Use "
+            "--action_pose_mode=delta_from_pose (with --command_is_velocity for "
+            "a velocity-driven receiver) when running without external odometry."
         )
     if args.action_pose_mode == "direct" and args.command_is_velocity:
-        logger.warning(
-            "--action_pose_mode=direct with --command_is_velocity is unusual: "
-            "direct mode sends absolute target poses, but the velocity flag "
-            "implies the receiver integrates them as rates. Double-check "
-            "your control server expects this."
+        raise SystemExit(
+            "--action_pose_mode=direct with --command_is_velocity is "
+            "contradictory: direct mode sends absolute target poses, but the "
+            "velocity flag tells the receiver to integrate commands as rates."
         )
 
-    llm_model = resolve_model_with_fallback(args.llm_model, args.llm_fallback_model)
-    monitor_model = resolve_model_with_fallback(args.monitor_model, args.monitor_fallback_model)
+    llm_model = args.llm_model
+    monitor_model = args.monitor_model
 
     # Microseconds avoid run-dir collisions when two pipelines launch in the
     # same second.
@@ -1891,18 +1899,14 @@ def main() -> None:
         reason = camera.failure_reason or "camera failed to initialize"
         raise RuntimeError(reason)
 
-    control_host, control_port = resolve_server_address(
-        args.preferred_server_host, args.control_port
-    )
     control = DroneControlClient(
-        host=control_host,
-        port=control_port,
+        host=args.control_host,
+        port=args.control_port,
         connect_retries=args.control_retries,
         retry_sleep_s=args.control_retry_sleep,
     )
     control.connect()
 
-    odom_provider = None
     if has_odom:
         odom_provider = OdometryPoseProvider(
             http_url=args.odom_http_url,
@@ -1911,16 +1915,15 @@ def main() -> None:
             stale_timeout_s=args.odom_stale_timeout_s,
             poll_hz=args.odom_poll_hz,
         )
-
-    if has_dr:
+        pose_manager = PoseManager(odom=odom_provider, dr=None)
+    else:
         print("\033[91mWARNING: Dead-reckoning mode active. Pose will drift over time.\033[0m")
-
-    dr_provider = DeadReckoningPoseProvider(
-        initial_world_pose=initial_world_pose,
-        command_is_velocity=args.command_is_velocity,
-        action_pose_mode=args.action_pose_mode,
-    )
-    pose_manager = PoseManager(odom=odom_provider, dr=dr_provider)
+        dr_provider = DeadReckoningPoseProvider(
+            initial_world_pose=initial_world_pose,
+            command_is_velocity=args.command_is_velocity,
+            action_pose_mode=args.action_pose_mode,
+        )
+        pose_manager = PoseManager(odom=None, dr=dr_provider)
 
     openvla = OpenVLAClient(predict_url=args.openvla_predict_url)
 
@@ -1955,6 +1958,12 @@ def main() -> None:
         use_time_mode = args.diary_mode == "time"
         check_interval_s = args.diary_check_interval_s if use_time_mode else None
         max_seconds = args.max_seconds_per_subgoal if use_time_mode else None
+        if not use_time_mode and args.max_seconds_per_subgoal != DEFAULT_MAX_SECONDS_PER_SUBGOAL:
+            logger.warning(
+                "--max_seconds_per_subgoal=%s is ignored in --diary-mode=frame; "
+                "the step budget --max_steps_per_subgoal applies instead.",
+                args.max_seconds_per_subgoal,
+            )
 
         current_subgoal = planner.get_next_predicate()
         subgoal_index = 0
@@ -2086,7 +2095,7 @@ def main() -> None:
                     )
                 ),
                 "total_corrections": sum(s.get("corrections_used", 0) for s in subgoal_summaries),
-                "odometry_failed_over": pose_manager.failed_over,
+                "pose_source": pose_manager.mode,
                 "start_time": start_ts,
                 "end_time": end_ts,
             }
