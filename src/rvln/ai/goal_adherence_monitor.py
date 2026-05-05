@@ -437,7 +437,9 @@ class GoalAdherenceMonitor:
         self._last_completion_pct = pct
         self._peak_completion = max(self._peak_completion, pct)
 
-        if parsed.get("complete", False) or parsed.get("diagnosis") == "complete":
+        corrective = (parsed.get("corrective_instruction") or "").strip()
+
+        if parsed.get("complete", False) and not corrective:
             return DiaryCheckResult(
                 action="stop",
                 new_instruction="",
@@ -446,7 +448,6 @@ class GoalAdherenceMonitor:
                 completion_pct=pct,
             )
 
-        corrective = parsed.get("corrective_instruction") or ""
         if not corrective:
             logger.warning(
                 "Convergence response missing corrective_instruction, retrying."
@@ -457,9 +458,8 @@ class GoalAdherenceMonitor:
             )
             self._save_convergence_artifact(response, prompt, grid)
             parsed_retry = self._parse_json_response(response)
-            if parsed_retry is not None and (
-                parsed_retry.get("complete", False) or parsed_retry.get("diagnosis") == "complete"
-            ):
+            corrective_retry = ((parsed_retry or {}).get("corrective_instruction") or "").strip()
+            if parsed_retry is not None and parsed_retry.get("complete", False) and not corrective_retry:
                 pct_r = float(parsed_retry.get("completion_percentage", pct))
                 pct_r = max(0.0, min(1.0, pct_r))
                 self._last_completion_pct = pct_r
@@ -471,7 +471,7 @@ class GoalAdherenceMonitor:
                     diary_entry="",
                     completion_pct=pct_r,
                 )
-            corrective = ((parsed_retry or {}).get("corrective_instruction") or "").strip()
+            corrective = corrective_retry
             if not corrective:
                 logger.warning(
                     "Convergence retry returned no corrective instruction; "
@@ -582,7 +582,9 @@ class GoalAdherenceMonitor:
         self._last_completion_pct = pct
         self._peak_completion = max(self._peak_completion, pct)
 
-        if parsed.get("complete", False) or parsed.get("diagnosis") == "complete":
+        corrective = (parsed.get("corrective_instruction") or "").strip()
+
+        if parsed.get("complete", False) and not corrective:
             return DiaryCheckResult(
                 action="stop",
                 new_instruction="",
@@ -591,7 +593,6 @@ class GoalAdherenceMonitor:
                 completion_pct=pct,
             )
 
-        corrective = parsed.get("corrective_instruction") or ""
         if not corrective:
             t0 = time.time()
             response = self._global_llm.make_request(messages, temperature=0.0)
@@ -607,9 +608,8 @@ class GoalAdherenceMonitor:
                 "output_tokens": usage.get("output_tokens", 0),
             })
             parsed_retry = self._parse_json_response(response)
-            if parsed_retry is not None and (
-                parsed_retry.get("complete", False) or parsed_retry.get("diagnosis") == "complete"
-            ):
+            corrective_retry = ((parsed_retry or {}).get("corrective_instruction") or "").strip()
+            if parsed_retry is not None and parsed_retry.get("complete", False) and not corrective_retry:
                 pct_r = float(parsed_retry.get("completion_percentage", pct))
                 pct_r = max(0.0, min(1.0, pct_r))
                 self._last_completion_pct = pct_r
@@ -621,7 +621,7 @@ class GoalAdherenceMonitor:
                     diary_entry="",
                     completion_pct=pct_r,
                 )
-            corrective = ((parsed_retry or {}).get("corrective_instruction") or "").strip()
+            corrective = corrective_retry
             if not corrective:
                 logger.warning(
                     "Text-only convergence retry: no corrective instruction; "
@@ -1239,7 +1239,9 @@ class GoalAdherenceMonitor:
         self._last_completion_pct = pct
         self._peak_completion = max(self._peak_completion, pct)
 
-        if parsed.get("complete", False) or parsed.get("diagnosis") == "complete":
+        corrective = (parsed.get("corrective_instruction") or "").strip()
+
+        if parsed.get("complete", False) and not corrective:
             return DiaryCheckResult(
                 action="stop",
                 new_instruction="",
@@ -1248,7 +1250,6 @@ class GoalAdherenceMonitor:
                 completion_pct=pct,
             )
 
-        corrective = parsed.get("corrective_instruction") or ""
         if not corrective:
             logger.warning(
                 "Async convergence response missing corrective_instruction, retrying."
@@ -1259,9 +1260,8 @@ class GoalAdherenceMonitor:
             )
             self._save_convergence_artifact(response, prompt, grid)
             parsed_retry = self._parse_json_response(response)
-            if parsed_retry is not None and (
-                parsed_retry.get("complete", False) or parsed_retry.get("diagnosis") == "complete"
-            ):
+            corrective_retry = ((parsed_retry or {}).get("corrective_instruction") or "").strip()
+            if parsed_retry is not None and parsed_retry.get("complete", False) and not corrective_retry:
                 pct_r = float(parsed_retry.get("completion_percentage", pct))
                 pct_r = max(0.0, min(1.0, pct_r))
                 self._last_completion_pct = pct_r
@@ -1273,7 +1273,7 @@ class GoalAdherenceMonitor:
                     diary_entry="",
                     completion_pct=pct_r,
                 )
-            corrective = ((parsed_retry or {}).get("corrective_instruction") or "").strip()
+            corrective = corrective_retry
             if not corrective:
                 logger.warning(
                     "Async convergence retry returned no corrective instruction; "
@@ -1368,6 +1368,9 @@ class GoalAdherenceMonitor:
         model_reasoning = str(parsed.get("reasoning", "") or "").strip()
 
         if parsed.get("complete", False):
+            self._last_should_stop_reasoning = (
+                model_reasoning or "checkpoint thinks subgoal complete; verifying at convergence"
+            )
             return DiaryCheckResult(
                 action="force_converge",
                 new_instruction="",
