@@ -177,11 +177,7 @@ def run_naive_control_loop(
 
             total_steps = step + 1
 
-            if new_image is None:
-                # /step didn't return an image; fall back to /get_frame next iter.
-                image = None
-            else:
-                image = new_image
+            image = new_image  # None triggers /get_frame fallback on next iteration.
 
             if last_pose is not None:
                 diffs = [abs(a - b) for a, b in zip(current_pose, last_pose)]
