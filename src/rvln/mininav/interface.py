@@ -129,12 +129,18 @@ def _interruptible_input(prompt: str) -> str:
 
 
 class ThreadedCamera:
-    def __init__(self, src: int, fps: int, max_reopen_attempts: int, init_timeout: float):
+    def __init__(
+        self,
+        src,  # Union[int, str]: int -> V4L2 index, str -> GStreamer pipeline.
+        fps: int,
+        max_reopen_attempts: int,
+        init_timeout: float,
+    ):
         self.src = src
         self.fps = fps
         self.max_reopen_attempts = max_reopen_attempts
         self.init_timeout = init_timeout
-        self.capture = cv2.VideoCapture(src)
+        self.capture = self._open_capture()
         self.frame: Optional[np.ndarray] = None
         self.read_once = False
         self.failed = False
@@ -161,7 +167,7 @@ class ThreadedCamera:
                     "Camera %s not open. Retry %d/%d",
                     self.src, self._reopen_attempts, self.max_reopen_attempts,
                 )
-                self.capture = cv2.VideoCapture(self.src)
+                self.capture = self._open_capture()
                 time.sleep(1.0)
                 if time.time() - start > self.init_timeout and not self.read_once:
                     self.failed = True
@@ -190,6 +196,17 @@ class ThreadedCamera:
                 self.read_once = True
             if self.fps > 0:
                 time.sleep(1.0 / float(self.fps))
+
+    def _open_capture(self) -> "cv2.VideoCapture":
+        """Open the underlying VideoCapture, picking the backend by src type.
+
+        Integer ``src`` -> V4L2 backend (USB UVC, /dev/videoN). String ``src``
+        -> GStreamer pipeline backend (Jetson MIPI-CSI via nvarguscamerasrc,
+        nvv4l2camerasrc, RTSP, etc.). Pipelines must terminate in ``appsink``.
+        """
+        if isinstance(self.src, str):
+            return cv2.VideoCapture(self.src, cv2.CAP_GSTREAMER)
+        return cv2.VideoCapture(int(self.src), cv2.CAP_V4L2)
 
     def read(self) -> Tuple[bool, Optional[np.ndarray]]:
         with self._lock:
@@ -1602,8 +1619,8 @@ def parse_args() -> argparse.Namespace:
     g_camera.add_argument(
         "--camera", type=int, default=0,
         help=(
-            "Local cv2 device index (only used when --camera_url is unset). "
-            "(default: %(default)s)"
+            "Local cv2 device index (V4L2 / USB UVC). Used when neither "
+            "--camera_url nor --camera_pipeline is set. (default: %(default)s)"
         ),
     )
     g_camera.add_argument(
@@ -1612,6 +1629,17 @@ def parse_args() -> argparse.Namespace:
             "HTTP URL serving JPEG/PNG frames (e.g. http://127.0.0.1:8081/frame). "
             "When set, replaces the local cv2 capture with an HTTP-pull camera. "
             "Use this to test against the simulated MiniNav frame feed."
+        ),
+    )
+    g_camera.add_argument(
+        "--camera_pipeline", type=str, default=None,
+        help=(
+            "GStreamer pipeline string opened via cv2.CAP_GSTREAMER. Use this "
+            "for Jetson MIPI-CSI cameras (nvarguscamerasrc) or any other "
+            "source that doesn't expose a /dev/videoN node. The pipeline must "
+            "terminate in 'appsink'. Mutually exclusive with --camera_url; "
+            "takes priority over --camera. Run scripts/hardware_camera_debug.py "
+            "and press Enter on a slot to get a copy-pasteable value."
         ),
     )
     g_camera.add_argument(
@@ -1944,11 +1972,23 @@ def main() -> None:
         frames_dir = Path(frames_tempdir)
         recording_log_path = None
 
+    if args.camera_url and args.camera_pipeline:
+        raise SystemExit(
+            "--camera_url and --camera_pipeline are mutually exclusive."
+        )
     if args.camera_url:
         logger.info("Camera source: HTTP feed at %s", args.camera_url)
         camera = HttpFrameCamera(
             url=args.camera_url,
             fps=args.fps,
+            init_timeout=args.camera_init_timeout,
+        )
+    elif args.camera_pipeline:
+        logger.info("Camera source: GStreamer pipeline %s", args.camera_pipeline)
+        camera = ThreadedCamera(
+            src=args.camera_pipeline,
+            fps=args.fps,
+            max_reopen_attempts=args.camera_retries,
             init_timeout=args.camera_init_timeout,
         )
     else:

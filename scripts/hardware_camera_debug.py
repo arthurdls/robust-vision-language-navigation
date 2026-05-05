@@ -62,6 +62,10 @@ class Source:
     # set for V4L2 sources, since run_hardware.py's --camera flag is typed
     # as int and goes straight into cv2.VideoCapture(N).
     index: Optional[int] = None
+    # The exact GStreamer pipeline string, when this source was opened via
+    # cv2.CAP_GSTREAMER. Used to recommend a copy-pasteable
+    # --camera_pipeline value for run_hardware.py.
+    pipeline: Optional[str] = None
 
 
 # ---------------------------------------------------------------------------
@@ -133,7 +137,9 @@ def _build_csi_sources(max_csi: int, fps: int) -> List[Source]:
 
         def opener(p: str = pipeline) -> cv2.VideoCapture:
             return cv2.VideoCapture(p, cv2.CAP_GSTREAMER)
-        sources.append(Source(label=label, kind="csi", open_fn=opener))
+        sources.append(Source(
+            label=label, kind="csi", open_fn=opener, pipeline=pipeline,
+        ))
     return sources
 
 
@@ -144,7 +150,9 @@ def _build_extra_sources(pipelines: List[str]) -> List[Source]:
 
         def opener(pp: str = p) -> cv2.VideoCapture:
             return cv2.VideoCapture(pp, cv2.CAP_GSTREAMER)
-        out.append(Source(label=label, kind="pipeline", open_fn=opener))
+        out.append(Source(
+            label=label, kind="pipeline", open_fn=opener, pipeline=p,
+        ))
     return out
 
 
@@ -262,34 +270,26 @@ def label_slug(label: str) -> str:
 
 
 def report_run_hardware_flag(source: Source) -> None:
-    """Print what to pass to run_hardware.py to use this source.
+    """Print the run_hardware.py invocation that selects this source.
 
-    ``run_hardware.py``'s ``--camera`` flag is typed as ``int`` and is fed
-    directly into ``cv2.VideoCapture``. Only V4L2 sources map cleanly. CSI
-    and arbitrary GStreamer pipelines aren't accepted by ``--camera`` today,
-    so we print explicit guidance instead of pretending otherwise.
+    V4L2 sources map to ``--camera N``. CSI and custom pipelines map to
+    ``--camera_pipeline "<pipeline>"`` (added to run_hardware specifically
+    so this script's recommendations work end-to-end).
     """
     print()
     print("=" * 60)
     print(f"Selected source: {source.label}")
     if source.kind == "v4l2" and source.index is not None:
-        print(f"  Use:  python scripts/run_hardware.py --camera {source.index}")
-    elif source.kind == "csi":
+        print(f"  python scripts/run_hardware.py --camera {source.index} ...")
+    elif source.pipeline is not None:
+        # Single quotes around the pipeline so commas / parens in
+        # nvarguscamerasrc caps don't get mangled by the shell.
         print(
-            "  This is a CSI / Argus camera (nvarguscamerasrc). "
-            "run_hardware.py's --camera flag is an integer cv2 index and "
-            "does not accept a GStreamer pipeline. Either expose the "
-            "camera as a V4L2 node first (e.g. nvv4l2camerasrc -> "
-            "v4l2loopback) and use that index, or run a small HTTP "
-            "frame server fed by this pipeline and pass --camera_url."
+            "  python scripts/run_hardware.py "
+            f"--camera_pipeline '{source.pipeline}' ..."
         )
     else:
-        print(
-            "  This source is a custom GStreamer pipeline. run_hardware.py's "
-            "--camera flag only takes an integer cv2 device index. Run a "
-            "frame server that consumes this pipeline and pass "
-            "--camera_url instead."
-        )
+        print("  No copy-pasteable recommendation available for this source.")
     print("=" * 60)
     sys.stdout.flush()
 
