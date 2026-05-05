@@ -31,8 +31,10 @@ import json
 import logging
 import math
 import os
+import shutil
 import signal
 import socket
+import tempfile
 import threading
 import time
 from dataclasses import dataclass
@@ -102,10 +104,6 @@ def signal_handler(sig, frame):
     stop_capture = True
     logger.info("Signal received; shutting down.")
     cv2.destroyAllWindows()
-
-
-signal.signal(signal.SIGINT, signal_handler)
-signal.signal(signal.SIGTERM, signal_handler)
 
 
 class ThreadedCamera:
@@ -284,10 +282,22 @@ class OpenVLAClient:
     def reset_model(self) -> None:
         try:
             resp = requests.post(self.reset_url, timeout=10)
-            resp.raise_for_status()
-            logger.info("Model reset: %s", resp.status_code)
         except Exception as exc:
             raise RuntimeError(f"OpenVLA model reset failed: {exc}") from exc
+        if resp.status_code == 404:
+            # OpenVLA's bare /predict server doesn't expose /reset;
+            # scripts/start_server.py patches it in. Treat absence as a no-op
+            # rather than aborting every subgoal.
+            logger.warning(
+                "OpenVLA server has no /reset endpoint at %s; skipping reset.",
+                self.reset_url,
+            )
+            return
+        try:
+            resp.raise_for_status()
+        except Exception as exc:
+            raise RuntimeError(f"OpenVLA model reset failed: {exc}") from exc
+        logger.info("Model reset: %s", resp.status_code)
 
     def predict(self, image_bgr: np.ndarray, proprio: np.ndarray, instr: str) -> Optional[Dict[str, Any]]:
         img = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
@@ -309,6 +319,96 @@ class OpenVLAClient:
         )
         resp.raise_for_status()
         return resp.json()
+
+
+class FrameRecorder:
+    """Optional per-frame metadata log for cost/replay analysis.
+
+    Frame PNGs are written every step regardless (the goal-adherence monitor
+    needs them on disk); this recorder writes one JSON line per *recorded*
+    frame to ``recording_log.jsonl``, downsampled to ``record_fps``.
+
+    Each line ties a frame to:
+      - subgoal index, subgoal NL, low-level OpenVLA instruction
+      - current LTL formula (NL form)
+      - world pose and subgoal-relative pose
+      - the OpenVLA action tensor returned for this frame
+      - cumulative input/output token counts across planner, subgoal
+        converter, and goal-adherence monitor (for cost tracking)
+
+    ``ctx`` is a mutable dict the caller updates as the run progresses
+    (so the recorder always sees the current llm_interface and ltl_plan,
+    even after a replan). Required keys: ``llm_interface`` (LLMUserInterface
+    or None) and ``ltl_plan`` (dict).
+    """
+
+    def __init__(self, log_path: Optional[Path], record_fps: float, ctx: Dict[str, Any]):
+        self.log_path = log_path
+        self.min_interval = 1.0 / record_fps if record_fps > 0 else 0.0
+        self.ctx = ctx
+        self._last_logged_t = 0.0
+        self._fh = open(log_path, "a") if log_path is not None else None
+
+    @property
+    def enabled(self) -> bool:
+        return self._fh is not None
+
+    def maybe_log(
+        self,
+        *,
+        step: int,
+        subgoal_index: int,
+        subgoal_nl: str,
+        current_instruction: str,
+        frame_path: Path,
+        world_pose: List[float],
+        subgoal_rel_pose: List[float],
+        openvla_action: Any,
+        converter,
+        monitor,
+    ) -> None:
+        if not self.enabled:
+            return
+        now = time.time()
+        if (now - self._last_logged_t) < self.min_interval:
+            return
+        self._last_logged_t = now
+
+        in_tok = 0
+        out_tok = 0
+        llmi = self.ctx.get("llm_interface")
+        sources = [
+            getattr(llmi, "llm_call_records", []) or [],
+            getattr(converter, "llm_call_records", []) or [],
+            getattr(monitor, "vlm_rtts", []) or [],
+        ]
+        for src in sources:
+            for r in src:
+                in_tok += r.get("input_tokens", 0) if isinstance(r, dict) else 0
+                out_tok += r.get("output_tokens", 0) if isinstance(r, dict) else 0
+
+        ltl_plan = self.ctx.get("ltl_plan") or {}
+        entry = {
+            "timestamp": datetime.now().isoformat(),
+            "step": step,
+            "frame_path": str(frame_path),
+            "subgoal_index": subgoal_index,
+            "subgoal_nl": subgoal_nl,
+            "openvla_instruction": current_instruction,
+            "ltl_nl_formula": ltl_plan.get("ltl_nl_formula", ""),
+            "world_pose": list(world_pose),
+            "subgoal_rel_pose": list(subgoal_rel_pose),
+            "openvla_action": openvla_action,
+            "cumulative_input_tokens": in_tok,
+            "cumulative_output_tokens": out_tok,
+        }
+        self._fh.write(json.dumps(entry) + "\n")
+        self._fh.flush()
+
+    def close(self) -> None:
+        if self._fh is not None:
+            self._fh.close()
+            self._fh = None
 
 
 def get_local_ip() -> str:
@@ -368,7 +468,7 @@ class DroneControlClient:
         if self.sock is None:
             raise RuntimeError("Control socket not connected")
         payload = np.array([frame_count, *command.tolist()], dtype=np.float32).tobytes()
-        self.sock.send(payload)
+        self.sock.sendall(payload)
 
     def close(self) -> None:
         if self.sock is None:
@@ -773,6 +873,7 @@ def run_subgoal(
     stall_threshold: float = 0.05,
     stall_completion_floor: float = 0.8,
     constraints: Optional[List[Any]] = None,
+    recorder: Optional["FrameRecorder"] = None,
 ) -> Dict[str, Any]:
     """Execute a single subgoal with OpenVLA, goal adherence monitoring, and operator help.
 
@@ -1042,6 +1143,20 @@ def run_subgoal(
                     total_steps = step
                     break
 
+                if recorder is not None and recorder.enabled:
+                    recorder.maybe_log(
+                        step=step,
+                        subgoal_index=subgoal_index,
+                        subgoal_nl=subgoal_nl,
+                        current_instruction=current_instruction,
+                        frame_path=frame_path,
+                        world_pose=list(world_pose),
+                        subgoal_rel_pose=list(subgoal_rel_pose),
+                        openvla_action=action_poses,
+                        converter=converter,
+                        monitor=monitor,
+                    )
+
                 for action_pose in action_poses:
                     if not (isinstance(action_pose, (list, tuple)) and len(action_pose) >= 4):
                         continue
@@ -1274,92 +1389,324 @@ def run_subgoal(
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        description="Single-file real drone integration runner.",
+    description = (
+        "Drive a real (or mocked) MiniNav drone with the OpenVLA action "
+        "server, an LTL planner, and a live goal-adherence monitor.\n\n"
+        "A pose source is required: either external odometry "
+        "(--odom_http_url or --odom_udp_port) or --dead-reckoning."
     )
-    parser.add_argument("--instruction", type=str, default=None, help="Initial task instruction. If omitted, prompt in CLI.")
-    parser.add_argument("--initial_position", type=str, default="0,0,0,0", help="x,y,z,yaw (degrees).")
-    parser.add_argument("--results_dir", type=str, default=str(DEFAULT_RESULTS_DIR))
-    parser.add_argument("--camera", type=int, default=0)
-    parser.add_argument(
-        "--camera_url",
-        type=str,
-        default=None,
+
+    epilog = (
+        "Examples:\n"
+        "  # Live flight (USB camera 0, control server at 192.168.0.101:8080)\n"
+        "  python scripts/run_hardware.py \\\n"
+        "      --instruction \"take off and circle the red cone\" \\\n"
+        "      --odom_http_url http://192.168.0.101:8090/pose\n"
+        "\n"
+        "  # Fully simulated (start_mock_hardware.py + start_server.py running)\n"
+        "  python scripts/run_hardware.py \\\n"
+        "      --preferred_server_host 127.0.0.1 \\\n"
+        "      --control_port 8080 \\\n"
+        "      --camera_url http://127.0.0.1:8081/frame \\\n"
+        "      --odom_http_url http://127.0.0.1:8081/pose \\\n"
+        "      --openvla_predict_url http://127.0.0.1:5007/predict \\\n"
+        "      --initial_position 0,0,0,0 \\\n"
+        "      --command_is_velocity \\\n"
+        "      --action_pose_mode delta_from_pose \\\n"
+        "      --instruction \"move forward 10m, then turn toward the red car\"\n"
+        "\n"
+        "  # Same, with a 5fps recording for cost analysis\n"
+        "  python scripts/run_hardware.py ... --record --record_fps 5\n"
+        "\n"
+        "Outputs (under --results_dir/run_<YYYY_MM_DD_HH_MM_SS_us>/):\n"
+        "  trajectory_log.json  per-step state vector\n"
+        "  run_info.json        full run summary (LTL plan, subgoal results, token totals)\n"
+        "  subgoal_<NN>_*/      per-subgoal artifacts (diary, monitor reasoning)\n"
+        "  frames/              camera frames (only if --record)\n"
+        "  recording_log.jsonl  one entry per recorded frame (only if --record)\n"
+    )
+
+    parser = argparse.ArgumentParser(
+        prog="run_hardware.py",
+        description=description,
+        epilog=epilog,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+
+    g_task = parser.add_argument_group("Task")
+    g_task.add_argument(
+        "--instruction", type=str, default=None,
+        help=(
+            "Natural-language mission instruction (e.g. 'take off and circle "
+            "the red cone'). If omitted, you'll be prompted on stdin."
+        ),
+    )
+    g_task.add_argument(
+        "--initial_position", type=str, default="0,0,0,0",
+        help=(
+            "Starting world pose as 'x,y,z,yaw_deg'. The LTL planner and "
+            "dead-reckoning provider use this as their origin. "
+            "(default: %(default)s)"
+        ),
+    )
+    g_task.add_argument(
+        "--results_dir", type=str, default=str(DEFAULT_RESULTS_DIR),
+        help="Root directory for run artifacts. (default: %(default)s)",
+    )
+
+    g_camera = parser.add_argument_group("Camera")
+    g_camera.add_argument(
+        "--camera", type=int, default=0,
+        help=(
+            "Local cv2 device index (only used when --camera_url is unset). "
+            "(default: %(default)s)"
+        ),
+    )
+    g_camera.add_argument(
+        "--camera_url", type=str, default=None,
         help=(
             "HTTP URL serving JPEG/PNG frames (e.g. http://127.0.0.1:8081/frame). "
             "When set, replaces the local cv2 capture with an HTTP-pull camera. "
             "Use this to test against the simulated MiniNav frame feed."
         ),
     )
-    parser.add_argument("--fps", type=int, default=DEFAULT_CAMERA_FPS)
-    parser.add_argument("--camera_retries", type=int, default=DEFAULT_CAMERA_RETRIES)
-    parser.add_argument("--camera_init_timeout", type=float, default=DEFAULT_CAMERA_INIT_TIMEOUT)
-    parser.add_argument("--record", action="store_true", help="Save camera frames.")
-    parser.add_argument("--preferred_server_host", type=str, default=DEFAULT_PREFERRED_SERVER_HOST)
-    parser.add_argument("--control_port", type=int, default=DEFAULT_CONTROL_PORT)
-    parser.add_argument("--control_retries", type=int, default=DEFAULT_CONTROL_RETRIES)
-    parser.add_argument("--control_retry_sleep", type=float, default=DEFAULT_CONTROL_RETRY_SLEEP)
-    parser.add_argument("--openvla_predict_url", type=str, default=DEFAULT_OPENVLA_PREDICT_URL)
-    parser.add_argument("--llm_model", type=str, default=DEFAULT_LLM_MODEL)
-    parser.add_argument("--monitor_model", type=str, default=DEFAULT_VLM_MODEL)
-    parser.add_argument("--llm_fallback_model", type=str, default=DEFAULT_LLM_FALLBACK_MODEL)
-    parser.add_argument("--monitor_fallback_model", type=str, default=DEFAULT_VLM_FALLBACK_MODEL)
-    parser.add_argument("--max_steps_per_subgoal", type=int, default=DEFAULT_MAX_STEPS_PER_SUBGOAL)
-    parser.add_argument("--max_seconds_per_subgoal", type=float, default=DEFAULT_MAX_SECONDS_PER_SUBGOAL,
-        help=f"Time budget per subgoal in seconds (time mode). Default: {DEFAULT_MAX_SECONDS_PER_SUBGOAL}.")
-    parser.add_argument("--diary-mode", choices=("frame", "time"), default=DEFAULT_DIARY_MODE,
-        help="Checkpoint mode: 'frame' (sync, every N steps) or 'time' (async, every N seconds). "
-             f"Default: {DEFAULT_DIARY_MODE}.")
-    parser.add_argument("--diary_check_interval", type=int, default=DEFAULT_DIARY_CHECK_INTERVAL)
-    parser.add_argument(
-        "--diary_check_interval_s",
-        type=float,
-        default=DEFAULT_DIARY_CHECK_INTERVAL_S,
+    g_camera.add_argument(
+        "--fps", type=int, default=DEFAULT_CAMERA_FPS,
+        help="Target capture rate. (default: %(default)s)",
+    )
+    g_camera.add_argument(
+        "--camera_retries", type=int, default=DEFAULT_CAMERA_RETRIES,
+        help="Reopen attempts after the cv2 device drops. (default: %(default)s)",
+    )
+    g_camera.add_argument(
+        "--camera_init_timeout", type=float, default=DEFAULT_CAMERA_INIT_TIMEOUT,
+        help="Seconds to wait for the first frame before bailing out. (default: %(default)s)",
+    )
+
+    g_record = parser.add_argument_group("Recording")
+    g_record.add_argument(
+        "--record", action="store_true",
         help=(
-            "Time-based checkpoint interval in seconds for concurrent VLM "
-            f"monitoring (time mode). Default: {DEFAULT_DIARY_CHECK_INTERVAL_S}."
+            "Persist camera frames under run_dir/frames and write "
+            "recording_log.jsonl with per-frame metadata (subgoal, LTL "
+            "formula, low-level OpenVLA instruction, action tensor, "
+            "cumulative input/output tokens). When off, frames are written "
+            "to a temp dir and discarded at run end (the goal-adherence "
+            "monitor still gets them)."
         ),
     )
-    parser.add_argument("--max_corrections", type=int, default=DEFAULT_MAX_CORRECTIONS)
-    parser.add_argument("--stall_window", type=int, default=DEFAULT_STALL_WINDOW,
-        help="Number of consecutive checkpoints with flat completion to trigger help request.")
-    parser.add_argument("--stall_threshold", type=float, default=DEFAULT_STALL_THRESHOLD,
-        help="Max completion delta across stall_window checkpoints to count as stalled.")
-    parser.add_argument("--stall_completion_floor", type=float, default=DEFAULT_STALL_COMPLETION_FLOOR,
-        help="Don't trigger stall detection above this completion level.")
-    parser.add_argument("--command_dt_s", type=float, default=DEFAULT_COMMAND_DT_S)
-    parser.add_argument(
-        "--action_pose_mode",
-        choices=["direct", "delta_from_pose"],
-        default="direct",
-        help="How to map OpenVLA action pose to boieng command stream.",
+    g_record.add_argument(
+        "--record_fps", type=float, default=DEFAULT_CAMERA_FPS,
+        help=(
+            "When --record is set, throttle recording_log.jsonl entries "
+            "to at most this many per second. Defaults to the camera FPS "
+            "(one entry per step). Lower this to keep the log compact "
+            "for long runs. (default: %(default)s)"
+        ),
     )
-    parser.add_argument(
-        "--command_is_velocity",
-        action="store_true",
-        help="For dead-reckoning: treat sent commands as velocities (m/s, rad/s).",
+
+    g_control = parser.add_argument_group("Control server (boieng wire)")
+    g_control.add_argument(
+        "--preferred_server_host", type=str, default=DEFAULT_PREFERRED_SERVER_HOST,
+        help=(
+            "Tried first; if unreachable in 0.75s, falls back to this "
+            "machine's LAN IP. Set to 127.0.0.1 for local mock. "
+            "(default: %(default)s)"
+        ),
     )
-    parser.add_argument("--odom_http_url", type=str, default=None)
-    parser.add_argument("--odom_udp_host", type=str, default=DEFAULT_ODOM_UDP_HOST)
-    parser.add_argument("--odom_udp_port", type=int, default=DEFAULT_ODOM_UDP_PORT)
-    parser.add_argument("--odom_stale_timeout_s", type=float, default=DEFAULT_ODOM_STALE_TIMEOUT_S)
-    parser.add_argument(
-        "--dead-reckoning",
-        action="store_true",
-        default=False,
-        help="Use dead-reckoning for pose estimation instead of external odometry.",
+    g_control.add_argument(
+        "--control_port", type=int, default=DEFAULT_CONTROL_PORT,
+        help="TCP port the drone control server listens on. (default: %(default)s)",
     )
-    parser.add_argument(
-        "--extra-env-file",
-        type=str,
-        default=None,
-        help="Optional env file loaded after .env and .env.local (overrides).",
+    g_control.add_argument(
+        "--control_retries", type=int, default=DEFAULT_CONTROL_RETRIES,
+        help="Connect attempts before giving up. (default: %(default)s)",
     )
-    parser.add_argument(
-        "--log_level",
-        default="INFO",
+    g_control.add_argument(
+        "--control_retry_sleep", type=float, default=DEFAULT_CONTROL_RETRY_SLEEP,
+        help="Seconds between connect attempts. (default: %(default)s)",
+    )
+    g_control.add_argument(
+        "--command_dt_s", type=float, default=DEFAULT_COMMAND_DT_S,
+        help=(
+            "Time interval between commands sent to the control server. "
+            "Also the dt used for dead-reckoning integration. "
+            "(default: %(default)s)"
+        ),
+    )
+    g_control.add_argument(
+        "--action_pose_mode", choices=["direct", "delta_from_pose"], default="direct",
+        help=(
+            "How to convert each OpenVLA action pose into a 4-float boieng "
+            "command. 'direct': send the action pose verbatim (live drone, "
+            "absolute pose). 'delta_from_pose': send (action - current "
+            "world pose), used by the simulated mock_server. "
+            "(default: %(default)s)"
+        ),
+    )
+    g_control.add_argument(
+        "--command_is_velocity", action="store_true",
+        help=(
+            "Treat each sent command as a velocity (m/s, rad/s) rather than "
+            "an absolute pose. Required for the simulated mock_server (which "
+            "integrates incoming commands as velocities) and for sane "
+            "dead-reckoning."
+        ),
+    )
+
+    g_openvla = parser.add_argument_group("OpenVLA")
+    g_openvla.add_argument(
+        "--openvla_predict_url", type=str, default=DEFAULT_OPENVLA_PREDICT_URL,
+        help=(
+            "Full URL of the OpenVLA /predict endpoint. /reset is derived "
+            "from this URL by replacing the trailing path component; if "
+            "the server has no /reset (e.g. raw OpenVLA without "
+            "scripts/start_server.py's patch) it's silently skipped. "
+            "(default: %(default)s)"
+        ),
+    )
+
+    g_planner = parser.add_argument_group("LTL planner & subgoal converter")
+    g_planner.add_argument(
+        "--llm_model", type=str, default=DEFAULT_LLM_MODEL,
+        help=(
+            "LLM used for LTL natural-language planning and subgoal -> "
+            "OpenVLA-instruction conversion. (default: %(default)s)"
+        ),
+    )
+    g_planner.add_argument(
+        "--llm_fallback_model", type=str, default=DEFAULT_LLM_FALLBACK_MODEL,
+        help=(
+            "Used if the primary LLM is unreachable. Set to '' to disable "
+            "fallback. (default: %(default)s)"
+        ),
+    )
+
+    g_monitor = parser.add_argument_group("Goal-adherence monitor (VLM)")
+    g_monitor.add_argument(
+        "--monitor_model", type=str, default=DEFAULT_VLM_MODEL,
+        help="VLM that scores progress and detects stalls. (default: %(default)s)",
+    )
+    g_monitor.add_argument(
+        "--monitor_fallback_model", type=str, default=DEFAULT_VLM_FALLBACK_MODEL,
+        help="VLM fallback model. (default: %(default)s)",
+    )
+    g_monitor.add_argument(
+        "--diary-mode", choices=("frame", "time"), default=DEFAULT_DIARY_MODE,
+        help=(
+            "Checkpoint cadence: 'frame' (sync, every N control steps) or "
+            "'time' (async, every N seconds, monitor runs in a thread). "
+            "(default: %(default)s)"
+        ),
+    )
+    g_monitor.add_argument(
+        "--diary_check_interval", type=int, default=DEFAULT_DIARY_CHECK_INTERVAL,
+        help=(
+            "Frame mode: invoke the monitor every N steps. "
+            "(default: %(default)s)"
+        ),
+    )
+    g_monitor.add_argument(
+        "--diary_check_interval_s", type=float, default=DEFAULT_DIARY_CHECK_INTERVAL_S,
+        help=(
+            "Time mode: target seconds between monitor checkpoints. "
+            "(default: %(default)s)"
+        ),
+    )
+    g_monitor.add_argument(
+        "--max_steps_per_subgoal", type=int, default=DEFAULT_MAX_STEPS_PER_SUBGOAL,
+        help=(
+            "Hard step budget per subgoal; on exhaustion the operator is "
+            "prompted for help. (default: %(default)s)"
+        ),
+    )
+    g_monitor.add_argument(
+        "--max_seconds_per_subgoal", type=float, default=DEFAULT_MAX_SECONDS_PER_SUBGOAL,
+        help=(
+            "Time budget per subgoal in seconds (time mode only). "
+            "(default: %(default)s)"
+        ),
+    )
+    g_monitor.add_argument(
+        "--max_corrections", type=int, default=DEFAULT_MAX_CORRECTIONS,
+        help=(
+            "Operator-help requests allowed per subgoal before the run "
+            "aborts. (default: %(default)s)"
+        ),
+    )
+    g_monitor.add_argument(
+        "--stall_window", type=int, default=DEFAULT_STALL_WINDOW,
+        help=(
+            "Number of consecutive checkpoints with flat completion needed "
+            "to trigger a stall help request. (default: %(default)s)"
+        ),
+    )
+    g_monitor.add_argument(
+        "--stall_threshold", type=float, default=DEFAULT_STALL_THRESHOLD,
+        help=(
+            "Max completion delta across stall_window checkpoints to count "
+            "as stalled. (default: %(default)s)"
+        ),
+    )
+    g_monitor.add_argument(
+        "--stall_completion_floor", type=float, default=DEFAULT_STALL_COMPLETION_FLOOR,
+        help=(
+            "Don't trigger stall detection above this completion fraction. "
+            "(default: %(default)s)"
+        ),
+    )
+
+    g_pose = parser.add_argument_group(
+        "Pose source (one of --odom_* or --dead-reckoning is required)",
+    )
+    g_pose.add_argument(
+        "--odom_http_url", type=str, default=None,
+        help=(
+            "HTTP endpoint returning JSON {x,y,z,yaw}. Polled each control "
+            "step. Mutually exclusive with --dead-reckoning."
+        ),
+    )
+    g_pose.add_argument(
+        "--odom_udp_host", type=str, default=DEFAULT_ODOM_UDP_HOST,
+        help="UDP bind host for streamed odometry. (default: %(default)s)",
+    )
+    g_pose.add_argument(
+        "--odom_udp_port", type=int, default=DEFAULT_ODOM_UDP_PORT,
+        help=(
+            "UDP port for streamed odometry. 0 disables UDP. "
+            "(default: %(default)s)"
+        ),
+    )
+    g_pose.add_argument(
+        "--odom_stale_timeout_s", type=float, default=DEFAULT_ODOM_STALE_TIMEOUT_S,
+        help=(
+            "Seconds without a fresh odometry sample before falling back to "
+            "dead-reckoning. (default: %(default)s)"
+        ),
+    )
+    g_pose.add_argument(
+        "--dead-reckoning", action="store_true", default=False,
+        help=(
+            "Estimate world pose by integrating sent commands instead of "
+            "using external odometry. Drift accumulates; pair with "
+            "--command_is_velocity for sane integration."
+        ),
+    )
+
+    g_misc = parser.add_argument_group("Misc")
+    g_misc.add_argument(
+        "--extra-env-file", type=str, default=None,
+        help=(
+            "Optional env file loaded after .env and .env.local (overrides). "
+            "Useful for per-flight API keys or hostnames."
+        ),
+    )
+    g_misc.add_argument(
+        "--log_level", default="INFO",
         choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
+        help="Python logging verbosity. (default: %(default)s)",
     )
+
     return parser.parse_args()
 
 
@@ -1371,19 +1718,50 @@ def main() -> None:
         format="[%(levelname)s] %(asctime)s - %(name)s - %(message)s",
     )
 
+    # Register interrupt handlers here (not at import time) so importing this
+    # module from tests/notebooks doesn't hijack SIGINT/SIGTERM globally.
+    signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGTERM, signal_handler)
+
     load_env_vars(args.extra_env_file)
     initial_world_pose = parse_position(args.initial_position)
     instruction = args.instruction or input("Enter initial instruction: ").strip()
     if not instruction:
         raise SystemExit("Instruction is required.")
 
+    # Validate pose-source flags before opening camera/control sockets so a bad
+    # CLI doesn't leave the cv2 capture or TCP socket dangling on SystemExit.
+    has_odom = args.odom_http_url or args.odom_udp_port > 0
+    has_dr = args.dead_reckoning
+    if has_odom and has_dr:
+        raise SystemExit("Cannot use both --dead-reckoning and external odometry (--odom_http_url / --odom_udp_port).")
+    if not has_odom and not has_dr:
+        raise SystemExit(
+            "No pose source specified. Use --odom_http_url / --odom_udp_port for "
+            "external odometry, or --dead-reckoning for estimated poses."
+        )
+
     llm_model = resolve_model_with_fallback(args.llm_model, args.llm_fallback_model)
     monitor_model = resolve_model_with_fallback(args.monitor_model, args.monitor_fallback_model)
 
-    run_stamp = datetime.now().strftime("%Y_%m_%d_%H_%M_%S")
+    # Microseconds avoid run-dir collisions when two pipelines launch in the
+    # same second.
+    run_stamp = datetime.now().strftime("%Y_%m_%d_%H_%M_%S_%f")
     run_dir = Path(args.results_dir) / f"run_{run_stamp}"
-    frames_dir = run_dir / "frames"
-    frames_dir.mkdir(parents=True, exist_ok=True)
+    run_dir.mkdir(parents=True, exist_ok=True)
+
+    # Frames must always be on disk for the goal-adherence monitor's VLM
+    # calls. With --record they live under run_dir/frames; without --record
+    # they go to a private temp dir cleaned up at exit.
+    if args.record:
+        frames_dir = run_dir / "frames"
+        frames_dir.mkdir(parents=True, exist_ok=True)
+        recording_log_path: Optional[Path] = run_dir / "recording_log.jsonl"
+        frames_tempdir: Optional[str] = None
+    else:
+        frames_tempdir = tempfile.mkdtemp(prefix="rvln_frames_")
+        frames_dir = Path(frames_tempdir)
+        recording_log_path = None
 
     if args.camera_url:
         logger.info("Camera source: HTTP feed at %s", args.camera_url)
@@ -1414,16 +1792,6 @@ def main() -> None:
     )
     control.connect()
 
-    has_odom = args.odom_http_url or args.odom_udp_port > 0
-    has_dr = args.dead_reckoning
-    if has_odom and has_dr:
-        raise SystemExit("Cannot use both --dead-reckoning and external odometry (--odom_http_url / --odom_udp_port).")
-    if not has_odom and not has_dr:
-        raise SystemExit(
-            "No pose source specified. Use --odom_http_url / --odom_udp_port for "
-            "external odometry, or --dead-reckoning for estimated poses."
-        )
-
     odom_provider = None
     if has_odom:
         odom_provider = OdometryPoseProvider(
@@ -1449,12 +1817,20 @@ def main() -> None:
     subgoal_summaries: List[Dict[str, Any]] = []
     frame_offset = 0
     ltl_plan: Dict[str, Any] = {}
+    llm_interface = None
+    recorder_ctx: Dict[str, Any] = {"llm_interface": None, "ltl_plan": ltl_plan}
+    recorder = FrameRecorder(
+        log_path=recording_log_path,
+        record_fps=args.record_fps,
+        ctx=recorder_ctx,
+    )
 
     try:
         from rvln.ai.llm_interface import LLMUserInterface
         from rvln.ai.ltl_planner import LTLSymbolicPlanner
 
         llm_interface = LLMUserInterface(model=llm_model)
+        recorder_ctx["llm_interface"] = llm_interface
         planner = LTLSymbolicPlanner(llm_interface)
         planner.plan_from_natural_language(instruction)
 
@@ -1462,6 +1838,7 @@ def main() -> None:
             "ltl_nl_formula": llm_interface.ltl_nl_formula.get("ltl_nl_formula", ""),
             "pi_predicates": dict(planner.pi_map),
         }
+        recorder_ctx["ltl_plan"] = ltl_plan
 
         use_time_mode = args.diary_mode == "time"
         check_interval_s = args.diary_check_interval_s if use_time_mode else None
@@ -1504,6 +1881,7 @@ def main() -> None:
                 stall_threshold=args.stall_threshold,
                 stall_completion_floor=args.stall_completion_floor,
                 constraints=active_constraints,
+                recorder=recorder,
             )
             frame_offset += result["total_steps"]
             subgoal_summaries.append(result)
@@ -1520,12 +1898,14 @@ def main() -> None:
                 )
                 instruction = new_instruction
                 llm_interface = LLMUserInterface(model=llm_model)
+                recorder_ctx["llm_interface"] = llm_interface
                 planner = LTLSymbolicPlanner(llm_interface)
                 planner.plan_from_natural_language(new_instruction)
                 ltl_plan = {
                     "ltl_nl_formula": llm_interface.ltl_nl_formula.get("ltl_nl_formula", ""),
                     "pi_predicates": dict(planner.pi_map),
                 }
+                recorder_ctx["ltl_plan"] = ltl_plan
                 logger.info("Replan LTL: %s", json.dumps(ltl_plan, indent=2))
                 current_subgoal = planner.get_next_predicate()
                 continue
@@ -1545,6 +1925,12 @@ def main() -> None:
 
     finally:
         end_ts = datetime.now().isoformat()
+        # Guard against llm_interface being unbound (e.g. planner import or
+        # plan_from_natural_language raised before assignment); otherwise the
+        # original exception gets masked by NameError from this block.
+        planner_records = (
+            llm_interface.llm_call_records if llm_interface is not None else []
+        )
         try:
             with open(run_dir / "trajectory_log.json", "w") as f:
                 json.dump(trajectory_log, f, indent=2)
@@ -1570,18 +1956,18 @@ def main() -> None:
                 "total_steps": sum(s["total_steps"] for s in subgoal_summaries),
                 "total_vlm_calls": sum(s.get("vlm_calls", 0) for s in subgoal_summaries),
                 "all_llm_call_records": (
-                    llm_interface.llm_call_records
+                    planner_records
                     + [r for s in subgoal_summaries for r in s.get("llm_call_records", [])]
                 ),
                 "total_input_tokens": (
-                    sum(r.get("input_tokens", 0) for r in llm_interface.llm_call_records)
+                    sum(r.get("input_tokens", 0) for r in planner_records)
                     + sum(
                         sum(r.get("input_tokens", 0) for r in s.get("llm_call_records", []))
                         for s in subgoal_summaries
                     )
                 ),
                 "total_output_tokens": (
-                    sum(r.get("output_tokens", 0) for r in llm_interface.llm_call_records)
+                    sum(r.get("output_tokens", 0) for r in planner_records)
                     + sum(
                         sum(r.get("output_tokens", 0) for r in s.get("llm_call_records", []))
                         for s in subgoal_summaries
@@ -1604,10 +1990,13 @@ def main() -> None:
             raise
         finally:
             stop_capture = True
+            recorder.close()
             pose_manager.close()
             control.close()
             camera.release()
             cv2.destroyAllWindows()
+            if frames_tempdir is not None:
+                shutil.rmtree(frames_tempdir, ignore_errors=True)
 
 
 if __name__ == "__main__":
