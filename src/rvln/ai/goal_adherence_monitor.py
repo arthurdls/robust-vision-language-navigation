@@ -294,6 +294,21 @@ class GoalAdherenceMonitor:
             self._pending_result = None
         return result
 
+    def reset_grace_state(self) -> None:
+        """Reset the state that triggers operator help prompts.
+
+        Called by interface.py when the operator dismisses an ask_help
+        prompt with "continue with current instruction": without this,
+        the very next checkpoint would see the same flat completion
+        history and immediately re-stall, and the very next convergence
+        would see _corrections_used >= max and immediately re-prompt with
+        MAX CORRECTIONS REACHED. Clearing both gives the operator a fresh
+        budget to actually let the run continue.
+        """
+        with self._lock:
+            self._completion_history = []
+            self._corrections_used = 0
+
     def request_convergence(
         self, frame_path: Union[Path, str], displacement: List[float],
     ) -> None:
