@@ -276,11 +276,12 @@ class TestOnConvergence:
     @patch("rvln.ai.goal_adherence_monitor.query_vlm")
     @patch("rvln.ai.goal_adherence_monitor.build_frame_grid")
     @patch("rvln.ai.goal_adherence_monitor.sample_frames_every_n")
-    def test_diagnosis_complete_with_no_corrective_stops(self, mock_sample, mock_grid, mock_vlm):
+    def test_diagnosis_complete_with_no_corrective_asks_help(self, mock_sample, mock_grid, mock_vlm):
         """complete=False with diagnosis='complete' and no corrective should
-        still terminate the subgoal (after a retry that also yields no
-        corrective). This is convergence_no_corrective territory: the VLM gave
-        contradictory output, but with nothing to act on we have to stop."""
+        pull the operator in (after a retry that also yields no corrective).
+        Previously this silently stopped the subgoal; now it returns ask_help
+        with header CONVERGENCE GAVE NO CORRECTIVE so the operator gets a
+        chance to override or replan."""
         m = self._setup_monitor()
         mock_sample.return_value = m._frame_paths[-4:]
         mock_grid.return_value = MagicMock()
@@ -292,7 +293,24 @@ class TestOnConvergence:
         })
 
         result = m.on_convergence(Path("/tmp/f3.png"))
-        assert result.action == "stop"
+        assert result.action == "ask_help"
+        assert result.ask_help_header == "CONVERGENCE GAVE NO CORRECTIVE"
+
+    @patch("rvln.ai.goal_adherence_monitor.query_vlm")
+    @patch("rvln.ai.goal_adherence_monitor.build_frame_grid")
+    @patch("rvln.ai.goal_adherence_monitor.sample_frames_every_n")
+    def test_unparseable_response_asks_help(self, mock_sample, mock_grid, mock_vlm):
+        """If the convergence VLM emits unparseable JSON twice in a row, the
+        old behavior was to silently stop the subgoal; now it must surface as
+        ask_help so the operator can recover the run."""
+        m = self._setup_monitor()
+        mock_sample.return_value = m._frame_paths[-4:]
+        mock_grid.return_value = MagicMock()
+        mock_vlm.return_value = "not valid JSON, just prose"
+
+        result = m.on_convergence(Path("/tmp/f3.png"))
+        assert result.action == "ask_help"
+        assert result.ask_help_header == "CONVERGENCE PARSE FAILURE"
 
     @patch("rvln.ai.goal_adherence_monitor.query_vlm")
     @patch("rvln.ai.goal_adherence_monitor.build_frame_grid")

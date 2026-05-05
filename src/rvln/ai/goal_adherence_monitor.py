@@ -99,6 +99,11 @@ class DiaryCheckResult:
     reasoning: str
     diary_entry: str      # latest diary entry (what changed)
     completion_pct: float = 0.0  # latest estimated completion percentage
+    # Optional short header shown to the operator when action="ask_help"
+    # (e.g. "CONVERGENCE PARSE FAILURE", "MAX CORRECTIONS REACHED"). The
+    # caller in interface.py uses it to label the help prompt; falls back
+    # to "MAX CORRECTIONS REACHED" if empty for back-compat.
+    ask_help_header: str = ""
 
 # ---------------------------------------------------------------------------
 # GoalAdherenceMonitor
@@ -438,7 +443,7 @@ class GoalAdherenceMonitor:
                     response[:200],
                 )
                 return DiaryCheckResult(
-                    action="stop",
+                    action="ask_help",
                     new_instruction="",
                     reasoning=(
                         "convergence_parse_failure: VLM JSON unparseable after "
@@ -446,6 +451,7 @@ class GoalAdherenceMonitor:
                     ),
                     diary_entry="",
                     completion_pct=self._last_completion_pct,
+                    ask_help_header="CONVERGENCE PARSE FAILURE",
                 )
 
         pct = float(parsed.get("completion_percentage", self._last_completion_pct))
@@ -498,11 +504,11 @@ class GoalAdherenceMonitor:
             if not corrective:
                 logger.warning(
                     "Convergence retry returned no corrective instruction; "
-                    "stopping subgoal with convergence_no_command. Raw: %s",
+                    "asking operator for help. Raw: %s",
                     response[:200],
                 )
                 return DiaryCheckResult(
-                    action="stop",
+                    action="ask_help",
                     new_instruction="",
                     reasoning=(
                         f"convergence_no_corrective: VLM did not return a "
@@ -510,6 +516,7 @@ class GoalAdherenceMonitor:
                     ),
                     diary_entry="",
                     completion_pct=pct,
+                    ask_help_header="CONVERGENCE GAVE NO CORRECTIVE",
                 )
 
         self._corrections_used += 1
@@ -589,10 +596,10 @@ class GoalAdherenceMonitor:
                 self._parse_failures += 1
                 logger.error(
                     "Text-only convergence parse failed after retry; "
-                    "stopping subgoal. Raw: %s", response[:200],
+                    "asking operator for help. Raw: %s", response[:200],
                 )
                 return DiaryCheckResult(
-                    action="stop",
+                    action="ask_help",
                     new_instruction="",
                     reasoning=(
                         "text_only_convergence_parse_failure: VLM JSON "
@@ -600,6 +607,7 @@ class GoalAdherenceMonitor:
                     ),
                     diary_entry="",
                     completion_pct=self._last_completion_pct,
+                    ask_help_header="CONVERGENCE PARSE FAILURE",
                 )
 
         pct = float(parsed.get("completion_percentage", self._last_completion_pct))
@@ -657,10 +665,10 @@ class GoalAdherenceMonitor:
             if not corrective:
                 logger.warning(
                     "Text-only convergence retry: no corrective instruction; "
-                    "stopping subgoal. Raw: %s", response[:200],
+                    "asking operator for help. Raw: %s", response[:200],
                 )
                 return DiaryCheckResult(
-                    action="stop",
+                    action="ask_help",
                     new_instruction="",
                     reasoning=(
                         "text_only_convergence_no_corrective: VLM did not "
@@ -669,6 +677,7 @@ class GoalAdherenceMonitor:
                     ),
                     diary_entry="",
                     completion_pct=pct,
+                    ask_help_header="CONVERGENCE GAVE NO CORRECTIVE",
                 )
 
         self._corrections_used += 1
@@ -1279,10 +1288,10 @@ class GoalAdherenceMonitor:
                 self._parse_failures += 1
                 logger.error(
                     "Async convergence JSON parse failed after retry; "
-                    "stopping subgoal. Raw: %s", response[:200],
+                    "asking operator for help. Raw: %s", response[:200],
                 )
                 return DiaryCheckResult(
-                    action="stop",
+                    action="ask_help",
                     new_instruction="",
                     reasoning=(
                         "async_convergence_parse_failure: VLM JSON "
@@ -1290,6 +1299,7 @@ class GoalAdherenceMonitor:
                     ),
                     diary_entry="",
                     completion_pct=self._last_completion_pct,
+                    ask_help_header="CONVERGENCE PARSE FAILURE",
                 )
 
         pct = float(parsed.get("completion_percentage", self._last_completion_pct))
@@ -1342,10 +1352,10 @@ class GoalAdherenceMonitor:
             if not corrective:
                 logger.warning(
                     "Async convergence retry returned no corrective instruction; "
-                    "stopping subgoal. Raw: %s", response[:200],
+                    "asking operator for help. Raw: %s", response[:200],
                 )
                 return DiaryCheckResult(
-                    action="stop",
+                    action="ask_help",
                     new_instruction="",
                     reasoning=(
                         "async_convergence_no_corrective: VLM did not return "
@@ -1353,6 +1363,7 @@ class GoalAdherenceMonitor:
                     ),
                     diary_entry="",
                     completion_pct=pct,
+                    ask_help_header="CONVERGENCE GAVE NO CORRECTIVE",
                 )
 
         self._corrections_used += 1
@@ -1381,13 +1392,14 @@ class GoalAdherenceMonitor:
                 frame_path, displacement = conv_req
                 try:
                     result = self._run_convergence_async(frame_path, displacement)
-                except Exception:
+                except Exception as exc:
                     logger.exception("Error in async convergence check")
                     result = DiaryCheckResult(
-                        action="stop",
+                        action="ask_help",
                         new_instruction="",
-                        reasoning="async_convergence_error",
+                        reasoning=f"async_convergence_error: {exc}",
                         diary_entry="",
+                        ask_help_header="CONVERGENCE VLM ERROR",
                         completion_pct=self._last_completion_pct,
                     )
                 with self._lock:

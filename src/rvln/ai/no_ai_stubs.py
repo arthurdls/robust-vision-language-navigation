@@ -35,6 +35,10 @@ class DiaryCheckResult:
     reasoning: str
     diary_entry: str
     completion_pct: float = 0.0
+    # Mirrors the live monitor: optional header used by interface.py's
+    # _handle_ask_help when surfacing an ask_help to the operator. Falls
+    # back to "MAX CORRECTIONS REACHED" downstream when empty.
+    ask_help_header: str = ""
 
 
 def _prompt(prompt: str, default: str = "") -> str:

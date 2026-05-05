@@ -918,6 +918,7 @@ def _convergence_loop(
                 "new_instruction": result.new_instruction,
                 "reasoning": result.reasoning,
                 "completion_pct": result.completion_pct,
+                "ask_help_header": getattr(result, "ask_help_header", "") or "",
             }
         control.send_command(global_frame_idx, zero_cmd)
         pose_manager.update_from_command(zero_cmd, command_dt_s)
@@ -1280,7 +1281,8 @@ def run_subgoal(
                             if conv_dict["action"] == "ask_help":
                                 help_result = _handle_ask_help(
                                     control, frame_offset, step, subgoal_nl,
-                                    "MAX CORRECTIONS REACHED", conv_dict["completion_pct"],
+                                    conv_dict.get("ask_help_header") or "MAX CORRECTIONS REACHED",
+                                    conv_dict["completion_pct"],
                                     current_instruction, conv_dict["reasoning"],
                                 )
                                 if help_result.stop_reason:
@@ -1553,7 +1555,8 @@ def run_subgoal(
                         if conv_dict["action"] == "ask_help":
                             help_result = _handle_ask_help(
                                 control, frame_offset, step, subgoal_nl,
-                                "MAX CORRECTIONS REACHED", conv_dict["completion_pct"],
+                                conv_dict.get("ask_help_header") or "MAX CORRECTIONS REACHED",
+                                conv_dict["completion_pct"],
                                 current_instruction, conv_dict["reasoning"],
                             )
                             if help_result.stop_reason:
@@ -1642,7 +1645,8 @@ def run_subgoal(
                         if conv_result.action == "ask_help":
                             help_result = _handle_ask_help(
                                 control, frame_offset, step, subgoal_nl,
-                                "MAX CORRECTIONS REACHED", conv_result.completion_pct,
+                                getattr(conv_result, "ask_help_header", "") or "MAX CORRECTIONS REACHED",
+                                conv_result.completion_pct,
                                 current_instruction, conv_result.reasoning,
                             )
                             if help_result.stop_reason:
