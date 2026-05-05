@@ -932,6 +932,7 @@ def run_subgoal(
     stall_completion_floor: float = 0.8,
     constraints: Optional[List[Any]] = None,
     recorder: Optional["FrameRecorder"] = None,
+    no_ai: bool = False,
 ) -> Dict[str, Any]:
     """Execute a single subgoal with OpenVLA, goal adherence monitoring, and operator help.
 
@@ -950,8 +951,15 @@ def run_subgoal(
     stop_reason, corrections_used, last_completion_pct, peak_completion,
     vlm_calls, next_origin, replan_instruction.
     """
-    from rvln.ai.goal_adherence_monitor import DiaryCheckResult, GoalAdherenceMonitor
-    from rvln.ai.subgoal_converter import SubgoalConverter
+    if no_ai:
+        from rvln.ai.no_ai_stubs import (
+            DiaryCheckResult,
+            ManualGoalAdherenceMonitor as GoalAdherenceMonitor,
+            ManualSubgoalConverter as SubgoalConverter,
+        )
+    else:
+        from rvln.ai.goal_adherence_monitor import DiaryCheckResult, GoalAdherenceMonitor
+        from rvln.ai.subgoal_converter import SubgoalConverter
 
     # Create the subgoal directory before calling converter/monitor so the
     # finally-block diary write at the bottom always has a valid target,
@@ -1821,6 +1829,16 @@ def parse_args() -> argparse.Namespace:
         choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
         help="Python logging verbosity. (default: %(default)s)",
     )
+    g_misc.add_argument(
+        "--no-ai", dest="no_ai", action="store_true",
+        help=(
+            "Run without OpenAI. The LTL planner, subgoal converter, and "
+            "goal-adherence monitor are replaced by terminal prompts that "
+            "ask the operator for what each component would have produced. "
+            "Forces --diary-mode=frame (time-based monitoring is not "
+            "supported in this mode)."
+        ),
+    )
 
     return parser.parse_args()
 
@@ -1959,8 +1977,19 @@ def main() -> None:
     )
 
     try:
-        from rvln.ai.llm_interface import LLMUserInterface
-        from rvln.ai.sequential_ltl_planner import SequentialLTLPlanner
+        if args.no_ai:
+            from rvln.ai.no_ai_stubs import (
+                ManualLLMUserInterface as LLMUserInterface,
+                ManualSequentialLTLPlanner as SequentialLTLPlanner,
+            )
+            if args.diary_mode != "frame":
+                logger.warning(
+                    "--no-ai forces --diary-mode=frame (was %s).", args.diary_mode,
+                )
+                args.diary_mode = "frame"
+        else:
+            from rvln.ai.llm_interface import LLMUserInterface
+            from rvln.ai.sequential_ltl_planner import SequentialLTLPlanner
 
         llm_interface = LLMUserInterface(model=llm_model, use_constraints=False)
         recorder_ctx["llm_interface"] = llm_interface
@@ -2016,6 +2045,7 @@ def main() -> None:
                 stall_completion_floor=args.stall_completion_floor,
                 constraints=active_constraints,
                 recorder=recorder,
+                no_ai=args.no_ai,
             )
             frame_offset += result["total_steps"]
             subgoal_summaries.append(result)
