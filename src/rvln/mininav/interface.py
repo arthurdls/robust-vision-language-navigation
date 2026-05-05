@@ -2132,6 +2132,17 @@ def main() -> None:
         format=log_format,
         datefmt=log_datefmt,
     )
+    # Third-party libraries dump request bodies (including base64-encoded
+    # camera frames) and per-byte HTTP transcripts at DEBUG level, which
+    # buries our own status output. Pin them to WARNING so verbose mode
+    # only surfaces things we actually log.
+    for noisy in (
+        "openai", "anthropic",
+        "httpx", "httpcore",
+        "urllib3", "requests",
+        "PIL", "PIL.PngImagePlugin", "PIL.JpegImagePlugin",
+    ):
+        logging.getLogger(noisy).setLevel(logging.WARNING)
 
     # Register interrupt handlers here (not at import time) so importing this
     # module from tests/notebooks doesn't hijack SIGINT/SIGTERM globally.

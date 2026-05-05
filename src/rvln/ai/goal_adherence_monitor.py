@@ -852,22 +852,30 @@ class GoalAdherenceMonitor:
         )
 
     def _is_stalled(self) -> bool:
-        """Return True if peak completion has not increased over the last stall_window checkpoints.
+        """Return True if completion has been flat over the last stall_window
+        checkpoints and we're below the completion floor.
 
-        Uses peak_completion as the baseline rather than raw history, which is
-        more robust to non-monotonic VLM estimates (e.g., a hallucinated high
-        value followed by truthful lower values would not trigger false stalls).
+        Previously this also gated on `recent_peak >= peak_completion -
+        threshold`, intending to suppress stall after a one-off VLM
+        hallucination spike. In practice that gate also suppressed stall
+        whenever completion regressed from any prior value -- including the
+        common "drone stuck near 0 the entire run" case where a single
+        slightly-higher early estimate kept the operator from ever being
+        pulled in. We just look at the recent window now: flat below the
+        floor = stalled. A real hallucination spike still delays detection
+        only by stall_window checkpoints (until it falls off the recent
+        window), which is acceptable.
         """
         history = self._completion_history
         if len(history) < self._stall_window:
             return False
         recent = history[-self._stall_window:]
+        # Don't pull the operator if we're already nearly done.
         if min(recent) >= self._stall_completion_floor:
             return False
-        recent_peak = max(recent)
-        if recent_peak >= self._peak_completion - self._stall_threshold:
-            return max(recent) - min(recent) < self._stall_threshold
-        return False
+        # Flat = stalled. Any meaningful upward swing within the window
+        # means progress was made, so don't fire.
+        return (max(recent) - min(recent)) < self._stall_threshold
 
     def _save_frame(self, frame: Any) -> Path:
         if isinstance(frame, (str, Path)):

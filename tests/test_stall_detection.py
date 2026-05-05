@@ -81,6 +81,36 @@ def test_stall_only_looks_at_last_window():
     assert m._is_stalled() is True
 
 
+def test_stall_detected_when_stuck_at_zero():
+    """Regression: a task that never makes progress (stays at 0.0 across the
+    whole window) must still trigger ask_help. Earlier code gated stall on
+    recent_peak >= peak_completion - threshold, which incidentally worked
+    here, but the same gate suppressed stall whenever completion regressed
+    from any prior value. Now we just check that the recent window is flat
+    and below the floor."""
+    m = GoalAdherenceMonitor.__new__(GoalAdherenceMonitor)
+    m._completion_history = [0.0, 0.0, 0.0, 0.0, 0.0]
+    m._stall_window = 5
+    m._stall_threshold = 0.05
+    m._stall_completion_floor = 0.8
+    m._peak_completion = 0.0
+    assert m._is_stalled() is True
+
+
+def test_stall_detected_after_regression_from_prior_peak():
+    """Regression: history=[0.3, 0.0, 0.0, 0.0, 0.0] with stall_window=5 used
+    to suppress stall because recent_peak (0.0) was far below the historical
+    peak (0.3). With the new logic the recent window is flat at 0 below the
+    floor, so stall fires even though we previously hit 0.3."""
+    m = GoalAdherenceMonitor.__new__(GoalAdherenceMonitor)
+    m._completion_history = [0.3, 0.0, 0.0, 0.0, 0.0, 0.0]
+    m._stall_window = 5
+    m._stall_threshold = 0.05
+    m._stall_completion_floor = 0.8
+    m._peak_completion = 0.3
+    assert m._is_stalled() is True
+
+
 @patch("rvln.ai.goal_adherence_monitor.query_vlm")
 @patch("rvln.ai.goal_adherence_monitor.build_frame_grid")
 @patch("rvln.ai.goal_adherence_monitor.sample_frames_every_n")
