@@ -494,17 +494,29 @@ class PoseSample:
 
 
 class OdometryPoseProvider:
+    """Pose source with a background polling thread.
+
+    HTTP and UDP I/O happen on a daemon thread at a fixed cadence; ``get_pose``
+    is a lock-protected read of the cached latest sample, so the hot control
+    loop never blocks on a slow odometry server. A sample older than
+    ``stale_timeout_s`` is treated as missing, which lets ``PoseManager``
+    fall over to dead-reckoning the same way the synchronous version did.
+    """
+
     def __init__(
         self,
         http_url: Optional[str],
         udp_host: str,
         udp_port: int,
         stale_timeout_s: float,
+        poll_hz: float = 50.0,
     ):
         self.http_url = http_url
         self.udp_host = udp_host
         self.udp_port = udp_port
         self.stale_timeout_s = stale_timeout_s
+        self._poll_interval = 1.0 / poll_hz if poll_hz > 0 else 0.02
+        self._lock = threading.Lock()
         self.last_sample: Optional[PoseSample] = None
         self._udp_sock: Optional[socket.socket] = None
         if udp_port > 0:
@@ -512,6 +524,14 @@ class OdometryPoseProvider:
             self._udp_sock.bind((udp_host, udp_port))
             self._udp_sock.setblocking(False)
             logger.info("Listening for odometry UDP packets on %s:%d", udp_host, udp_port)
+
+        self._stop = threading.Event()
+        self._thread = threading.Thread(
+            target=self._poll_loop,
+            name="odom-poller",
+            daemon=True,
+        )
+        self._thread.start()
 
     def _parse_pose(self, payload: Dict[str, Any]) -> Optional[PoseSample]:
         try:
@@ -524,19 +544,24 @@ class OdometryPoseProvider:
             logger.warning("Failed to parse pose payload: %s (data: %s)", exc, payload)
             return None
 
-    def _poll_http(self) -> None:
+    def _store(self, sample: PoseSample) -> None:
+        with self._lock:
+            self.last_sample = sample
+
+    def _poll_http_once(self) -> None:
         if not self.http_url:
             return
         try:
             resp = requests.get(self.http_url, timeout=0.25)
             resp.raise_for_status()
             pose = self._parse_pose(resp.json())
-            if pose is not None:
-                self.last_sample = pose
         except Exception as exc:
             logger.warning("Odometry HTTP poll failed (%s): %s", self.http_url, exc)
+            return
+        if pose is not None:
+            self._store(pose)
 
-    def _poll_udp(self) -> None:
+    def _poll_udp_drain(self) -> None:
         if self._udp_sock is None:
             return
         while True:
@@ -544,6 +569,9 @@ class OdometryPoseProvider:
                 data, _addr = self._udp_sock.recvfrom(65535)
             except BlockingIOError:
                 break
+            except OSError:
+                # Socket closed during shutdown.
+                return
             except Exception as exc:
                 logger.warning("Odometry UDP recv error: %s", exc)
                 break
@@ -554,23 +582,34 @@ class OdometryPoseProvider:
                 continue
             pose = self._parse_pose(payload)
             if pose is not None:
-                self.last_sample = pose
+                self._store(pose)
+
+    def _poll_loop(self) -> None:
+        # All I/O lives here so get_pose() is non-blocking. Exceptions are
+        # caught and logged so a transient odom outage never kills the thread.
+        while not self._stop.is_set():
+            try:
+                self._poll_udp_drain()
+                self._poll_http_once()
+            except Exception as exc:  # defense in depth
+                logger.warning("Odometry poll iteration failed: %s", exc)
+            self._stop.wait(self._poll_interval)
 
     def get_pose(self) -> Optional[List[float]]:
-        self._poll_udp()
-        self._poll_http()
-        if self.last_sample is None:
+        with self._lock:
+            sample = self.last_sample
+        if sample is None:
             return None
-        if time.time() - self.last_sample.ts > self.stale_timeout_s:
+        if time.time() - sample.ts > self.stale_timeout_s:
             return None
-        return [
-            self.last_sample.x,
-            self.last_sample.y,
-            self.last_sample.z,
-            self.last_sample.yaw_deg,
-        ]
+        return [sample.x, sample.y, sample.z, sample.yaw_deg]
 
     def close(self) -> None:
+        self._stop.set()
+        if self._thread.is_alive():
+            self._thread.join(timeout=2.0)
+            if self._thread.is_alive():
+                logger.warning("Odometry poll thread did not exit within 2s.")
         if self._udp_sock is not None:
             try:
                 self._udp_sock.close()
@@ -579,14 +618,54 @@ class OdometryPoseProvider:
 
 
 class DeadReckoningPoseProvider:
-    def __init__(self, initial_world_pose: List[float], command_is_velocity: bool):
+    """Integrate sent commands into a world-frame pose estimate.
+
+    Wire commands have different meanings under different ``action_pose_mode``
+    settings, so the integration formula depends on the mode:
+
+    - ``delta_from_pose`` + ``command_is_velocity``: command is (vx, vy, vz,
+      yaw_rate). Integrate ``pose += v * dt``. Used by the simulated mock.
+    - ``delta_from_pose`` + not velocity: command is a per-step pose delta
+      in subgoal-relative frame. Adding it to ``world_pose`` yields the
+      target world pose (see math comment in ``update_from_command``).
+    - ``direct``: command is the *absolute* target relative pose (the raw
+      OpenVLA prediction). Without the subgoal origin the DR provider can't
+      reconstruct world coords from it, so we leave ``world_pose`` alone.
+      ``PoseManager`` continuously syncs DR via ``set_world_pose`` whenever
+      odometry is healthy; on failover the DR pose stays frozen at the last
+      good odom value (a safe-but-stale snapshot rather than divergent
+      garbage).
+    """
+
+    def __init__(
+        self,
+        initial_world_pose: List[float],
+        command_is_velocity: bool,
+        action_pose_mode: str = "delta_from_pose",
+    ):
         self.world_pose = list(initial_world_pose)
         self.command_is_velocity = command_is_velocity
+        self.action_pose_mode = action_pose_mode
+        self._direct_mode_warned = False
 
     def set_world_pose(self, pose: List[float]) -> None:
         self.world_pose = [float(p) for p in pose]
 
     def update_from_command(self, command: np.ndarray, dt_s: float) -> None:
+        if self.action_pose_mode == "direct":
+            # Wire command is an absolute target in subgoal-relative frame; we
+            # don't have the subgoal origin here, so we cannot compute a world
+            # pose from it. Skip integration; rely on odometry sync (or accept
+            # a frozen last-known-pose fallback if odom dies).
+            if not self._direct_mode_warned:
+                logger.info(
+                    "Dead-reckoning is a frozen-snapshot fallback in "
+                    "action_pose_mode=direct; pose only advances while "
+                    "odometry is healthy."
+                )
+                self._direct_mode_warned = True
+            return
+
         vx, vy, vz, yaw = (
             float(command[0]),
             float(command[1]),
@@ -1685,6 +1764,14 @@ def parse_args() -> argparse.Namespace:
         ),
     )
     g_pose.add_argument(
+        "--odom_poll_hz", type=float, default=50.0,
+        help=(
+            "Background polling rate for the odometry provider (Hz). The "
+            "control loop reads a cached value, so this just bounds the "
+            "freshness of that cache. (default: %(default)s)"
+        ),
+    )
+    g_pose.add_argument(
         "--dead-reckoning", action="store_true", default=False,
         help=(
             "Estimate world pose by integrating sent commands instead of "
@@ -1739,6 +1826,29 @@ def main() -> None:
         raise SystemExit(
             "No pose source specified. Use --odom_http_url / --odom_udp_port for "
             "external odometry, or --dead-reckoning for estimated poses."
+        )
+
+    # Surface flag combinations that look inconsistent. We warn rather than
+    # fail so live-hardware operators (the priority path) can override if they
+    # know what they're doing, but the misconfiguration is loud.
+    if has_dr and args.action_pose_mode == "direct" and not args.command_is_velocity:
+        logger.warning(
+            "Primary --dead-reckoning with --action_pose_mode=direct is not "
+            "physically meaningful (the wire command is an absolute target, "
+            "not a delta or velocity). DR will hold the initial pose and not "
+            "advance until odometry is provided."
+        )
+    if args.action_pose_mode == "delta_from_pose" and not args.command_is_velocity and not has_odom:
+        logger.warning(
+            "Sim-style --action_pose_mode=delta_from_pose typically pairs "
+            "with --command_is_velocity for a usable DR fallback."
+        )
+    if args.action_pose_mode == "direct" and args.command_is_velocity:
+        logger.warning(
+            "--action_pose_mode=direct with --command_is_velocity is unusual: "
+            "direct mode sends absolute target poses, but the velocity flag "
+            "implies the receiver integrates them as rates. Double-check "
+            "your control server expects this."
         )
 
     llm_model = resolve_model_with_fallback(args.llm_model, args.llm_fallback_model)
@@ -1799,6 +1909,7 @@ def main() -> None:
             udp_host=args.odom_udp_host,
             udp_port=args.odom_udp_port,
             stale_timeout_s=args.odom_stale_timeout_s,
+            poll_hz=args.odom_poll_hz,
         )
 
     if has_dr:
@@ -1807,6 +1918,7 @@ def main() -> None:
     dr_provider = DeadReckoningPoseProvider(
         initial_world_pose=initial_world_pose,
         command_is_velocity=args.command_is_velocity,
+        action_pose_mode=args.action_pose_mode,
     )
     pose_manager = PoseManager(odom=odom_provider, dr=dr_provider)
 
