@@ -195,7 +195,7 @@ def run_open_loop_control_loop(
                     try:
                         new_image, current_pose, steps_added = apply_action_poses(
                             env, action_poses, origin_x, origin_y, origin_z, origin_yaw,
-                            trajectory_log=trajectory_log, sleep_s=0.1, drone_cam_id=drone_cam_id,
+                            trajectory_log=trajectory_log, drone_cam_id=drone_cam_id,
                         )
                     except Exception as e:
                         logger.error("Error executing action at step %d: %s", step, e)

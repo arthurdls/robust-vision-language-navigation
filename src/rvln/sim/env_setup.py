@@ -33,7 +33,7 @@ from rvln.sim.transforms import (  # noqa: F401 -- re-exported for existing call
     relative_pose_to_world,
     parse_position,
 )
-from rvln.config import DEFAULT_SIM_API_PORT, DEFAULT_SIM_HOST, DEFAULT_SIM_PORT
+from rvln.config import DEFAULT_SIM_API_PORT, DEFAULT_SIM_HOST, DEFAULT_SIM_PORT, DEFAULT_STEP_SLEEP_S
 
 logger = logging.getLogger(__name__)
 
@@ -300,7 +300,7 @@ def apply_action_poses(
     initial_yaw: float,
     set_cam_fn: Any = None,
     trajectory_log: Optional[List[Dict[str, Any]]] = None,
-    sleep_s: float = 0.1,
+    sleep_s: float = DEFAULT_STEP_SLEEP_S,
     drone_cam_id: Optional[int] = None,
 ) -> Tuple[Optional[np.ndarray], List[float], int]:
     """Apply action poses. Works with SimClient or direct gym env.
