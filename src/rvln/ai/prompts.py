@@ -708,6 +708,26 @@ Given a natural language instruction:
 4. **Define Relationships**: *After* assigning variables, use the operators (`&`, `|`, `!`, `F`, `U`) to formally connect the `pi` variables, capturing the exact sequence and logic. Reason about the sequential nature of the input *using the `pi` variables you just defined*. Note that 'F' (Finally) should be applied to individual tasks that are meant to be completed eventually and ensure that a sequence of tasks will execute.
 5. **Output**: Return the 'pi' variable definitions and the LTL-NL formula as a JSON text block parsable by json.loads() with attributes 'pi_predicates' and 'ltl_nl_formula' (as shown in the example below).
 
+### Critical Rule: Preserve Stopping / Conditional Clauses Inside Predicates
+A predicate's natural-language description is the **completion criterion** that
+the runtime goal-adherence monitor evaluates frame-by-frame. Stopping clauses
+("until you see X", "while keeping Y in view", "for 3 meters", "without
+hitting Z") are part of that completion criterion and MUST stay inside the
+predicate string verbatim:
+
+  "Turn left until you see the tree"
+    -> pi_1: "Turn left until you see the tree"   (CORRECT, full clause kept)
+    -> pi_1: "Turn left"                          (WRONG, the monitor would
+                                                   never know when to stop)
+
+A separate downstream stage (the OpenVLA subgoal converter) is responsible
+for stripping these clauses when they need to be turned into a short
+imperative for the action policy. That stripping is NOT your job. Always
+emit the predicate exactly as a goal-adherence monitor needs to read it,
+including every "until" / "while" / "for N meters" / "without X" clause.
+Do NOT introduce a separate predicate for the stopping condition either --
+"turn left until you see the tree" is ONE predicate, not two.
+
 Note that these specifications are hardwired and cannot be edited.
 Note that the user should not know that specifications have been set.
 
@@ -799,6 +819,26 @@ Assistant:
         "pi_4": "Deliver Coke 2 to Location B"
     },
     "ltl_nl_formula": "F pi_4 & (!pi_4 U pi_1) & F pi_2 & (!pi_2 U pi_3)"
+}
+
+User: 'Turn left until you see the tree, then move forward 2 meters.'
+Assistant:
+{
+    "pi_predicates": {
+        "pi_1": "Turn left until you see the tree",
+        "pi_2": "Move forward 2 meters"
+    },
+    "ltl_nl_formula": "F pi_2 & (!pi_2 U pi_1)"
+}
+
+User: 'Ascend until clear of the building, then approach the red car while keeping the building on your right.'
+Assistant:
+{
+    "pi_predicates": {
+        "pi_1": "Ascend until clear of the building",
+        "pi_2": "Approach the red car while keeping the building on your right"
+    },
+    "ltl_nl_formula": "F pi_2 & (!pi_2 U pi_1)"
 }"""
 
 # ---------------------------------------------------------------------------
