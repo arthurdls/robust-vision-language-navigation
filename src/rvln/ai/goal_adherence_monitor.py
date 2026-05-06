@@ -71,14 +71,10 @@ from .prompts import (
     DIARY_SYSTEM_PROMPT as GENERAL_SYSTEM_PROMPT,
     DIARY_LOCAL_PROMPT as LOCAL_PROMPT_TEMPLATE,
     DIARY_GLOBAL_PROMPT as GLOBAL_PROMPT_TEMPLATE,
-    DIARY_GLOBAL_PROMPT_WITH_CONSTRAINTS as GLOBAL_PROMPT_TEMPLATE_CONSTRAINTS,
     DIARY_CONVERGENCE_PROMPT as CONVERGENCE_PROMPT_TEMPLATE,
-    DIARY_CONVERGENCE_PROMPT_WITH_CONSTRAINTS as CONVERGENCE_PROMPT_TEMPLATE_CONSTRAINTS,
     TEXT_ONLY_GLOBAL_SYSTEM_PROMPT,
     TEXT_ONLY_GLOBAL_PROMPT as TEXT_ONLY_GLOBAL_PROMPT_TEMPLATE,
-    TEXT_ONLY_GLOBAL_PROMPT_WITH_CONSTRAINTS as TEXT_ONLY_GLOBAL_PROMPT_TEMPLATE_CONSTRAINTS,
     TEXT_ONLY_CONVERGENCE_PROMPT as TEXT_ONLY_CONVERGENCE_PROMPT_TEMPLATE,
-    TEXT_ONLY_CONVERGENCE_PROMPT_WITH_CONSTRAINTS as TEXT_ONLY_CONVERGENCE_PROMPT_TEMPLATE_CONSTRAINTS,
 )
 from .utils.llm_providers import BaseLLM, LLMFactory
 from .utils.vision import build_frame_grid, query_vlm, sample_frames_every_n
@@ -173,8 +169,6 @@ class GoalAdherenceMonitor:
         stall_window: int = DEFAULT_STALL_WINDOW,
         stall_threshold: float = DEFAULT_STALL_THRESHOLD,
         stall_completion_floor: float = DEFAULT_STALL_COMPLETION_FLOOR,
-        constraints: Optional[List[Any]] = None,
-        negative_constraints: Optional[List[str]] = None,
         global_backend: Literal["vlm_grid", "text_llm"] = "vlm_grid",
         global_model: Optional[str] = None,
         single_frame_mode: bool = False,
@@ -184,9 +178,6 @@ class GoalAdherenceMonitor:
         self._model = model
         self._artifacts_dir = artifacts_dir
         self._max_corrections = max_corrections
-        self._constraints: List[Any] = list(
-            constraints or negative_constraints or []
-        )
 
         # Single-frame ablation: skip local 2-frame VLM call, send only the
         # current frame to global/convergence VLM, do not maintain a diary.
@@ -576,24 +567,13 @@ class GoalAdherenceMonitor:
         self, diary_blob: str, disp_str: str, stop_reason: Optional[str] = None,
     ) -> DiaryCheckResult:
         """Run text-only convergence check (no image grid)."""
-        if self._constraints:
-            prompt = TEXT_ONLY_CONVERGENCE_PROMPT_TEMPLATE_CONSTRAINTS.format(
-                subgoal=self._subgoal,
-                diary=diary_blob,
-                prev_completion_pct=self._last_completion_pct,
-                displacement=disp_str,
-                constraints_block=self._constraints_block(),
-                stop_reasoning_block=self._stop_reasoning_block(stop_reason),
-            )
-        else:
-            prompt = TEXT_ONLY_CONVERGENCE_PROMPT_TEMPLATE.format(
-                subgoal=self._subgoal,
-                diary=diary_blob,
-                prev_completion_pct=self._last_completion_pct,
-                displacement=disp_str,
-                constraints_block="",
-                stop_reasoning_block=self._stop_reasoning_block(stop_reason),
-            )
+        prompt = TEXT_ONLY_CONVERGENCE_PROMPT_TEMPLATE.format(
+            subgoal=self._subgoal,
+            diary=diary_blob,
+            prev_completion_pct=self._last_completion_pct,
+            displacement=disp_str,
+            stop_reasoning_block=self._stop_reasoning_block(stop_reason),
+        )
 
         messages = [
             {"role": "system", "content": TEXT_ONLY_GLOBAL_SYSTEM_PROMPT},
@@ -858,29 +838,7 @@ class GoalAdherenceMonitor:
             f"z: {d[2] / 100:.2f} m, yaw: {d[3]:.1f}°]"
         )
 
-    def _constraints_block(self) -> str:
-        """Return a prompt section listing active constraints, or empty string."""
-        if not self._constraints:
-            return ""
-        lines = ["Active constraints (must be maintained throughout):"]
-        for c in self._constraints:
-            if hasattr(c, "polarity"):
-                label = "AVOID" if c.polarity == "negative" else "MAINTAIN"
-                lines.append(f"  - {label}: {c.description}")
-            else:
-                lines.append(f"  - {c}")
-        lines.append("")
-        return "\n".join(lines)
-
     def _format_global_prompt(self, diary_blob: str, disp_str: str) -> str:
-        if self._constraints:
-            return GLOBAL_PROMPT_TEMPLATE_CONSTRAINTS.format(
-                subgoal=self._subgoal,
-                diary=diary_blob,
-                prev_completion_pct=self._last_completion_pct,
-                displacement=disp_str,
-                constraints_block=self._constraints_block(),
-            )
         return GLOBAL_PROMPT_TEMPLATE.format(
             subgoal=self._subgoal,
             diary=diary_blob,
@@ -928,15 +886,6 @@ class GoalAdherenceMonitor:
     def _format_convergence_prompt(
         self, diary_blob: str, disp_str: str, stop_reason: Optional[str] = None,
     ) -> str:
-        if self._constraints:
-            return CONVERGENCE_PROMPT_TEMPLATE_CONSTRAINTS.format(
-                subgoal=self._subgoal,
-                diary=diary_blob,
-                prev_completion_pct=self._last_completion_pct,
-                displacement=disp_str,
-                constraints_block=self._constraints_block(),
-                stop_reasoning_block=self._stop_reasoning_block(stop_reason),
-            )
         return CONVERGENCE_PROMPT_TEMPLATE.format(
             subgoal=self._subgoal,
             diary=diary_blob,
@@ -1155,22 +1104,12 @@ class GoalAdherenceMonitor:
 
     def _run_text_only_global(self, diary_blob: str, disp_str: str, step: int, label_suffix: str = "") -> str:
         """Run text-only global assessment (no image grid)."""
-        if self._constraints:
-            prompt = TEXT_ONLY_GLOBAL_PROMPT_TEMPLATE_CONSTRAINTS.format(
-                subgoal=self._subgoal,
-                diary=diary_blob,
-                prev_completion_pct=self._last_completion_pct,
-                displacement=disp_str,
-                constraints_block=self._constraints_block(),
-            )
-        else:
-            prompt = TEXT_ONLY_GLOBAL_PROMPT_TEMPLATE.format(
-                subgoal=self._subgoal,
-                diary=diary_blob,
-                prev_completion_pct=self._last_completion_pct,
-                displacement=disp_str,
-                constraints_block="",
-            )
+        prompt = TEXT_ONLY_GLOBAL_PROMPT_TEMPLATE.format(
+            subgoal=self._subgoal,
+            diary=diary_blob,
+            prev_completion_pct=self._last_completion_pct,
+            displacement=disp_str,
+        )
 
         messages = [
             {"role": "system", "content": TEXT_ONLY_GLOBAL_SYSTEM_PROMPT},
