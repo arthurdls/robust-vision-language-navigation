@@ -1,10 +1,14 @@
 """
 LTL Symbolic Planner: parses natural language to LTL-NL via LLM, then uses Spot
 to manage the automaton state and determine the next short-horizon subgoal.
+
+Every predicate is a goal whose completion criterion is its full natural-
+language description (including any "until ...", "while ...", "for N meters",
+or "without ..." clauses). The Spot automaton drives sequential subgoal
+advancement.
 """
 
-from dataclasses import dataclass
-from typing import Literal, Optional
+from typing import Optional
 
 try:
     import spot
@@ -12,12 +16,6 @@ except ImportError:
     spot = None
 
 from .llm_interface import LLMUserInterface
-
-
-@dataclass
-class ConstraintInfo:
-    description: str
-    polarity: Literal["negative", "positive"]
 
 
 def _predicate_key_to_index(key: str) -> int:
@@ -65,11 +63,12 @@ class LTLSymbolicPlanner:
         self.pi_map = {}
         self._last_returned_predicate_key: Optional[str] = None
         self.finished = False
-        self._raw_formula: str = ""
-        self.constraint_predicates: dict[str, ConstraintInfo] = {}
-        self._bdd_false = None
 
     def plan_from_natural_language(self, instruction: str) -> None:
+        """
+        1. Query LLM for LTL formula.
+        2. Convert LTL string to Spot Automaton.
+        """
         if not instruction or not isinstance(instruction, str):
             raise ValueError("Instruction must be a non-empty string.")
         instruction = instruction.strip()
@@ -89,7 +88,6 @@ class LTLSymbolicPlanner:
             )
 
         raw_formula = data["ltl_nl_formula"]
-        self._raw_formula = raw_formula.strip()
         if not isinstance(raw_formula, str) or not raw_formula.strip():
             raise ValueError("'ltl_nl_formula' must be a non-empty string.")
 
@@ -112,142 +110,27 @@ class LTLSymbolicPlanner:
                 f"Spot could not translate LTL formula '{spot_formula}': {e}. "
                 "Formula may be invalid or use unsupported operators."
             ) from e
-
-        self._bdd_false = spot.formula_to_bdd(
-            spot.formula("0"), self.automaton.get_dict(), self.automaton
-        )
-        # Classify before adding the sink state (ordering is harmless since
-        # formula-structural classification doesn't inspect the automaton).
-        self.constraint_predicates = self._classify_predicates()
         self._add_sink_state()
         self.current_automaton_state = self.automaton.get_init_state_number()
         self.finished = False
-        if self.constraint_predicates:
-            print(f"[LTL Planner] Constraints: {self.constraint_predicates}")
-
-    # ------------------------------------------------------------------
-    # BDD construction
-    # ------------------------------------------------------------------
-
-    def _build_bdd(self, true_indices: set[int]):
-        """Build a BDD with the given predicate indices TRUE, all others FALSE."""
-        if not self.pi_map or self.automaton is None:
-            raise ValueError("Cannot build BDD: no predicates or automaton.")
-        clauses = []
-        for key in self.pi_map:
-            idx = _predicate_key_to_index(key)
-            clauses.append(f"p{idx}" if idx in true_indices else f"!p{idx}")
-        return spot.formula_to_bdd(
-            spot.formula(" & ".join(clauses)),
-            self.automaton.get_dict(),
-            self.automaton,
-        )
-
-    def _positive_constraint_indices(self) -> set[int]:
-        return {
-            _predicate_key_to_index(k)
-            for k, info in self.constraint_predicates.items()
-            if info.polarity == "positive"
-        }
-
-    def _active_positive_constraint_indices(self, state: Optional[int] = None) -> set[int]:
-        """Indices of positive constraints that are still enforced at ``state``.
-
-        Scoped positive constraints (``p U q``) are released once their
-        right-hand side q has fired: from that point on the automaton has
-        outgoing edges that allow p to be FALSE. Forcing every positive
-        predicate TRUE in goal-check BDDs would incorrectly exclude those
-        edges and cause goal advancement to fail.
-
-        A positive constraint at index i is "active" at state s if making
-        p_i FALSE (with all OTHER positive predicates TRUE) leaves no valid
-        outgoing edge from s. If at least one edge accepts p_i = FALSE, the
-        constraint has been released at this state.
-        """
-        if state is None:
-            state = self.current_automaton_state
-        if not self.constraint_predicates or self.automaton is None:
-            return set()
-        all_positive = self._positive_constraint_indices()
-        active: set[int] = set()
-        for idx in all_positive:
-            try:
-                violation_bdd = self._build_bdd(all_positive - {idx})
-            except ValueError:
-                continue
-            has_any_edge = any(
-                (violation_bdd & edge.cond) != self._bdd_false
-                for edge in self.automaton.out(state)
-            )
-            if not has_any_edge:
-                active.add(idx)
-        return active
-
-    def _get_bdd_for_single_task(self, active_p_idx: int):
-        """BDD: only the given predicate TRUE, everything else FALSE."""
-        return self._build_bdd({active_p_idx})
-
-    def _get_bdd_goal_check(
-        self, goal_p_idx: int, state: Optional[int] = None,
-    ):
-        """BDD: goal predicate TRUE, ACTIVE positive constraints TRUE, rest FALSE.
-
-        Uses ``_active_positive_constraint_indices(state)`` rather than every
-        statically-classified positive constraint, so that goal advancement
-        works correctly past the release point of a scoped maintenance
-        constraint (``p U q``).
-        """
-        return self._build_bdd(
-            {goal_p_idx} | self._active_positive_constraint_indices(state)
-        )
-
-    def _get_bdd_constraint_violation(self, key: str):
-        """BDD representing the violation state for a constraint.
-
-        Negative: predicate TRUE (violation), every other positive constraint
-        TRUE (so they don't mask the check), everything else FALSE.
-        Positive: predicate FALSE (violation), every other positive constraint
-        TRUE (satisfied), everything else FALSE.
-
-        Uses the static set of positive constraints, not the per-state active
-        set, to match the probe semantics in
-        ``_active_positive_constraint_indices`` and avoid recursive lookups.
-        """
-        info = self.constraint_predicates[key]
-        target_idx = _predicate_key_to_index(key)
-        positive = self._positive_constraint_indices()
-
-        if info.polarity == "negative":
-            return self._build_bdd({target_idx} | positive)
-        else:
-            return self._build_bdd(positive - {target_idx})
-
-    # ------------------------------------------------------------------
-    # Automaton management
-    # ------------------------------------------------------------------
 
     def _add_sink_state(self) -> None:
         """Add a sink state and connect dead-end states to it.
 
-        States with no outgoing edge to a different state are connected to
-        the sink. The edge condition uses the last *goal* predicate's
-        goal-check BDD (which includes positive constraints) so that
-        get_next_predicate's sink fallback can match goal completions even
-        when the last key in pi_map is a constraint rather than a goal.
+        The edge condition is the BDD for the *last* predicate in pi_map
+        order, so get_next_predicate() returns that predicate (not an
+        earlier one) when in such a state.
         """
         self._sink_state = None
         if not self.pi_map or self.automaton is None:
             return
         try:
-            goal_keys = [k for k in self.pi_map if k not in self.constraint_predicates]
-            if not goal_keys:
-                return
             n = self.automaton.num_states()
             self.automaton.new_states(1)
             self._sink_state = n
-            last_goal_key = goal_keys[-1]
-            last_goal_idx = _predicate_key_to_index(last_goal_key)
-            bdd_sink_cond = self._get_bdd_goal_check(last_goal_idx)
+            last_key = list(self.pi_map.keys())[-1]
+            last_p_idx = _predicate_key_to_index(last_key)
+            bdd_sink_cond = self._get_bdd_for_single_task(last_p_idx)
             for s in range(n):
                 has_outgoing_to_other = any(
                     edge.dst != s for edge in self.automaton.out(s)
@@ -258,8 +141,23 @@ class LTLSymbolicPlanner:
             print(f"[LTL Planner] Could not add sink state: {e}. Continuing without sink.")
             self._sink_state = None
 
+    def _get_bdd_for_single_task(self, active_p_idx: int):
+        """BDD: the given predicate TRUE, all other known predicates FALSE."""
+        if not self.pi_map or self.automaton is None:
+            raise ValueError("Cannot build BDD: no predicates or automaton.")
+        clauses = []
+        for key in self.pi_map.keys():
+            idx = _predicate_key_to_index(key)
+            if idx == active_p_idx:
+                clauses.append(f"p{idx}")
+            else:
+                clauses.append(f"!p{idx}")
+        formula_str = " & ".join(clauses)
+        f = spot.formula(formula_str)
+        return spot.formula_to_bdd(f, self.automaton.get_dict(), self.automaton)
+
     def get_next_predicate(self) -> Optional[str]:
-        """Find the next goal by testing which predicate allows leaving the current state."""
+        """Find the next task by testing which predicate allows leaving the current state."""
         if self.finished:
             return None
         if not self.pi_map or self.automaton is None:
@@ -268,12 +166,14 @@ class LTLSymbolicPlanner:
             self.finished = True
             return None
 
-        for key in self.pi_map:
-            if key in self.constraint_predicates:
-                continue
+        bdd_false = spot.formula_to_bdd(
+            spot.formula("0"), self.automaton.get_dict(), self.automaton
+        )
+
+        for key in self.pi_map.keys():
             p_idx = _predicate_key_to_index(key)
             try:
-                test_world_bdd = self._get_bdd_goal_check(p_idx)
+                test_world_bdd = self._get_bdd_for_single_task(p_idx)
             except ValueError:
                 continue
             for edge in self.automaton.out(self.current_automaton_state):
@@ -281,25 +181,23 @@ class LTLSymbolicPlanner:
                     continue
                 if edge.dst == self._sink_state:
                     continue
-                if (test_world_bdd & edge.cond) != self._bdd_false:
+                if (test_world_bdd & edge.cond) != bdd_false:
                     self._last_returned_predicate_key = key
                     return self.pi_map[key]
 
-        # BUG FIX: on some Spot versions (or after postprocessing) the monitor
-        # automaton has fewer states, so the last goal's only outgoing edge
-        # leads to the sink. The loop above skips sink edges, which silently
-        # drops the final goal. Fall back to checking sink edges for any
-        # not-yet-returned goal predicate (skip _last_returned_predicate_key
+        # Fallback: on some Spot versions (or after postprocessing) the
+        # monitor automaton has fewer states, so the last goal's only
+        # outgoing edge leads to the sink. The loop above skips sink edges,
+        # which silently drops the final goal. Check sink edges for any
+        # not-yet-returned predicate (skip _last_returned_predicate_key
         # to avoid re-returning an already-completed goal at a true dead-end).
         if self._sink_state is not None:
-            for key in self.pi_map:
-                if key in self.constraint_predicates:
-                    continue
+            for key in self.pi_map.keys():
                 if key == self._last_returned_predicate_key:
                     continue
                 p_idx = _predicate_key_to_index(key)
                 try:
-                    test_world_bdd = self._get_bdd_goal_check(p_idx)
+                    test_world_bdd = self._get_bdd_for_single_task(p_idx)
                 except ValueError:
                     continue
                 for edge in self.automaton.out(self.current_automaton_state):
@@ -307,10 +205,22 @@ class LTLSymbolicPlanner:
                         continue
                     if edge.dst != self._sink_state:
                         continue
-                    if (test_world_bdd & edge.cond) != self._bdd_false:
+                    if (test_world_bdd & edge.cond) != bdd_false:
                         self._last_returned_predicate_key = key
                         return self.pi_map[key]
 
+        # Sequence fallback: no edge fired; use state as index only if in range
+        pred_keys = list(self.pi_map.keys())
+        pred_values = list(self.pi_map.values())
+        n_states = self.automaton.num_states()
+        if 0 <= self.current_automaton_state < len(pred_values) and self.current_automaton_state < n_states:
+            self._last_returned_predicate_key = pred_keys[self.current_automaton_state]
+            return pred_values[self.current_automaton_state]
+
+        if len(self.pi_map) == 1:
+            k = next(iter(self.pi_map.keys()))
+            self._last_returned_predicate_key = k
+            return self.pi_map[k]
         print("[LTL Planner] No tasks trigger a state change. Mission Complete.")
         self.finished = True
         return None
@@ -319,30 +229,31 @@ class LTLSymbolicPlanner:
         """Update automaton state when a subgoal is confirmed.
 
         Uses the predicate key from the last get_next_predicate() call so
-        duplicate descriptions (e.g. 'turn 90 degrees' repeated) work.
+        duplicate descriptions (e.g. 'turn 90 degrees' three times) work.
         """
         if not self.pi_map or self.automaton is None:
             return
         pi_key = self._last_returned_predicate_key
         if pi_key is None:
-            print("[LTL Planner] Warning: no current predicate key "
-                  "(get_next_predicate not called or returned None).")
+            print("[LTL Planner] Warning: no current predicate key (get_next_predicate not called or returned None).")
             return
         p_idx = _predicate_key_to_index(pi_key)
         try:
-            current_world_bdd = self._get_bdd_goal_check(p_idx)
+            current_world_bdd = self._get_bdd_for_single_task(p_idx)
         except ValueError:
             return
+        bdd_false = spot.formula_to_bdd(
+            spot.formula("0"), self.automaton.get_dict(), self.automaton
+        )
 
         found_next = False
         for edge in self.automaton.out(self.current_automaton_state):
             if edge.dst == self.current_automaton_state:
                 continue
-            if (current_world_bdd & edge.cond) != self._bdd_false:
+            if (current_world_bdd & edge.cond) != bdd_false:
                 print(f"[LTL Planner] Task '{pi_key}' satisfied edge condition.")
                 print(
-                    f"[LTL Planner] Transitioning State: "
-                    f"{self.current_automaton_state} -> {edge.dst}"
+                    f"[LTL Planner] Transitioning State: {self.current_automaton_state} -> {edge.dst}"
                 )
                 self.current_automaton_state = edge.dst
                 found_next = True
@@ -358,170 +269,6 @@ class LTLSymbolicPlanner:
             else:
                 self.finished = True
                 print(
-                    f"[LTL Planner] Task '{finished_task_nl}' completed "
-                    "but no outgoing edge; marking mission complete."
+                    f"[LTL Planner] Task '{finished_task_nl}' completed but no outgoing edge; "
+                    "marking mission complete."
                 )
-
-    # ------------------------------------------------------------------
-    # Constraint classification
-    # ------------------------------------------------------------------
-
-    def _classify_predicates(self) -> dict[str, ConstraintInfo]:
-        """Classify predicates as constraints vs goals by walking the formula tree.
-
-        Deterministic rules (no automaton probing):
-          G(pN)              -> positive constraint (maintain)
-          G(!pN)             -> negative constraint (avoid)
-          F(...)             -> all APs underneath are goals
-          positive pN left of U -> positive constraint (maintain until right side)
-          negated !pN left of U where pN is a goal -> sequencing (not a constraint)
-          negated !pN left of U where pN is NOT a goal -> negative scoped constraint
-          right of U         -> goal
-          bare AP / default  -> goal
-        """
-        if not self.pi_map or self.automaton is None:
-            return {}
-
-        spot_str = self._raw_formula.replace("pi_", "p")
-        try:
-            tree = spot.formula(spot_str)
-        except Exception:
-            return {}
-
-        goal_aps: set[str] = set()
-        self._collect_goal_aps(tree, goal_aps)
-
-        ap_constraints: dict[str, ConstraintInfo] = {}
-        self._walk_classify(tree, ap_constraints, goal_aps)
-
-        result: dict[str, ConstraintInfo] = {}
-        for ap_name, info in ap_constraints.items():
-            if ap_name.startswith("p") and ap_name[1:].isdigit():
-                pi_key = f"pi_{ap_name[1:]}"
-                if pi_key in self.pi_map:
-                    result[pi_key] = info
-        return result
-
-    def _collect_goal_aps(self, node, goals: set[str]) -> None:
-        """Collect APs that are goals (under F, or on the right side of U)."""
-        kind = node.kind()
-        if kind == spot.op_F:
-            self._collect_all_aps(node[0], goals)
-            return
-        if kind == spot.op_U:
-            self._collect_all_aps(node[1], goals)
-            self._collect_goal_aps(node[0], goals)
-            return
-        for i in range(node.size()):
-            self._collect_goal_aps(node[i], goals)
-
-    def _collect_all_aps(self, node, aps: set[str]) -> None:
-        """Collect every AP referenced under a subtree."""
-        if node.kind() == spot.op_ap:
-            aps.add(str(node))
-            return
-        for i in range(node.size()):
-            self._collect_all_aps(node[i], aps)
-
-    def _walk_classify(self, node, out: dict[str, ConstraintInfo],
-                       goal_aps: set[str]) -> None:
-        kind = node.kind()
-        if kind == spot.op_G:
-            self._classify_under_g(node[0], out)
-            return
-        if kind == spot.op_F:
-            return
-        if kind == spot.op_U:
-            self._classify_until_left(node[0], out, goal_aps)
-            return
-        for i in range(node.size()):
-            self._walk_classify(node[i], out, goal_aps)
-
-    def _classify_under_g(self, node, out: dict[str, ConstraintInfo]) -> None:
-        kind = node.kind()
-        if kind == spot.op_ap:
-            ap = str(node)
-            out[ap] = ConstraintInfo(
-                description=self._ap_description(ap), polarity="positive",
-            )
-            return
-        if kind == spot.op_Not and node[0].kind() == spot.op_ap:
-            ap = str(node[0])
-            out[ap] = ConstraintInfo(
-                description=self._ap_description(ap), polarity="negative",
-            )
-            return
-        if kind in (spot.op_F, spot.op_U, spot.op_G):
-            self._walk_classify(node, out, set())
-            return
-        # Disjunction / implication / xor under G describe a *compound*
-        # maintenance condition (e.g., G(p1 | p2) means "at all times at
-        # least one of p1, p2 holds"). Splitting into independent positive
-        # constraints would be strictly stronger than the formula and
-        # would force every disjunct TRUE in goal-check BDDs, blocking
-        # legitimate forward edges. The Spot automaton already encodes
-        # the disjunction in its edge conditions; do not duplicate the
-        # constraint in our prompt-side classification, and warn so we
-        # notice if the LLM ever generates such a form.
-        if kind in (spot.op_Or, spot.op_Implies, spot.op_Xor):
-            print(
-                "[LTL Planner] Warning: compound maintenance constraint "
-                f"under G ({node}) is not decomposed into per-AP positive "
-                "constraints. Enforcement relies on the Spot automaton "
-                "edge conditions only; the goal-adherence monitor will not "
-                "see these APs as MAINTAIN items in its prompt."
-            )
-            return
-        # Conjunction or any other operator: recurse so each conjunct can
-        # be classified independently (G(p1 & p2) -> two positive constraints).
-        for i in range(node.size()):
-            self._classify_under_g(node[i], out)
-
-    def _classify_until_left(self, node, out: dict[str, ConstraintInfo],
-                             goal_aps: set[str]) -> None:
-        kind = node.kind()
-        if kind == spot.op_ap:
-            ap = str(node)
-            out[ap] = ConstraintInfo(
-                description=self._ap_description(ap), polarity="positive",
-            )
-            return
-        if kind == spot.op_Not and node[0].kind() == spot.op_ap:
-            ap = str(node[0])
-            if ap not in goal_aps:
-                out[ap] = ConstraintInfo(
-                    description=self._ap_description(ap), polarity="negative",
-                )
-            return
-        for i in range(node.size()):
-            self._classify_until_left(node[i], out, goal_aps)
-
-    def _ap_description(self, ap_name: str) -> str:
-        if ap_name.startswith("p") and ap_name[1:].isdigit():
-            return self.pi_map.get(f"pi_{ap_name[1:]}", ap_name)
-        return ap_name
-
-    def get_active_constraints(self) -> list[ConstraintInfo]:
-        """Return constraints active at the current automaton state.
-
-        A constraint is active when its violation BDD produces NO valid
-        edge at the current state (the automaton would reject the violation).
-        """
-        if self.finished or not self.constraint_predicates or self.automaton is None:
-            return []
-
-        active: list[ConstraintInfo] = []
-        for key, info in self.constraint_predicates.items():
-            try:
-                test_bdd = self._get_bdd_constraint_violation(key)
-            except ValueError:
-                continue
-
-            has_any_edge = any(
-                (test_bdd & edge.cond) != self._bdd_false
-                for edge in self.automaton.out(self.current_automaton_state)
-            )
-            if not has_any_edge:
-                active.append(info)
-
-        return active
