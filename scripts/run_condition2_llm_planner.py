@@ -282,7 +282,6 @@ def run_llm_planner_control_loop(
 
             sg_config = SubgoalConfig(
                 monitor_mode="full",
-                use_constraints=False,
                 check_interval=check_interval,
                 max_steps=max_steps_per_subgoal,
                 max_corrections=max_corrections,
