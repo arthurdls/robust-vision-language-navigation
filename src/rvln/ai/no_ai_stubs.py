@@ -1,7 +1,7 @@
 """Manual (terminal-driven) stand-ins for the OpenAI-backed components.
 
 Used by ``run_hardware.py --no-ai``. Each class mirrors the public surface of
-its real counterpart (``LLMUserInterface``, ``SequentialLTLPlanner``,
+its real counterpart (``LLMUserInterface``, ``LTLSymbolicPlanner``,
 ``SubgoalConverter``, ``GoalAdherenceMonitor``) but reads decisions from stdin
 instead of calling an LLM/VLM. Intended for hardware bring-up, debugging the
 control loop, or running without an OPENAI_API_KEY.
@@ -93,9 +93,8 @@ class ManualLLMUserInterface:
     shape downstream code already reads.
     """
 
-    def __init__(self, model: str = "no-ai", use_constraints: bool = False):
+    def __init__(self, model: str = "no-ai"):
         self._model = model
-        self._use_constraints = use_constraints
         self.ltl_nl_formula: Dict[str, Any] = {}
         self.llm_call_records: List[Dict[str, Any]] = []
 
@@ -132,8 +131,8 @@ class ManualLLMUserInterface:
         return None
 
 
-class ManualSequentialLTLPlanner:
-    """Stand-in for ``rvln.ai.sequential_ltl_planner.SequentialLTLPlanner``.
+class ManualLTLSymbolicPlanner:
+    """Stand-in for ``rvln.ai.ltl_planner.LTLSymbolicPlanner``.
 
     Walks through the manually entered predicates in order. Mirrors the public
     surface used by ``run_hardware``: ``plan_from_natural_language``,
@@ -226,8 +225,6 @@ class ManualGoalAdherenceMonitor:
         stall_window: int = 10,
         stall_threshold: float = 0.05,
         stall_completion_floor: float = 0.8,
-        constraints: Optional[List[Any]] = None,
-        negative_constraints: Optional[List[str]] = None,
         global_backend: str = "vlm_grid",
         global_model: Optional[str] = None,
         single_frame_mode: bool = False,
