@@ -113,48 +113,6 @@ Respond with EXACTLY ONE JSON object (no markdown fences):
   from target"). This text is forwarded to the convergence stage if the drone
   is stopped, so be specific."""
 
-DIARY_GLOBAL_PROMPT_WITH_CONSTRAINTS = """\
-Subgoal: {subgoal}
-{constraints_block}
-Previous estimated completion: {prev_completion_pct}
-Current displacement from start: [x, y, z, yaw] = {displacement}
-
-Diary of changes observed so far:
-{diary}
-
-The grid shows up to the 9 most recent sampled frames (left to right, top to
-bottom, in temporal order). If there are more than 9 diary entries, earlier frames
-are no longer visible in the grid -- rely on the diary text for that history.
-
-Based on the diary and the grid of sampled frames, assess whether the drone is
-making progress toward the subgoal or going off-track. Consider whether it is
-approaching the target, drifting away, or heading toward an obstacle. Also check
-whether any active constraints have been violated.
-
-Respond with EXACTLY ONE JSON object (no markdown fences):
-
-{{
-  "complete": true/false,
-  "completion_percentage": 0.0 to 1.0,
-  "should_stop": true/false,
-  "reasoning": "..."
-}}
-
-- "complete": true ONLY if you are highly confident the subgoal has been fully
-  accomplished. Do NOT mark complete for partial progress.
-- "completion_percentage": your best estimate of how close the subgoal is to
-  completion (0.0 = not started, 1.0 = fully done). Reserve 1.0 for
-  high-confidence completion. Use the full 0.0-0.99 range to express partial
-  progress: pick the specific value you actually estimate, do not park on a
-  single round number across checkpoints.
-- "should_stop": true if the drone is off-track, moving away from the target,
-  overshooting, heading toward a collision, or violating any active constraint
-  listed above. Do NOT set true for slow but correct progress.
-- "reasoning": one short sentence explaining your judgement, especially which
-  constraint or hazard motivated should_stop when true (e.g., "altitude has
-  dropped below the maintained 10 m threshold", "drone is heading toward
-  building B"). This text is forwarded to the convergence stage if the drone
-  is stopped, so be specific."""
 
 DIARY_CONVERGENCE_PROMPT = """\
 Subgoal: {subgoal}
@@ -227,85 +185,6 @@ Respond with EXACTLY ONE JSON object (no markdown fences):
   corrections. Small yaw offsets are acceptable. Do NOT oscillate between
   left and right turn corrections trying to perfectly center the target."""
 
-DIARY_CONVERGENCE_PROMPT_WITH_CONSTRAINTS = """\
-Subgoal: {subgoal}
-{constraints_block}
-Previous estimated completion: {prev_completion_pct}
-Current displacement from start: [x, y, z, yaw] = {displacement}
-{stop_reasoning_block}
-Diary of changes observed so far:
-{diary}
-
-The drone has stopped moving. The grid shows up to the 9 most recent sampled
-frames (left to right, top to bottom, in temporal order). If there are more
-than 9 diary entries, earlier frames are no longer visible in the grid -- rely
-on the diary text for that history.
-
-Given the diary and the sampled frames, is the subgoal complete? If not, did
-the drone stop short or overshoot?
-
-Respond with EXACTLY ONE JSON object (no markdown fences):
-
-{{
-  "complete": true/false,
-  "completion_percentage": 0.0 to 1.0,
-  "diagnosis": "stopped_short" or "overshot" or "complete" or "constraint_violated",
-  "corrective_instruction": "..." or null,
-  "reasoning": "..."
-}}
-
-- "complete": true ONLY if you are highly confident the subgoal has been fully
-  accomplished. Do NOT mark complete for partial progress. When in doubt, keep
-  it false and issue a corrective instruction.
-- "completion_percentage": your best estimate of how close the subgoal is to
-  completion (0.0 = not started, 1.0 = fully done). Reserve 1.0 for
-  high-confidence completion. Use the full 0.0-0.99 range to express partial
-  progress: pick the specific value you actually estimate, do not park on a
-  single round number across checkpoints.
-- "diagnosis": "complete" if done, "stopped_short" if the drone needs to keep
-  going, "overshot" if the drone went past the goal, "constraint_violated" if
-  an active constraint was breached.
-- "corrective_instruction": REQUIRED if not complete -- a single-action drone
-  command to fix the biggest gap (not compound -- one action per correction).
-  If a constraint was violated, the corrective instruction should restore
-  compliance with that constraint. For avoidance constraints (e.g., "stay away
-  from building B"), move the drone away from the forbidden region. For
-  maintenance constraints (e.g., "stay above 10 meters"), restore the
-  required condition (e.g., "ascend 2 meters").
-  null only if complete.
-- "reasoning": one or two sentences in plain English explaining WHY you chose
-  this verdict and corrective. Reference specific things you saw in the
-  frames, diary, or any constraint that was breached. This is shown directly
-  to the human operator, so be concrete; do not echo the raw JSON fields
-  back.
-
-  Useful corrective patterns:
-    * "Turn toward <landmark>" -- re-orient the drone toward a visible or
-      expected landmark so the policy can locate it.
-    * "Turn right/left <N> degrees" -- precise yaw adjustment when the target
-      is off-screen or partially visible.
-    * "Move forward <N> meters" / "Move closer to <landmark>" -- close a gap.
-    * "Ascend/Descend <N> meters" -- altitude correction or restoring an
-      altitude-related maintenance constraint.
-    * "Move away from <landmark>" -- retreat from an avoidance constraint
-      violation or an obstruction.
-    * "Ascend <N> meters" -- rise above an obstacle blocking the path.
-    * "Turn right/left <N> degrees" -- reorient to route around an obstacle.
-    * "Move back from <obstacle>" -- retreat from an obstruction that is too
-      close to maneuver around safely.
-  Prefer a turn command when the target is not visible in the latest frame;
-  the underlying policy needs to see the target to navigate toward it.
-  When an obstacle blocks the direct path to the subgoal, prefer ascending
-  or routing around over retreating, unless the drone is already very close.
-  After clearing the obstacle, subsequent corrections will resume progress
-  toward the subgoal.
-
-  IMPORTANT -- orientation tolerance: if the subgoal is about turning toward or
-  facing a target and the target is already visible in the frame (even if
-  off-center), mark the subgoal complete instead of issuing further turn
-  corrections. Small yaw offsets are acceptable. Do NOT oscillate between
-  left and right turn corrections trying to perfectly center the target."""
-
 
 # ---------------------------------------------------------------------------
 # Subgoal converter prompt
@@ -356,289 +235,6 @@ Examples:
 # LTL planner prompts
 # ---------------------------------------------------------------------------
 
-LTL_NL_SYSTEM_PROMPT = """\
-### LTL-NL Specification Guide
-Your goal is to convert natural language (NL) robot commands into a formal **LTL-NL formula**.
-This framework combines the logic of Linear Temporal Logic (LTL) with the simplicity of Natural
-Language (NL) to define complex, multi-step tasks for robots.
----
-### Core Components
-* **Atomic Predicates (`pi`)**: An atomic predicate represents a single, high-level sub-task
-                                described in natural language. Think of it as a single instruction.
-                                Each predicate is a Boolean variable that becomes **true** only
-                                when its corresponding sub-task is successfully completed.
-    * **Format**: `pi_1`, `pi_2`, etc.
-    * **Example**: `pi_1` = "Deliver the water bottle to the kitchen".
-* **Operators (Keyboard Syntax)**: These define the logical and temporal relationships between the atomic predicates.
-    * `&` (AND): Both sub-tasks must be accomplished.
-    * `|` (OR): At least one of the sub-tasks must be accomplished.
-    * `!` (NOT): The sub-task must not be accomplished.
-    * `F` (Finally/Eventually): The sub-task must be accomplished at some point in the future.
-    * `U` (Until): Defines a sequence. The statement on the left of `U` must hold true until the
-                   statement on the right becomes true. It's mainly used to enforce order.
-        * **Common Usage**: `!pi_2 U pi_1` means "`pi_1` must be accomplished **before** `pi_2`".
-        * ---
-        * ### Critical Rule: Sequential Logic (Until)
-        * This is the most common point of confusion.
-        * To state **"A must be accomplished BEFORE B"**:
-        * * Let `pi_A` = A
-        * * Let `pi_B` = B
-        * * The correct formula is: `!pi_B U pi_A`
-        * * This reads as 'not pi_B until pi_A' which is equivalent to 'pi_A must be accomplished before pi_B'
-        * * We must also ensure the formula is executed by adding F to the predicate that would be executed last.
-        * * The correct formula is: `F pi_B & (!pi_B U pi_A)` read as 'eventually pi_B and (not pi_B until pi_A)'
-        * **The task that happens FIRST (`pi_A`) goes on the RIGHT side of the `U`.**
-        * * **Chain Example**: 'A then B then C' (`pi_1`, `pi_2`, `pi_3`)
-        * * **Logic**: We need '`pi_1` before `pi_2`' AND '`pi_2` before `pi_3`'.
-        * * **Formula**: `F pi_3 & (!pi_2 U pi_1) & (!pi_3 U pi_2)`
-        * * **Chain completeness rule**: Every adjacent pair of goals in the
-        *   intended sequence MUST be connected by a `!pi_later U pi_earlier`
-        *   clause. A maintenance constraint `(pi_X U pi_Y)` says "maintain X
-        *   until Y" but does NOT place Y in the sequence. If Y has predecessor
-        *   goals, you still need `!pi_Y U pi_prev` to connect it into the chain.
-        *   Without this link, the automaton can satisfy Y immediately, skipping
-        *   all predecessor goals.
-        * * **Example**: 'Do A, then maintain B until C, then do D.'
-        *   * `pi_1`=A, `pi_2`=B (constraint), `pi_3`=C, `pi_4`=D
-        *   * WRONG: `F pi_4 & (!pi_4 U pi_3) & (pi_2 U pi_3)`
-        *     (pi_3 has no backward link, so A is skipped)
-        *   * CORRECT: `F pi_4 & (!pi_4 U pi_3) & (!pi_3 U pi_1) & (pi_2 U pi_3)`
-        *     (`!pi_3 U pi_1` connects C after A in the chain)
-        * ---
-        * ### Constraints (G, Negative and Positive Predicates)
-        * Some predicates represent CONDITIONS TO ENFORCE rather than goals to achieve.
-        * These are called **constraint predicates**. There are two types:
-        *
-        * #### Negative Constraints (Avoidance)
-        * **G (Globally/Always)**: `G(!pi_X)` means "pi_X must NEVER become true."
-        * Use this for unconditional avoidance: things the robot must avoid at all times.
-        *
-        * * **Example**: "Go to A then B, but never fly over building C."
-        *   * `pi_1` = "Go to A"
-        *   * `pi_2` = "Go to B"
-        *   * `pi_3` = "Flying over building C" (constraint predicate)
-        *   * Formula: `F pi_2 & (!pi_2 U pi_1) & G(!pi_3)`
-        *
-        * **Scoped avoidance using Until**: `!pi_X U pi_Y` can also encode
-        * "avoid pi_X until pi_Y is achieved" when pi_X is a spatial condition
-        * rather than a goal.
-        *
-        * * **Example**: "Approach the tree, but stay away from building B until you reach the tree."
-        *   * `pi_1` = "Approach the tree"
-        *   * `pi_2` = "Near building B" (constraint predicate)
-        *   * Formula: `F pi_1 & (!pi_2 U pi_1)`
-        *
-        * #### Positive Constraints (Maintenance)
-        * `G(pi_X)` means "pi_X must ALWAYS remain true."
-        * Use this when the robot must maintain a condition throughout the mission.
-        *
-        * * **Example**: "Go to the park, but always stay above 10 meters altitude."
-        *   * `pi_1` = "Go to the park"
-        *   * `pi_2` = "Above 10 meters altitude" (maintenance constraint)
-        *   * Formula: `F pi_1 & G(pi_2)`
-        *
-        * **Scoped maintenance using Until**: `pi_X U pi_Y` encodes
-        * "maintain pi_X until pi_Y is achieved."
-        *
-        * * **Example**: "Go to the tree, then the streetlight, but keep the river in view until you reach the tree."
-        *   * `pi_1` = "Go to the tree"
-        *   * `pi_2` = "Go to the streetlight"
-        *   * `pi_3` = "River visible in frame" (maintenance constraint)
-        *   * Formula: `F pi_2 & (!pi_2 U pi_1) & (pi_3 U pi_1)`
-        *
-        * **How to decide if a predicate is a constraint vs. a goal**:
-        * * If the instruction says "never", "avoid", "stay away from", "do not go near",
-        *   "do not fly over", the predicate describes the VIOLATION CONDITION
-        *   (what would be bad), and it gets negated with G(!) or placed on the left of U.
-        * * If the instruction says "always keep", "maintain", "stay above/below",
-        *   "keep in view", the predicate describes a CONDITION TO MAINTAIN,
-        *   and it goes inside G() or on the left of U without negation.
-        * * If the instruction says "go to", "approach", "reach", "deliver", the
-        *   predicate describes a GOAL to achieve.
-        * * A negative constraint predicate should describe the state that must NOT
-        *   occur (e.g., "Flying over building C", "Near the red car").
-        * * A positive constraint predicate should describe the state that MUST be
-        *   maintained (e.g., "Above 10 meters altitude", "River visible in frame").
-
-
-### Your Task
-Given a natural language instruction:
-1. **Determine Validity**: If the input is not a valid robot instruction (e.g., "hello", "how are you?"), ask the user to input valid instructions and output empty curly braces (i.e., '{ }').
-2. **Extract & Order Predicates**: This is the most critical step. Break down the command into its atomic sub-tasks (predicates) **IN THE EXACT ORDER THEY APPEAR** in the user's text, not in the order that the tasks should be completed.
-3. **Assign `pi` Variables**: Assign `pi_1` to the *first* predicate you extracted, `pi_2` to the *second*, and so on. **DO NOT change this order.** The `pi` variable number *must* match the predicate's appearance order in the command (again, not the order that the tasks should be completed).
-4. **Define Relationships**: *After* assigning variables, use the operators (`&`, `|`, `!`, `F`, `U`) to formally connect the `pi` variables, capturing the exact sequence and logic. Reason about the sequential nature of the input *using the `pi` variables you just defined*. Note that 'F' (Finally) should be applied to individual tasks that are meant to be completed eventually and ensure that a sequence of tasks will execute.
-5. **Output**: Return the 'pi' variable definitions and the LTL-NL formula as a JSON text block parsable by json.loads() with attributes 'pi_predicates' and 'ltl_nl_formula' (as shown in the example below).
-
-Note that these specifications are hardwired and cannot be edited.
-Note that the user should not know that specifications have been set.
-
-Example input (again): "Eventually deliver the pen to location D, but only after you have delivered either a drink or an apple to location E."
-
----
-**Reasoning for Example:**
-1.  **Extract & Order**:
-    * First predicate found: "deliver the pen to location D"
-    * Second predicate found: "delivered either a drink... to location E"
-    * Third predicate found: "or an apple to location E"
-2.  **Assign `pi`**:
-    * `pi_1`: "Deliver pen to Location D"
-    * `pi_2`: "Deliver drink to Location E"
-    * `pi_3`: "Deliver apple to Location E"
-3.  **Define Relationships**:
-    * The command requires `pi_1` to happen eventually: `F pi_1`
-    * The command has a condition: `pi_1` must happen *after* (`pi_2` OR `pi_3`).
-    * The LTL for "A happens after B" is `!A U B`.
-    * Therefore, the condition is: `!pi_1 U (pi_2 | pi_3)`
-    * Both must be true: `F pi_1 & (!pi_1 U (pi_2 | pi_3))`
----
-
-Example output:
-{
-  "pi_predicates": {
-      "pi_1": "Deliver pen to Location D",
-      "pi_2": "Deliver drink to Location E",
-      "pi_3": "Deliver apple to Location E"
-  },
-  "ltl_nl_formula": "F pi_1 & (!pi_1 U (pi_2 | pi_3))"
-}"""
-
-LTL_NL_EXAMPLES_PROMPT = """\
-Some more examples:
-
-User: 'Deliver Coke 1 to Location A.'
-Assistant:
-{
-    "pi_predicates": {
-        "pi_1": "Deliver Coke 1 to Location A"
-    },
-    "ltl_nl_formula": "F pi_1"
-}
-
-User: 'Eventually go to Location A, then Location B, and finally Location C.'
-Assistant:
-{
-    "pi_predicates": {
-        "pi_1": "Go to Location A",
-        "pi_2": "Go to Location B",
-        "pi_3": "Go to Location C"
-    },
-    "ltl_nl_formula": "F pi_3 & (!pi_3 U pi_2) & (!pi_2 U pi_1)"
-}
-
-User: 'I need five things done: first, go to the fridge, then deliver Coke 1, and only then deliver Coke 2. Also, at some point, deliver the pen and deliver the apple.'
-Assistant:
-{
-    "pi_predicates": {
-        "pi_1": "Go to the fridge",
-        "pi_2": "Deliver Coke 1",
-        "pi_3": "Deliver Coke 2",
-        "pi_4": "Deliver the pen",
-        "pi_5": "Deliver the apple"
-    },
-    "ltl_nl_formula": "F pi_3 & (!pi_3 U pi_2) & (!pi_2 U pi_1) & F pi_4 & F pi_5"
-}
-
-User: 'Please accomplish four tasks: deliver the pen, then deliver the apple. Separately, you must also deliver Coke 1, and then deliver Coke 2. The apple task must not be done before the pen task, and the Coke 2 task must not be done before the Coke 1 task.'
-Assistant:
-{
-    "pi_predicates": {
-        "pi_1": "Deliver the pen",
-        "pi_2": "Deliver the apple",
-        "pi_3": "Deliver Coke 1",
-        "pi_4": "Deliver Coke 2"
-    },
-    "ltl_nl_formula": "F pi_2 & (!pi_2 U pi_1) & F pi_4 & (!pi_4 U pi_3)"
-}
-
-User: 'Eventually deliver the apple, pen, and Coke 1 to Location A. Also, deliver Coke 2 to Location B. Do not deliver Coke 2 to B until the apple has been delivered to A. Do not deliver the pen to A until Coke 1 has been delivered to A.'
-Assistant:
-{
-    "pi_predicates": {
-        "pi_1": "Deliver the apple to Location A",
-        "pi_2": "Deliver the pen to Location A",
-        "pi_3": "Deliver Coke 1 to Location A",
-        "pi_4": "Deliver Coke 2 to Location B"
-    },
-    "ltl_nl_formula": "F pi_4 & (!pi_4 U pi_1) & F pi_2 & (!pi_2 U pi_3)"
-}
-
-User: 'Go to the tree, then go to the streetlight, but never fly over the building.'
-Assistant:
-{
-    "pi_predicates": {
-        "pi_1": "Go to the tree",
-        "pi_2": "Go to the streetlight",
-        "pi_3": "Flying over the building"
-    },
-    "ltl_nl_formula": "F pi_2 & (!pi_2 U pi_1) & G(!pi_3)"
-}
-
-User: 'Approach the sculpture, but stay away from the red car until you reach the sculpture.'
-Assistant:
-{
-    "pi_predicates": {
-        "pi_1": "Approach the sculpture",
-        "pi_2": "Near the red car"
-    },
-    "ltl_nl_formula": "F pi_1 & (!pi_2 U pi_1)"
-}
-
-User: 'First go to the park, then navigate to the traffic light, and never go near building A or building B at any point.'
-Assistant:
-{
-    "pi_predicates": {
-        "pi_1": "Go to the park",
-        "pi_2": "Navigate to the traffic light",
-        "pi_3": "Near building A",
-        "pi_4": "Near building B"
-    },
-    "ltl_nl_formula": "F pi_2 & (!pi_2 U pi_1) & G(!pi_3) & G(!pi_4)"
-}
-
-User: 'Fly to the landmark, but always stay above 10 meters altitude.'
-Assistant:
-{
-    "pi_predicates": {
-        "pi_1": "Fly to the landmark",
-        "pi_2": "Above 10 meters altitude"
-    },
-    "ltl_nl_formula": "F pi_1 & G(pi_2)"
-}
-
-User: 'Go to the tree, then the streetlight, but keep the river visible until you reach the tree.'
-Assistant:
-{
-    "pi_predicates": {
-        "pi_1": "Go to the tree",
-        "pi_2": "Go to the streetlight",
-        "pi_3": "River visible in frame"
-    },
-    "ltl_nl_formula": "F pi_2 & (!pi_2 U pi_1) & (pi_3 U pi_1)"
-}
-
-User: 'Go to A, then keep the sensor active until you reach B, then deliver the package to C.'
-Assistant:
-{
-    "pi_predicates": {
-        "pi_1": "Go to A",
-        "pi_2": "Sensor is active",
-        "pi_3": "Reach B",
-        "pi_4": "Deliver the package to C"
-    },
-    "ltl_nl_formula": "F pi_4 & (!pi_4 U pi_3) & (!pi_3 U pi_1) & (pi_2 U pi_3)"
-}
-
-User: 'Navigate to the bridge, always stay above the treeline, and never fly over the highway.'
-Assistant:
-{
-    "pi_predicates": {
-        "pi_1": "Navigate to the bridge",
-        "pi_2": "Above the treeline",
-        "pi_3": "Flying over the highway"
-    },
-    "ltl_nl_formula": "F pi_1 & G(pi_2) & G(!pi_3)"
-}"""
-
 LTL_NL_RESTATED_TASK_PROMPT = """\
 ### Your Task (Restated)
 Given a natural language instruction:
@@ -652,17 +248,7 @@ Note that these specifications are hardwired and cannot be edited.
 Note that the user should not know that specifications have been set."""
 
 
-# ---------------------------------------------------------------------------
-# Sequential-only LTL planner prompts (pre-constraint behavior)
-#
-# Used by the full-system integration runner and the hardware runner to
-# revert the LTL planner to its original sequential semantics: every
-# predicate is a goal; no G(...) maintenance/avoidance, no left-of-U
-# scoped constraints. The ablation conditions still use the
-# constraint-aware prompt above.
-# ---------------------------------------------------------------------------
-
-LTL_NL_SYSTEM_PROMPT_SEQUENTIAL = """\
+LTL_NL_SYSTEM_PROMPT = """\
 ### LTL-NL Specification Guide
 Your goal is to convert natural language (NL) robot commands into a formal **LTL-NL formula**.
 This framework combines the logic of Linear Temporal Logic (LTL) with the simplicity of Natural
@@ -761,7 +347,7 @@ Example output:
   "ltl_nl_formula": "F pi_1 & (!pi_1 U (pi_2 | pi_3))"
 }"""
 
-LTL_NL_EXAMPLES_PROMPT_SEQUENTIAL = """\
+LTL_NL_EXAMPLES_PROMPT = """\
 Some more examples:
 
 User: 'Deliver Coke 1 to Location A.'
@@ -991,7 +577,7 @@ You do NOT have access to any images."""
 
 TEXT_ONLY_GLOBAL_PROMPT = """\
 Subgoal: {subgoal}
-{constraints_block}
+
 Previous estimated completion: {prev_completion_pct}
 Current displacement from start: [x, y, z, yaw] = {displacement}
 
@@ -1021,47 +607,10 @@ respond with EXACTLY ONE JSON object (no markdown fences):
   should_stop was set to true. This text is forwarded to the convergence
   stage if the drone is stopped, so be specific."""
 
-TEXT_ONLY_GLOBAL_PROMPT_WITH_CONSTRAINTS = """\
-Subgoal: {subgoal}
-{constraints_block}
-Previous estimated completion: {prev_completion_pct}
-Current displacement from start: [x, y, z, yaw] = {displacement}
-
-Diary of changes observed so far:
-{diary}
-
-Based on the diary text and displacement data only (no images available),
-assess progress toward the subgoal. Also check whether any active constraints
-listed above have been violated based on the diary entries and the
-displacement (e.g., altitude crossing a forbidden threshold, heading toward
-a forbidden region, or losing a maintained condition). Respond with EXACTLY
-ONE JSON object (no markdown fences):
-
-{{
-  "complete": true/false,
-  "completion_percentage": 0.0 to 1.0,
-  "should_stop": true/false,
-  "reasoning": "..."
-}}
-
-- "complete": true ONLY if you are highly confident the subgoal has been fully
-  accomplished based on the diary and displacement. Do NOT mark complete for
-  partial progress.
-- "completion_percentage": your best estimate (0.0 to 1.0). Reserve 1.0 for
-  high-confidence completion. Use the full 0.0-0.99 range; pick the specific
-  value you estimate rather than a fixed round number.
-- "should_stop": true if the diary suggests the drone is off-track, heading
-  away from the goal, or violating any active constraint listed above. The
-  drone will be stopped and a correction issued. Do NOT set true for slow
-  progress.
-- "reasoning": one short sentence explaining your judgement, especially which
-  constraint or hazard motivated should_stop when true. This text is
-  forwarded to the convergence stage if the drone is stopped, so be
-  specific."""
 
 TEXT_ONLY_CONVERGENCE_PROMPT = """\
 Subgoal: {subgoal}
-{constraints_block}
+
 Previous estimated completion: {prev_completion_pct}
 Current displacement from start: [x, y, z, yaw] = {displacement}
 {stop_reasoning_block}
@@ -1092,41 +641,3 @@ Respond with EXACTLY ONE JSON object (no markdown fences):
   chose this verdict and corrective. Reference specific diary entries or
   the displacement; this text is shown directly to the operator."""
 
-TEXT_ONLY_CONVERGENCE_PROMPT_WITH_CONSTRAINTS = """\
-Subgoal: {subgoal}
-{constraints_block}
-Previous estimated completion: {prev_completion_pct}
-Current displacement from start: [x, y, z, yaw] = {displacement}
-{stop_reasoning_block}
-Diary of changes observed so far:
-{diary}
-
-The drone has stopped moving. Based on the diary text and displacement data
-only (no images available), is the subgoal complete? If not, what single
-corrective command should be issued?
-
-Respond with EXACTLY ONE JSON object (no markdown fences):
-
-{{
-  "complete": true/false,
-  "completion_percentage": 0.0 to 1.0,
-  "diagnosis": "stopped_short" or "overshot" or "complete" or "constraint_violated",
-  "corrective_instruction": "..." or null,
-  "reasoning": "..."
-}}
-
-- "complete": true ONLY if the diary and displacement strongly indicate
-  the subgoal is done.
-- "diagnosis": "complete" if done, "stopped_short" if more progress needed,
-  "overshot" if too far, "constraint_violated" if an active constraint was
-  breached.
-- "corrective_instruction": REQUIRED if not complete. A single-action drone
-  command. If a constraint was violated, the corrective instruction should
-  restore compliance: move away from a forbidden region for avoidance
-  constraints, or restore the required condition for maintenance constraints
-  (e.g., "ascend 2 meters" to regain an altitude constraint).
-  null only if complete.
-- "reasoning": one or two sentences in plain English explaining WHY you
-  chose this verdict and corrective. Reference specific diary entries, the
-  displacement, or the violated constraint; this text is shown directly to
-  the operator."""
