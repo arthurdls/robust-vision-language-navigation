@@ -549,5 +549,108 @@ class TestSinkEdgeFallback:
         assert planner.finished
 
 
+# ------------------------------------------------------------------
+# Regression: middle / last goals dropped when postprocessed automaton
+# accepts predicates via self-loops (multi-eventuality formulas).
+# ------------------------------------------------------------------
+
+class TestParallelSequencesPostprocess:
+    """Two independent sequences (F pi_2 & seq pi_1->pi_2 & F pi_4 & seq pi_3->pi_4)
+    after spot.postprocess('monitor', 'small') merges states such that pi_2
+    is accepted only by a self-loop. The planner must still return all four
+    goals, not skip pi_2.
+    """
+
+    def _make(self):
+        mock = MockLLM()
+        mock.ltl_nl_formula = {
+            "pi_predicates": {
+                "pi_1": "Goal A",
+                "pi_2": "Goal B",
+                "pi_3": "Goal C",
+                "pi_4": "Goal D",
+            },
+            "ltl_nl_formula": (
+                "F pi_2 & (!pi_2 U pi_1) & F pi_4 & (!pi_4 U pi_3)"
+            ),
+        }
+        planner = LTLSymbolicPlanner(mock)
+        planner.plan_from_natural_language("two parallel sequences")
+
+        smaller = spot.postprocess(planner.automaton, "monitor", "small")
+        planner.automaton = smaller
+        planner._sink_state = None
+        planner._add_sink_state()
+        planner.current_automaton_state = planner.automaton.get_init_state_number()
+        planner.finished = False
+        planner._last_returned_predicate_key = None
+        planner._returned_keys = set()
+        return planner
+
+    def test_returns_all_four(self):
+        planner = self._make()
+        order = _run_full(planner)
+        assert len(order) == 4, (
+            f"Expected 4 goals but got {len(order)}: {order}"
+        )
+        assert set(order) == {"Goal A", "Goal B", "Goal C", "Goal D"}, (
+            f"Missing goals: {order}"
+        )
+        assert planner.finished
+
+
+class TestSequenceWithExtraEventualitiesPostprocess:
+    """F pi_3 & seq pi_1->pi_2->pi_3 & F pi_4 & F pi_5 after postprocess
+    merges the post-sequence states so that pi_3 and pi_4 are accepted by
+    self-loops with no state change. The planner must still return all five
+    goals, including the final pi_5.
+    """
+
+    def _make(self):
+        mock = MockLLM()
+        mock.ltl_nl_formula = {
+            "pi_predicates": {
+                "pi_1": "Step 1",
+                "pi_2": "Step 2",
+                "pi_3": "Step 3",
+                "pi_4": "Step 4",
+                "pi_5": "Step 5",
+            },
+            "ltl_nl_formula": (
+                "F pi_3 & (!pi_3 U pi_2) & (!pi_2 U pi_1) "
+                "& F pi_4 & F pi_5"
+            ),
+        }
+        planner = LTLSymbolicPlanner(mock)
+        planner.plan_from_natural_language("seq + two free eventualities")
+
+        smaller = spot.postprocess(planner.automaton, "monitor", "small")
+        planner.automaton = smaller
+        planner._sink_state = None
+        planner._add_sink_state()
+        planner.current_automaton_state = planner.automaton.get_init_state_number()
+        planner.finished = False
+        planner._last_returned_predicate_key = None
+        planner._returned_keys = set()
+        return planner
+
+    def test_returns_all_five(self):
+        planner = self._make()
+        order = _run_full(planner)
+        assert len(order) == 5, (
+            f"Expected 5 goals but got {len(order)}: {order}"
+        )
+        assert set(order) == {"Step 1", "Step 2", "Step 3", "Step 4", "Step 5"}
+        assert planner.finished
+
+    def test_last_goal_not_dropped(self):
+        """Specifically: 'Step 5' (the last task) must appear in the output."""
+        planner = self._make()
+        order = _run_full(planner)
+        assert "Step 5" in order, (
+            f"Last task 'Step 5' was skipped: {order}"
+        )
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

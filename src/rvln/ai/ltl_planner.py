@@ -62,6 +62,7 @@ class LTLSymbolicPlanner:
         self._sink_state: Optional[int] = None
         self.pi_map = {}
         self._last_returned_predicate_key: Optional[str] = None
+        self._returned_keys: set = set()
         self.finished = False
 
     def plan_from_natural_language(self, instruction: str) -> None:
@@ -98,6 +99,7 @@ class LTLSymbolicPlanner:
                 "Use valid robot instructions."
             )
         self._last_returned_predicate_key = None
+        self._returned_keys = set()
 
         print(f"[LTL Planner] Generated Formula: {raw_formula}")
         print(f"[LTL Planner] Predicates: {self.pi_map}")
@@ -157,7 +159,17 @@ class LTLSymbolicPlanner:
         return spot.formula_to_bdd(f, self.automaton.get_dict(), self.automaton)
 
     def get_next_predicate(self) -> Optional[str]:
-        """Find the next task by testing which predicate allows leaving the current state."""
+        """Find the next task by testing which predicate is consistent with the
+        current automaton state, in pi_map order.
+
+        A predicate is "consistent" if its single-task BDD intersects any
+        non-sink outgoing edge (state-changing or self-loop). Allowing
+        self-loops is necessary because spot.postprocess (and some Spot
+        versions) merge states such that intermediate goals fire only by
+        keeping the automaton in a self-loop, with no state change. Tracking
+        returned keys prevents re-returning an already-completed goal whose
+        self-loop still accepts.
+        """
         if self.finished:
             return None
         if not self.pi_map or self.automaton is None:
@@ -165,35 +177,37 @@ class LTLSymbolicPlanner:
         if self._sink_state is not None and self.current_automaton_state == self._sink_state:
             self.finished = True
             return None
+        if len(self._returned_keys) >= len(self.pi_map):
+            self.finished = True
+            return None
 
         bdd_false = spot.formula_to_bdd(
             spot.formula("0"), self.automaton.get_dict(), self.automaton
         )
 
+        # Primary: pi_map order, first unreturned key whose single-task BDD
+        # intersects any non-sink outgoing edge (including self-loops).
         for key in self.pi_map.keys():
+            if key in self._returned_keys:
+                continue
             p_idx = _predicate_key_to_index(key)
             try:
                 test_world_bdd = self._get_bdd_for_single_task(p_idx)
             except ValueError:
                 continue
             for edge in self.automaton.out(self.current_automaton_state):
-                if edge.dst == self.current_automaton_state:
-                    continue
                 if edge.dst == self._sink_state:
                     continue
                 if (test_world_bdd & edge.cond) != bdd_false:
                     self._last_returned_predicate_key = key
                     return self.pi_map[key]
 
-        # Fallback: on some Spot versions (or after postprocessing) the
-        # monitor automaton has fewer states, so the last goal's only
-        # outgoing edge leads to the sink. The loop above skips sink edges,
-        # which silently drops the final goal. Check sink edges for any
-        # not-yet-returned predicate (skip _last_returned_predicate_key
-        # to avoid re-returning an already-completed goal at a true dead-end).
+        # Sink-edge fallback: the only remaining out-edge leads to sink.
+        # Common when the dead-end's only path forward is the synthesized
+        # sink edge for the last predicate.
         if self._sink_state is not None:
             for key in self.pi_map.keys():
-                if key == self._last_returned_predicate_key:
+                if key in self._returned_keys:
                     continue
                 p_idx = _predicate_key_to_index(key)
                 try:
@@ -201,27 +215,21 @@ class LTLSymbolicPlanner:
                 except ValueError:
                     continue
                 for edge in self.automaton.out(self.current_automaton_state):
-                    if edge.dst == self.current_automaton_state:
-                        continue
                     if edge.dst != self._sink_state:
                         continue
                     if (test_world_bdd & edge.cond) != bdd_false:
                         self._last_returned_predicate_key = key
                         return self.pi_map[key]
 
-        # Sequence fallback: no edge fired; use state as index only if in range
-        pred_keys = list(self.pi_map.keys())
-        pred_values = list(self.pi_map.values())
-        n_states = self.automaton.num_states()
-        if 0 <= self.current_automaton_state < len(pred_values) and self.current_automaton_state < n_states:
-            self._last_returned_predicate_key = pred_keys[self.current_automaton_state]
-            return pred_values[self.current_automaton_state]
+        # Last-resort: return any unreturned key in pi_map order so the user
+        # always sees every declared subgoal even when the monitor automaton
+        # offers no edge-based confirmation.
+        for key in self.pi_map.keys():
+            if key in self._returned_keys:
+                continue
+            self._last_returned_predicate_key = key
+            return self.pi_map[key]
 
-        if len(self.pi_map) == 1:
-            k = next(iter(self.pi_map.keys()))
-            if k != self._last_returned_predicate_key:
-                self._last_returned_predicate_key = k
-                return self.pi_map[k]
         print("[LTL Planner] No tasks trigger a state change. Mission Complete.")
         self.finished = True
         return None
@@ -231,6 +239,12 @@ class LTLSymbolicPlanner:
 
         Uses the predicate key from the last get_next_predicate() call so
         duplicate descriptions (e.g. 'turn 90 degrees' three times) work.
+
+        When no state-changing edge fires for the completed predicate (an
+        "implicit" goal accepted only via self-loop), the state is left
+        unchanged so the planner can still walk through any remaining
+        unreturned predicates. Only after every key has been returned does
+        the planner advance to the sink / finished state.
         """
         if not self.pi_map or self.automaton is None:
             return
@@ -238,6 +252,7 @@ class LTLSymbolicPlanner:
         if pi_key is None:
             print("[LTL Planner] Warning: no current predicate key (get_next_predicate not called or returned None).")
             return
+        self._returned_keys.add(pi_key)
         p_idx = _predicate_key_to_index(pi_key)
         try:
             current_world_bdd = self._get_bdd_for_single_task(p_idx)
@@ -261,15 +276,21 @@ class LTLSymbolicPlanner:
                 break
 
         if not found_next:
-            if self._sink_state is not None:
-                self.current_automaton_state = self._sink_state
-                print(
-                    f"[LTL Planner] Task '{finished_task_nl}' completed. "
-                    "Transitioning to sink (mission complete)."
-                )
+            if len(self._returned_keys) >= len(self.pi_map):
+                if self._sink_state is not None:
+                    self.current_automaton_state = self._sink_state
+                    print(
+                        f"[LTL Planner] Task '{finished_task_nl}' completed. "
+                        "Transitioning to sink (mission complete)."
+                    )
+                else:
+                    self.finished = True
+                    print(
+                        f"[LTL Planner] Task '{finished_task_nl}' completed but no outgoing edge; "
+                        "marking mission complete."
+                    )
             else:
-                self.finished = True
                 print(
-                    f"[LTL Planner] Task '{finished_task_nl}' completed but no outgoing edge; "
-                    "marking mission complete."
+                    f"[LTL Planner] Task '{pi_key}' completed without state change "
+                    "(implicit goal); remaining goals will be fetched next."
                 )
