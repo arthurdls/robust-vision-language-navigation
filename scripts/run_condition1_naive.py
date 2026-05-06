@@ -303,7 +303,7 @@ def main():
     map_info = env.get_map_info()
     results_base = Path(args.results_dir) / map_info.task_dir_name
     results_base.mkdir(parents=True, exist_ok=True)
-    tasks = resolve_eval_tasks(args, map_info, SHARED_TASKS_DIR, overrides={"max_steps": "max_steps"})
+    tasks = resolve_eval_tasks(args, map_info, SHARED_TASKS_DIR, overrides={})
 
     try:
         drone_cam_id = env.drone_cam_id

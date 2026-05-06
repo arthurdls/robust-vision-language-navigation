@@ -68,6 +68,7 @@ from rvln.eval.subgoal_runner import SubgoalConfig, run_subgoal
 from rvln.eval.task_utils import (
     get_completed_task_ids,
     load_eval_task,
+    make_ask_help_callback,
     resolve_eval_tasks,
     sanitize_run_label,
 )
@@ -101,79 +102,6 @@ class _SafeEncoder(json.JSONEncoder):
         return super().default(o)
 
 
-
-
-# ---------------------------------------------------------------------------
-# Interactive help prompt
-# ---------------------------------------------------------------------------
-
-def _ask_user_for_help(
-    subgoal_nl: str,
-    completion_pct: float,
-    current_instruction: str,
-    reasoning: str = "",
-) -> tuple:
-    """Prompt user for help when the system is stuck.
-
-    Returns (choice, value) where choice is one of:
-      "correction"       - new OpenVLA instruction, same subgoal (value = instruction)
-      "override_subgoal" - new subgoal text (value = subgoal)
-      "replan"           - new high-level NL instruction for full LTL replanning (value = instruction)
-      "skip"             - skip this subgoal
-      "abort"            - abort the entire mission
-
-    In non-interactive mode (stdin is not a TTY), automatically aborts. This
-    keeps stall behaviour uniform across all conditions (C0..C6) so that M1
-    and M3 are directly comparable: every condition terminates the episode at
-    the first stalled subgoal rather than skipping ahead.
-    """
-    if not sys.stdin.isatty():
-        logger.warning(
-            "ask_help triggered in non-interactive mode, aborting subgoal '%s' "
-            "(completion: %.0f%%, reason: %s)",
-            subgoal_nl, completion_pct * 100, reasoning,
-        )
-        return ("abort", "")
-
-    print(f"\n{'='*60}")
-    print("SYSTEM REQUESTING HELP")
-    print(f"  Subgoal: {subgoal_nl}")
-    print(f"  Completion: {completion_pct:.0%}")
-    print(f"  Current instruction: {current_instruction}")
-    if reasoning:
-        print(f"  Reasoning: {reasoning}")
-    print(f"{'='*60}")
-    print("[a] Provide a correction (new OpenVLA instruction, same subgoal)")
-    print("[b] Override current subgoal")
-    print("[c] Override entire plan (new high-level instruction)")
-    print("[d] Skip this subgoal")
-    print("[e] Abort mission")
-    while True:
-        choice = input("Choice [a/b/c/d/e]: ").strip().lower()
-        if choice == "a":
-            instr = input("New OpenVLA instruction: ").strip()
-            if not instr:
-                print("Empty instruction, please try again.")
-                continue
-            return ("correction", instr)
-        elif choice == "b":
-            subgoal = input("New subgoal: ").strip()
-            if not subgoal:
-                print("Empty subgoal, please try again.")
-                continue
-            return ("override_subgoal", subgoal)
-        elif choice == "c":
-            instr = input("New high-level instruction: ").strip()
-            if not instr:
-                print("Empty instruction, please try again.")
-                continue
-            return ("replan", instr)
-        elif choice == "d":
-            return ("skip", "")
-        elif choice == "e":
-            return ("abort", "")
-        else:
-            print("Invalid choice, please enter a, b, c, d, or e.")
 
 
 # ---------------------------------------------------------------------------
@@ -301,7 +229,7 @@ def run_integrated_control_loop(
                         subgoal_dir=subgoal_dir,
                         frame_offset=total_frame_count,
                         trajectory_log=trajectory_log,
-                        ask_help_callback=_ask_user_for_help,
+                        ask_help_callback=make_ask_help_callback(),
                     )
                 except CUDAOutOfMemoryError as e:
                     logger.error(

@@ -344,6 +344,7 @@ def _run_single_task(
             **common_kwargs,
             llm_model=args.llm_model,
             vlm_model=args.vlm_model,
+            diary_mode=args.diary_mode,
         )
     else:
         raise ValueError(f"Unknown condition: {condition}")
@@ -358,8 +359,8 @@ def _run_single_task(
 
 
 def _resolve_maps(map_arg: Optional[str]) -> List:
-    """Resolve which maps to run. None means all maps."""
-    if map_arg is None:
+    """Resolve which maps to run. 'all' or None means all maps."""
+    if map_arg is None or map_arg == "all":
         return list(SUPPORTED_MAPS.values())
     matching = None
     for m in SUPPORTED_MAPS.values():
@@ -535,8 +536,8 @@ def main():
     parser = argparse.ArgumentParser(
         description="Run all conditions back-to-back, optionally across multiple maps",
     )
-    parser.add_argument("--map", type=str, default=None,
-                        help="Map task_dir_name (e.g. greek_island). Omit to run all maps.")
+    parser.add_argument("--map", type=str, default="downtown_west",
+                        help="Map task_dir_name (default: downtown_west). Use 'all' to run all maps.")
     parser.add_argument("--conditions", type=str, default=None,
                         help="Comma-separated condition numbers to run (default: all 0-6)")
     parser.add_argument("--hold", nargs="+", default=None, metavar="PATTERN",
