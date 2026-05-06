@@ -60,6 +60,51 @@ def _all_call_names(tree: ast.Module) -> set:
 
 
 # -------------------------------------------------------------------------
+# Shared: no condition script should reference the old constraint plumbing
+# -------------------------------------------------------------------------
+
+ALL_CONDITION_SCRIPTS = [
+    "run_integration.py",
+    "run_condition1_naive.py",
+    "run_condition2_llm_planner.py",
+    "run_condition3_open_loop.py",
+    "run_condition4_single_frame.py",
+    "run_condition5_grid_only.py",
+    "run_condition6_text_only.py",
+]
+
+
+class TestNoConstraintPlumbing:
+    """After the LTL-NL prompt unification, no script should call
+    get_active_constraints, pass constraints=active_constraints, or
+    reference use_constraints."""
+
+    def test_no_get_active_constraints(self):
+        for fname in ALL_CONDITION_SCRIPTS:
+            source = _read_source(fname)
+            assert "get_active_constraints" not in source, \
+                f"{fname} still references get_active_constraints"
+
+    def test_no_constraints_kwarg(self):
+        for fname in ALL_CONDITION_SCRIPTS:
+            source = _read_source(fname)
+            assert "constraints=active_constraints" not in source, \
+                f"{fname} still passes constraints=active_constraints"
+
+    def test_no_use_constraints(self):
+        for fname in ALL_CONDITION_SCRIPTS:
+            source = _read_source(fname)
+            assert "use_constraints" not in source, \
+                f"{fname} still references use_constraints"
+
+    def test_no_sequential_ltl_planner(self):
+        for fname in ALL_CONDITION_SCRIPTS:
+            names = _all_names(_parse_tree(fname))
+            assert "SequentialLTLPlanner" not in names, \
+                f"{fname} still references SequentialLTLPlanner"
+
+
+# -------------------------------------------------------------------------
 # Condition 0 (run_integration.py): Full system
 # -------------------------------------------------------------------------
 
@@ -71,14 +116,6 @@ class TestCondition0FullSystem:
     def test_uses_full_monitor_mode(self):
         source = _read_source("run_integration.py")
         assert 'monitor_mode="full"' in source
-
-    def test_passes_constraints_to_run_subgoal(self):
-        source = _read_source("run_integration.py")
-        assert "constraints=active_constraints" in source
-
-    def test_calls_get_active_constraints(self):
-        source = _read_source("run_integration.py")
-        assert "get_active_constraints()" in source
 
     def test_condition_label(self):
         source = _read_source("run_integration.py")
@@ -106,10 +143,7 @@ class TestCondition1Naive:
         source = _read_source("run_condition1_naive.py")
         assert "import spot" not in source
 
-    def test_no_constraints(self):
-        source = _read_source("run_condition1_naive.py")
-        assert "get_active_constraints" not in source
-        assert "constraint" not in source.lower().replace("# ", "").split("constraint")[0] or True
+    def test_no_constraint_info(self):
         names = _all_names(_parse_tree("run_condition1_naive.py"))
         assert "ConstraintInfo" not in names
 
@@ -134,12 +168,6 @@ class TestCondition2LLMPlanner:
     def test_uses_full_monitor_mode(self):
         source = _read_source("run_condition2_llm_planner.py")
         assert 'monitor_mode="full"' in source
-
-    def test_no_constraint_enforcement(self):
-        """C2 should not pass constraints to the monitor."""
-        source = _read_source("run_condition2_llm_planner.py")
-        assert "constraints=active_constraints" not in source
-        assert "get_active_constraints" not in source
 
     def test_has_llm_decompose(self):
         source = _read_source("run_condition2_llm_planner.py")
@@ -195,27 +223,9 @@ class TestCondition4SingleFrame:
         calls = _all_call_names(_parse_tree("run_condition4_single_frame.py"))
         assert "GoalAdherenceMonitor" not in calls
 
-    def test_has_single_frame_prompts(self):
+    def test_uses_single_frame_monitor_mode(self):
         source = _read_source("run_condition4_single_frame.py")
-        assert "SINGLE_FRAME_CHECK_PROMPT" in source
-        assert "SINGLE_FRAME_CONVERGENCE_PROMPT" in source
-
-    def test_single_frame_prompt_no_diary(self):
-        """Single-frame prompts should not reference diary or displacement."""
-        tree = _parse_tree("run_condition4_single_frame.py")
-        for node in ast.walk(tree):
-            if isinstance(node, ast.Assign):
-                for target in node.targets:
-                    if isinstance(target, ast.Name) and target.id == "SINGLE_FRAME_CHECK_PROMPT":
-                        prompt_text = node.value
-                        if isinstance(prompt_text, ast.Constant):
-                            assert "{diary}" not in prompt_text.value
-                            assert "{displacement}" not in prompt_text.value
-
-    def test_passes_constraints(self):
-        """C4 uses LTL constraints for single-frame VLM checks."""
-        source = _read_source("run_condition4_single_frame.py")
-        assert "get_active_constraints" in source
+        assert 'monitor_mode="single_frame"' in source
 
     def test_condition_label(self):
         source = _read_source("run_condition4_single_frame.py")
@@ -235,11 +245,6 @@ class TestCondition5GridOnly:
         source = _read_source("run_condition5_grid_only.py")
         assert 'monitor_mode="grid_only"' in source
 
-    def test_passes_constraints(self):
-        source = _read_source("run_condition5_grid_only.py")
-        assert "get_active_constraints" in source
-        assert "constraints=active_constraints" in source
-
     def test_condition_label(self):
         source = _read_source("run_condition5_grid_only.py")
         assert '"condition5_grid_only"' in source
@@ -257,11 +262,6 @@ class TestCondition6TextOnly:
     def test_uses_text_only_monitor_mode(self):
         source = _read_source("run_condition6_text_only.py")
         assert 'monitor_mode="text_only"' in source
-
-    def test_passes_constraints(self):
-        source = _read_source("run_condition6_text_only.py")
-        assert "get_active_constraints" in source
-        assert "constraints=active_constraints" in source
 
     def test_condition_label(self):
         source = _read_source("run_condition6_text_only.py")
