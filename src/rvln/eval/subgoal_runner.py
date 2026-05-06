@@ -21,6 +21,7 @@ from PIL import Image
 from rvln.config import (
     ACTION_SMALL_DELTA_POS,
     ACTION_SMALL_DELTA_YAW,
+    DEFAULT_CAMERA_FPS,
     DEFAULT_DIARY_CHECK_INTERVAL,
     DEFAULT_MAX_CORRECTIONS,
     DEFAULT_MAX_STEPS_PER_SUBGOAL,
@@ -36,7 +37,6 @@ MonitorMode = Literal["full", "single_frame", "grid_only", "text_only", "none"]
 class SubgoalConfig:
     """Configuration flags for how a subgoal is executed and monitored."""
     monitor_mode: MonitorMode = "full"
-    use_constraints: bool = True
     check_interval: int = DEFAULT_DIARY_CHECK_INTERVAL
     max_steps: int = DEFAULT_MAX_STEPS_PER_SUBGOAL
     max_corrections: int = DEFAULT_MAX_CORRECTIONS
@@ -80,39 +80,6 @@ EXACTLY ONE JSON object (no markdown fences):
   should_stop was set to true. This text is forwarded to the convergence
   stage if the drone is stopped, so be specific."""
 
-GRID_ONLY_GLOBAL_PROMPT_CONSTRAINTS = """\
-Subgoal: {subgoal}
-{constraints_block}
-Previous estimated completion: {prev_completion_pct}
-
-The grid shows up to the 9 most recent sampled frames (left to right, top to
-bottom, in temporal order).
-
-Based on the visual progression in the grid of sampled frames, respond with
-EXACTLY ONE JSON object (no markdown fences):
-
-{{
-  "complete": true/false,
-  "completion_percentage": 0.0 to 1.0,
-  "should_stop": true/false,
-  "reasoning": "..."
-}}
-
-- "complete": true ONLY if you are highly confident the subgoal has been fully
-  accomplished. Do NOT mark complete for partial progress.
-- "completion_percentage": your best estimate of how close the subgoal is to
-  completion (0.0 = not started, 1.0 = fully done). Reserve 1.0 for
-  high-confidence completion. Use the full 0.0-0.99 range; pick the specific
-  value you estimate rather than parking on a single round number.
-- "should_stop": true if the drone appears off-track, heading toward a
-  collision, or violating any active constraint listed above. The drone will
-  be stopped and a corrective instruction issued.
-  Do NOT set true for slow progress.
-- "reasoning": one short sentence explaining your judgement, especially which
-  constraint or hazard motivated should_stop when true. This text is
-  forwarded to the convergence stage if the drone is stopped, so be
-  specific."""
-
 GRID_ONLY_CONVERGENCE_PROMPT = """\
 Subgoal: {subgoal}
 
@@ -139,38 +106,6 @@ Respond with EXACTLY ONE JSON object (no markdown fences):
   going, "overshot" if the drone went past the goal.
 - "corrective_instruction": REQUIRED if not complete. A single-action drone
   command. null only if complete."""
-
-GRID_ONLY_CONVERGENCE_PROMPT_CONSTRAINTS = """\
-Subgoal: {subgoal}
-{constraints_block}
-Previous estimated completion: {prev_completion_pct}
-{stop_reasoning_block}
-The drone has stopped moving. The grid shows up to the 9 most recent sampled
-frames (left to right, top to bottom, in temporal order).
-
-Given the visual progression in the sampled frames, is the subgoal complete?
-If not, did the drone stop short or overshoot?
-
-Respond with EXACTLY ONE JSON object (no markdown fences):
-
-{{
-  "complete": true/false,
-  "completion_percentage": 0.0 to 1.0,
-  "diagnosis": "stopped_short" or "overshot" or "complete" or "constraint_violated",
-  "corrective_instruction": "..." or null
-}}
-
-- "complete": true ONLY if you are highly confident the subgoal has been fully
-  accomplished.
-- "diagnosis": "complete" if done, "stopped_short" if the drone needs to keep
-  going, "overshot" if the drone went past the goal, "constraint_violated" if
-  an active constraint was breached.
-- "corrective_instruction": REQUIRED if not complete. A single-action drone
-  command. If a constraint was violated, the corrective instruction should
-  restore compliance: move away from a forbidden region for avoidance
-  constraints, or restore the required condition for maintenance constraints
-  (e.g., "ascend 2 meters" to regain an altitude constraint).
-  null only if complete."""
 
 SINGLE_FRAME_GLOBAL_PROMPT = """\
 Subgoal: {subgoal}
@@ -200,36 +135,6 @@ Respond with EXACTLY ONE JSON object (no markdown fences):
   should_stop was set to true. This text is forwarded to the convergence
   stage if the drone is stopped, so be specific."""
 
-SINGLE_FRAME_GLOBAL_PROMPT_CONSTRAINTS = """\
-Subgoal: {subgoal}
-{constraints_block}
-Previous estimated completion: {prev_completion_pct}
-
-You are looking at the drone's current camera view. Based on this single frame,
-is the subgoal complete?
-
-Respond with EXACTLY ONE JSON object (no markdown fences):
-
-{{
-  "complete": true/false,
-  "completion_percentage": 0.0 to 1.0,
-  "should_stop": true/false,
-  "reasoning": "..."
-}}
-
-- "complete": true ONLY if you are highly confident the subgoal has been fully
-  accomplished based on the current view.
-- "completion_percentage": your best estimate (0.0 = not started, 1.0 = done).
-  Reserve 1.0 for high-confidence completion. Use the full 0.0-0.99 range;
-  pick the specific value you estimate rather than parking on a single value.
-- "should_stop": true if the drone appears off-track, heading toward a
-  collision, or violating any active constraint. The drone will be stopped
-  and a correction issued.
-- "reasoning": one short sentence explaining your judgement, especially which
-  constraint or hazard motivated should_stop when true. This text is
-  forwarded to the convergence stage if the drone is stopped, so be
-  specific."""
-
 SINGLE_FRAME_CONVERGENCE_PROMPT = """\
 Subgoal: {subgoal}
 
@@ -252,31 +157,6 @@ Respond with EXACTLY ONE JSON object (no markdown fences):
   if past the goal.
 - "corrective_instruction": REQUIRED if not complete. A single-action command."""
 
-SINGLE_FRAME_CONVERGENCE_PROMPT_CONSTRAINTS = """\
-Subgoal: {subgoal}
-{constraints_block}
-Previous estimated completion: {prev_completion_pct}
-{stop_reasoning_block}
-The drone has stopped moving. Based on the current camera view, is the subgoal
-complete? If not, did it stop short or overshoot?
-
-Respond with EXACTLY ONE JSON object (no markdown fences):
-
-{{
-  "complete": true/false,
-  "completion_percentage": 0.0 to 1.0,
-  "diagnosis": "stopped_short" or "overshot" or "complete" or "constraint_violated",
-  "corrective_instruction": "..." or null
-}}
-
-- "complete": true ONLY if you are highly confident.
-- "diagnosis": "complete" if done, "stopped_short" if needs more, "overshot"
-  if past the goal, "constraint_violated" if an active constraint was breached.
-- "corrective_instruction": REQUIRED if not complete. A single-action command.
-  If a constraint was violated, restore compliance: move away from a forbidden
-  region for avoidance constraints, or restore the required condition for
-  maintenance constraints (e.g., "ascend 2 meters")."""
-
 
 def _patch_monitor_prompts(mode: MonitorMode) -> None:
     """Set GoalAdherenceMonitor prompt templates for the given mode.
@@ -287,26 +167,18 @@ def _patch_monitor_prompts(mode: MonitorMode) -> None:
     import rvln.ai.goal_adherence_monitor as gam
     from rvln.ai.prompts import (
         DIARY_GLOBAL_PROMPT,
-        DIARY_GLOBAL_PROMPT_WITH_CONSTRAINTS,
         DIARY_CONVERGENCE_PROMPT,
-        DIARY_CONVERGENCE_PROMPT_WITH_CONSTRAINTS,
     )
 
     if mode == "grid_only":
         gam.GLOBAL_PROMPT_TEMPLATE = GRID_ONLY_GLOBAL_PROMPT
-        gam.GLOBAL_PROMPT_TEMPLATE_CONSTRAINTS = GRID_ONLY_GLOBAL_PROMPT_CONSTRAINTS
         gam.CONVERGENCE_PROMPT_TEMPLATE = GRID_ONLY_CONVERGENCE_PROMPT
-        gam.CONVERGENCE_PROMPT_TEMPLATE_CONSTRAINTS = GRID_ONLY_CONVERGENCE_PROMPT_CONSTRAINTS
     elif mode == "single_frame":
         gam.GLOBAL_PROMPT_TEMPLATE = SINGLE_FRAME_GLOBAL_PROMPT
-        gam.GLOBAL_PROMPT_TEMPLATE_CONSTRAINTS = SINGLE_FRAME_GLOBAL_PROMPT_CONSTRAINTS
         gam.CONVERGENCE_PROMPT_TEMPLATE = SINGLE_FRAME_CONVERGENCE_PROMPT
-        gam.CONVERGENCE_PROMPT_TEMPLATE_CONSTRAINTS = SINGLE_FRAME_CONVERGENCE_PROMPT_CONSTRAINTS
     else:
         gam.GLOBAL_PROMPT_TEMPLATE = DIARY_GLOBAL_PROMPT
-        gam.GLOBAL_PROMPT_TEMPLATE_CONSTRAINTS = DIARY_GLOBAL_PROMPT_WITH_CONSTRAINTS
         gam.CONVERGENCE_PROMPT_TEMPLATE = DIARY_CONVERGENCE_PROMPT
-        gam.CONVERGENCE_PROMPT_TEMPLATE_CONSTRAINTS = DIARY_CONVERGENCE_PROMPT_WITH_CONSTRAINTS
 
 
 # ---------------------------------------------------------------------------
@@ -330,7 +202,6 @@ def run_subgoal(
     subgoal_dir: Path,
     frame_offset: int,
     trajectory_log: List[Dict[str, Any]],
-    constraints: Optional[List] = None,
     ask_help_callback=None,
 ) -> Dict[str, Any]:
     """Run the control loop for a single subgoal with configurable monitoring.
@@ -350,7 +221,6 @@ def run_subgoal(
     subgoal_dir : directory for subgoal-specific artifacts
     frame_offset : global frame index offset
     trajectory_log : shared trajectory log (appended to)
-    constraints : list of ConstraintInfo objects (or None)
     ask_help_callback : optional callable(subgoal_nl, completion_pct, instruction, reasoning)
         returning (choice, value). If None, ask_help triggers stop.
 
@@ -358,6 +228,7 @@ def run_subgoal(
     """
     from rvln.ai.goal_adherence_monitor import DiaryCheckResult, GoalAdherenceMonitor
     from rvln.ai.subgoal_converter import SubgoalConverter
+    from rvln.eval.video_recorder import ensure_episode_playback
     from rvln.sim.env_setup import (
         apply_action_poses,
         relative_pose_to_world,
@@ -365,9 +236,12 @@ def run_subgoal(
         state_for_openvla,
     )
 
-    _patch_monitor_prompts(config.monitor_mode)
+    # Mirror hardware behavior: a real-time playback.mp4 alongside the
+    # per-step decision PNGs. Idempotent across subgoal calls within the
+    # same episode; the recorder finalizes via atexit on SIGINT/normal exit.
+    ensure_episode_playback(env, run_dir=frames_dir.parent, fps=DEFAULT_CAMERA_FPS)
 
-    effective_constraints = constraints if config.use_constraints else None
+    _patch_monitor_prompts(config.monitor_mode)
 
     use_async = config.check_interval_s is not None
 
@@ -398,7 +272,6 @@ def run_subgoal(
             artifacts_dir=diary_artifacts,
             max_corrections=config.max_corrections,
             check_interval_s=config.check_interval_s,
-            constraints=effective_constraints,
             **extra_kwargs,
         )
 
@@ -504,7 +377,6 @@ def run_subgoal(
                     artifacts_dir=diary_artifacts,
                     max_corrections=config.max_corrections,
                     check_interval_s=config.check_interval_s,
-                    constraints=effective_constraints,
                     **extra_kwargs,
                 )
             openvla_pose_origin = list(current_pose)
@@ -834,14 +706,6 @@ def run_subgoal(
         "vlm_call_count": monitor.vlm_calls if monitor else 0,
         "vlm_call_records": all_vlm_call_records,
         "next_origin": [next_origin_x, next_origin_y, next_origin_z, next_origin_yaw],
-        "constraints": _serialize_constraints(effective_constraints),
         "parse_failures": monitor.parse_failures if monitor else 0,
         "replan_instruction": replan_instruction,
     }
-
-
-def _serialize_constraints(constraints):
-    if not constraints:
-        return []
-    from dataclasses import asdict
-    return [asdict(c) if hasattr(c, "__dataclass_fields__") else c for c in constraints]
