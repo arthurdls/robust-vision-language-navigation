@@ -97,15 +97,47 @@ Respond with EXACTLY ONE JSON object (no markdown fences):
   "complete": true/false,
   "completion_percentage": 0.0 to 1.0,
   "diagnosis": "stopped_short" or "overshot" or "complete",
-  "corrective_instruction": "..." or null
+  "corrective_instruction": "..." or null,
+  "reasoning": "..."
 }}
 
 - "complete": true ONLY if you are highly confident the subgoal has been fully
-  accomplished.
+  accomplished. Do NOT mark complete for partial progress. When in doubt, keep
+  it false and issue a corrective instruction.
+- "completion_percentage": your best estimate of how close the subgoal is to
+  completion (0.0 = not started, 1.0 = fully done). Reserve 1.0 for
+  high-confidence completion. Use the full 0.0-0.99 range to express partial
+  progress: pick the specific value you actually estimate, do not park on a
+  single round number across checkpoints.
 - "diagnosis": "complete" if done, "stopped_short" if the drone needs to keep
   going, "overshot" if the drone went past the goal.
-- "corrective_instruction": REQUIRED if not complete. A single-action drone
-  command. null only if complete."""
+- "corrective_instruction": REQUIRED if not complete -- a single-action drone
+  command to fix the biggest gap (not compound -- one action per correction).
+  null only if complete.
+- "reasoning": one or two sentences in plain English explaining WHY you chose
+  this verdict and corrective. Reference specific things you saw in the frames
+  (e.g., "tree is centered and close, so subgoal is complete" or "red car is
+  off-screen to the left, so turning left to reacquire"). This is shown
+  directly to the human operator, so be concrete; do not echo the raw JSON
+  fields back.
+
+  Useful corrective patterns:
+    * "Turn toward <landmark>" -- re-orient toward a visible or expected landmark.
+    * "Turn right/left <N> degrees" -- precise yaw adjustment.
+    * "Move forward <N> meters" / "Move closer to <landmark>" -- close a gap.
+    * "Ascend/Descend <N> meters" -- altitude correction.
+    * "Ascend <N> meters" -- rise above an obstacle blocking the path.
+    * "Move back from <obstacle>" -- retreat from an obstruction.
+  Prefer a turn command when the target is not visible in the latest frame;
+  the underlying policy needs to see the target to navigate toward it.
+  When an obstacle blocks the direct path, prefer ascending or routing
+  around over retreating, unless the drone is already very close.
+
+  IMPORTANT -- orientation tolerance: if the subgoal is about turning toward or
+  facing a target and the target is already visible in the frame (even if
+  off-center), mark the subgoal complete instead of issuing further turn
+  corrections. Small yaw offsets are acceptable. Do NOT oscillate between
+  left and right turn corrections trying to perfectly center the target."""
 
 SINGLE_FRAME_GLOBAL_PROMPT = """\
 Subgoal: {subgoal}
@@ -149,13 +181,47 @@ Respond with EXACTLY ONE JSON object (no markdown fences):
   "complete": true/false,
   "completion_percentage": 0.0 to 1.0,
   "diagnosis": "stopped_short" or "overshot" or "complete",
-  "corrective_instruction": "..." or null
+  "corrective_instruction": "..." or null,
+  "reasoning": "..."
 }}
 
-- "complete": true ONLY if you are highly confident.
-- "diagnosis": "complete" if done, "stopped_short" if needs more, "overshot"
-  if past the goal.
-- "corrective_instruction": REQUIRED if not complete. A single-action command."""
+- "complete": true ONLY if you are highly confident the subgoal has been fully
+  accomplished. Do NOT mark complete for partial progress. When in doubt, keep
+  it false and issue a corrective instruction.
+- "completion_percentage": your best estimate of how close the subgoal is to
+  completion (0.0 = not started, 1.0 = fully done). Reserve 1.0 for
+  high-confidence completion. Use the full 0.0-0.99 range to express partial
+  progress: pick the specific value you actually estimate, do not park on a
+  single round number across checkpoints.
+- "diagnosis": "complete" if done, "stopped_short" if the drone needs to keep
+  going, "overshot" if the drone went past the goal.
+- "corrective_instruction": REQUIRED if not complete -- a single-action drone
+  command to fix the biggest gap (not compound -- one action per correction).
+  null only if complete.
+- "reasoning": one or two sentences in plain English explaining WHY you chose
+  this verdict and corrective. Reference specific things you saw in the frame
+  (e.g., "tree is centered and close, so subgoal is complete" or "red car is
+  off-screen to the left, so turning left to reacquire"). This is shown
+  directly to the human operator, so be concrete; do not echo the raw JSON
+  fields back.
+
+  Useful corrective patterns:
+    * "Turn toward <landmark>" -- re-orient toward a visible or expected landmark.
+    * "Turn right/left <N> degrees" -- precise yaw adjustment.
+    * "Move forward <N> meters" / "Move closer to <landmark>" -- close a gap.
+    * "Ascend/Descend <N> meters" -- altitude correction.
+    * "Ascend <N> meters" -- rise above an obstacle blocking the path.
+    * "Move back from <obstacle>" -- retreat from an obstruction.
+  Prefer a turn command when the target is not visible in the latest frame;
+  the underlying policy needs to see the target to navigate toward it.
+  When an obstacle blocks the direct path, prefer ascending or routing
+  around over retreating, unless the drone is already very close.
+
+  IMPORTANT -- orientation tolerance: if the subgoal is about turning toward or
+  facing a target and the target is already visible in the frame (even if
+  off-center), mark the subgoal complete instead of issuing further turn
+  corrections. Small yaw offsets are acceptable. Do NOT oscillate between
+  left and right turn corrections trying to perfectly center the target."""
 
 
 def _patch_monitor_prompts(mode: MonitorMode) -> None:
@@ -163,20 +229,31 @@ def _patch_monitor_prompts(mode: MonitorMode) -> None:
 
     Must be called for every mode (including "full") to prevent stale
     templates from a previous call leaking into the next run.
+
+    Patches three module-level names in goal_adherence_monitor:
+      - GENERAL_SYSTEM_PROMPT (system message for VLM calls)
+      - GLOBAL_PROMPT_TEMPLATE (periodic checkpoint user prompt)
+      - CONVERGENCE_PROMPT_TEMPLATE (convergence user prompt)
     """
     import rvln.ai.goal_adherence_monitor as gam
     from rvln.ai.prompts import (
+        DIARY_SYSTEM_PROMPT,
         DIARY_GLOBAL_PROMPT,
         DIARY_CONVERGENCE_PROMPT,
+        SINGLE_FRAME_SYSTEM_PROMPT,
+        GRID_ONLY_SYSTEM_PROMPT,
     )
 
     if mode == "grid_only":
+        gam.GENERAL_SYSTEM_PROMPT = GRID_ONLY_SYSTEM_PROMPT
         gam.GLOBAL_PROMPT_TEMPLATE = GRID_ONLY_GLOBAL_PROMPT
         gam.CONVERGENCE_PROMPT_TEMPLATE = GRID_ONLY_CONVERGENCE_PROMPT
     elif mode == "single_frame":
+        gam.GENERAL_SYSTEM_PROMPT = SINGLE_FRAME_SYSTEM_PROMPT
         gam.GLOBAL_PROMPT_TEMPLATE = SINGLE_FRAME_GLOBAL_PROMPT
         gam.CONVERGENCE_PROMPT_TEMPLATE = SINGLE_FRAME_CONVERGENCE_PROMPT
     else:
+        gam.GENERAL_SYSTEM_PROMPT = DIARY_SYSTEM_PROMPT
         gam.GLOBAL_PROMPT_TEMPLATE = DIARY_GLOBAL_PROMPT
         gam.CONVERGENCE_PROMPT_TEMPLATE = DIARY_CONVERGENCE_PROMPT
 
@@ -262,6 +339,8 @@ def run_subgoal(
         extra_kwargs["global_model"] = llm_model
     if config.monitor_mode == "single_frame":
         extra_kwargs["single_frame_mode"] = True
+    if config.monitor_mode == "grid_only":
+        extra_kwargs["skip_local"] = True
 
     monitor: Optional[GoalAdherenceMonitor] = None
     if use_monitor:

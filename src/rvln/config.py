@@ -17,7 +17,7 @@ DEFAULT_VLM_FALLBACK_MODEL = "gpt-4o"
 # ---------------------------------------------------------------------------
 # Diary monitoring
 # ---------------------------------------------------------------------------
-DEFAULT_DIARY_MODE = "time"  # was "frame"; sim now matches hardware
+DEFAULT_DIARY_MODE = "frame"  # "frame" for sim eval; run_hardware forces "time"
 DEFAULT_HARDWARE_DIARY_MODE = "time"  # hardware default: time-based (async) cadence
 
 # Frame-mode budget / checkpoint interval
@@ -45,7 +45,7 @@ DEFAULT_LOCAL_GRID_SPACING_S: "float | None" = None
 
 # Shared
 DEFAULT_MAX_CORRECTIONS = 20
-DEFAULT_STALL_WINDOW = 5
+DEFAULT_STALL_WINDOW = 10
 DEFAULT_STALL_THRESHOLD = 0.05
 DEFAULT_STALL_COMPLETION_FLOOR = 0.5
 
@@ -81,17 +81,6 @@ DEFAULT_GPU_ID = 0
 DEFAULT_DEVICE = "cuda"
 DEFAULT_UNNORM_KEY = "sim"
 DEFAULT_DO_SAMPLE = False
-
-# ---------------------------------------------------------------------------
-# LTL runner
-# ---------------------------------------------------------------------------
-DEFAULT_MAX_STEPS = 100
-
-# ---------------------------------------------------------------------------
-# Goal adherence
-# ---------------------------------------------------------------------------
-DEFAULT_RUNS_PER_CONDITION = 3
-DEFAULT_GA_MAX_CORRECTIONS = 10
 
 # ---------------------------------------------------------------------------
 # Hardware interface (MiniNav)

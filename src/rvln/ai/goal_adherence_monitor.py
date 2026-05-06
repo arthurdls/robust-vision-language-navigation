@@ -172,6 +172,7 @@ class GoalAdherenceMonitor:
         global_backend: Literal["vlm_grid", "text_llm"] = "vlm_grid",
         global_model: Optional[str] = None,
         single_frame_mode: bool = False,
+        skip_local: bool = False,
     ):
         self._subgoal = subgoal
         self._check_interval = check_interval
@@ -183,6 +184,12 @@ class GoalAdherenceMonitor:
         # current frame to global/convergence VLM, do not maintain a diary.
         # Used by Condition 4 to test the value of temporal context.
         self._single_frame_mode: bool = single_frame_mode
+
+        # Skip the local 2-frame VLM call without affecting the global grid.
+        # Used by Condition 5 (grid-only) to avoid generating diary entries
+        # that are never included in the global/convergence assessment,
+        # saving ~2,300 tokens per checkpoint.
+        self._skip_local: bool = skip_local or single_frame_mode
 
         # Text-only global backend configuration
         self._global_backend: Literal["vlm_grid", "text_llm"] = global_backend
@@ -940,10 +947,12 @@ class GoalAdherenceMonitor:
         prev_path = self._frame_paths[step - n]
         curr_path = self._frame_paths[step - 1]
 
-        # --- Local query: what changed (always uses VLM with images) ---
-        # Skipped in single_frame_mode (Condition 4) to genuinely remove
-        # temporal context: no diary entries are generated.
-        if self._single_frame_mode:
+        # --- Local query: what changed (uses VLM with 2-frame comparison) ---
+        # Skipped when _skip_local is set: Condition 4 (single_frame_mode)
+        # and Condition 5 (grid_only) both skip the local VLM call to avoid
+        # generating diary entries that are never used in their
+        # global/convergence assessments.
+        if self._skip_local:
             change_text = ""
             grid_two = None
             prompt_local = ""
@@ -1159,13 +1168,13 @@ class GoalAdherenceMonitor:
         if prev_path is None:
             prev_path = curr_path
 
-        # --- Local query: what changed (skipped in single_frame_mode) ---
+        # --- Local query: what changed (skipped when _skip_local is set) ---
         d = displacement
         disp_str = (
             f"[x: {d[0] / 100:.2f} m, y: {d[1] / 100:.2f} m, "
             f"z: {d[2] / 100:.2f} m, yaw: {d[3]:.1f}\u00b0]"
         )
-        if self._single_frame_mode:
+        if self._skip_local:
             grid_two = None
             prompt_local = ""
             change_text = ""
@@ -1181,8 +1190,18 @@ class GoalAdherenceMonitor:
             self._diary.append(diary_entry)
 
         # --- Global query: assess progress ---
-        if self._single_frame_mode:
+        diary_blob = "\n".join(self._diary)
+
+        if self._global_backend == "text_llm":
+            response_global = self._run_text_only_global(diary_blob, disp_str, step)
+            grid_global = None
+        elif self._single_frame_mode:
             grid_global = build_frame_grid([curr_path])
+            prompt_global = self._format_global_prompt(diary_blob, disp_str)
+            response_global = self._timed_query_vlm(
+                grid_global, prompt_global, "global_checkpoint_async",
+                system_prompt=GENERAL_SYSTEM_PROMPT,
+            )
         else:
             sampled = self._sample_frames_by_time(frame_paths_snap, frame_timestamps_snap)
             if not sampled:
@@ -1197,45 +1216,68 @@ class GoalAdherenceMonitor:
             sampled = sampled[-self.MAX_GLOBAL_FRAMES:]
 
             grid_global = build_frame_grid(sampled)
-        diary_blob = "\n".join(self._diary)
-        prompt_global = self._format_global_prompt(diary_blob, disp_str)
-
-        response_global = self._timed_query_vlm(
-            grid_global, prompt_global, "global_checkpoint_async",
-            system_prompt=GENERAL_SYSTEM_PROMPT,
-        )
-
-        parsed = self._parse_json_response(response_global)
-        if parsed is None:
-            self._parse_failures += 1
-            logger.warning(
-                "Async checkpoint ~%d JSON parse failed, retrying. Raw: %s",
-                step, response_global[:200],
-            )
+            prompt_global = self._format_global_prompt(diary_blob, disp_str)
             response_global = self._timed_query_vlm(
-                grid_global, prompt_global, "global_checkpoint_async_retry",
+                grid_global, prompt_global, "global_checkpoint_async",
                 system_prompt=GENERAL_SYSTEM_PROMPT,
             )
+
+        if self._global_backend == "text_llm":
             parsed = self._parse_json_response(response_global)
             if parsed is None:
                 self._parse_failures += 1
-                logger.error(
-                    "Async checkpoint ~%d JSON parse failed after retry; "
-                    "treating as continue with prior completion. Raw: %s",
+                logger.warning(
+                    "Async text-only checkpoint ~%d JSON parse failed, retrying. Raw: %s",
                     step, response_global[:200],
                 )
-                parsed = {
-                    "complete": False,
-                    "completion_percentage": self._last_completion_pct,
-                    "should_stop": False,
-                    "reasoning": "parse_failure_fallback",
-                }
+                response_global = self._run_text_only_global(diary_blob, disp_str, step, label_suffix="_async_retry")
+                parsed = self._parse_json_response(response_global)
+                if parsed is None:
+                    self._parse_failures += 1
+                    logger.error(
+                        "Async text-only checkpoint ~%d JSON parse failed after "
+                        "retry; treating as continue with prior completion. Raw: %s",
+                        step, response_global[:200],
+                    )
+                    parsed = {
+                        "complete": False,
+                        "completion_percentage": self._last_completion_pct,
+                        "should_stop": False,
+                        "reasoning": "parse_failure_fallback",
+                    }
+        else:
+            parsed = self._parse_json_response(response_global)
+            if parsed is None:
+                self._parse_failures += 1
+                logger.warning(
+                    "Async checkpoint ~%d JSON parse failed, retrying. Raw: %s",
+                    step, response_global[:200],
+                )
+                response_global = self._timed_query_vlm(
+                    grid_global, prompt_global, "global_checkpoint_async_retry",
+                    system_prompt=GENERAL_SYSTEM_PROMPT,
+                )
+                parsed = self._parse_json_response(response_global)
+                if parsed is None:
+                    self._parse_failures += 1
+                    logger.error(
+                        "Async checkpoint ~%d JSON parse failed after retry; "
+                        "treating as continue with prior completion. Raw: %s",
+                        step, response_global[:200],
+                    )
+                    parsed = {
+                        "complete": False,
+                        "completion_percentage": self._last_completion_pct,
+                        "should_stop": False,
+                        "reasoning": "parse_failure_fallback",
+                    }
 
-        self._save_checkpoint_artifact(
-            step, grid_two, grid_global,
-            prompt_local, change_text,
-            prompt_global, response_global,
-        )
+        if grid_global is not None:
+            self._save_checkpoint_artifact(
+                step, grid_two, grid_global,
+                prompt_local, change_text,
+                self._format_global_prompt(diary_blob, disp_str), response_global,
+            )
 
         result = self._parse_global_response(
             response_global, diary_entry, parsed=parsed,
@@ -1280,6 +1322,10 @@ class GoalAdherenceMonitor:
         disp_str = self._format_displacement()
         diary_blob = "\n".join(self._diary) if self._diary else "(no diary entries yet)"
         stop_reason = self._consume_stop_reasoning()
+
+        if self._global_backend == "text_llm":
+            return self._run_text_only_convergence(diary_blob, disp_str, stop_reason)
+
         prompt = self._format_convergence_prompt(diary_blob, disp_str, stop_reason)
 
         if self._single_frame_mode:
