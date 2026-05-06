@@ -54,10 +54,11 @@ def _sync_cam(cam_id: Optional[int] = None) -> None:
     _env.unwrapped.unrealcv.set_cam(cam_id, [x, y, z], [roll, pitch, yaw])
 
 
-def _capture_image(cam_id: Optional[int] = None) -> Optional[np.ndarray]:
+def _capture_image(cam_id: Optional[int] = None, sync: bool = True) -> Optional[np.ndarray]:
     if cam_id is None:
         cam_id = _drone_cam_id
-    _sync_cam(cam_id)
+    if sync:
+        _sync_cam(cam_id)
     for attempt in range(2):
         try:
             return _env.unwrapped.unrealcv.get_image(cam_id, "lit")
@@ -223,8 +224,20 @@ def handle_step():
         steps_applied += 1
         time.sleep(sleep_s)
 
-    image = _capture_image(cam_id)
-    pos, rot = _get_pose()
+    # Camera was already synced in the per-pose loop above; skip the
+    # redundant sync inside _capture_image (saves 3 UnrealCV RPCs).
+    image = _capture_image(cam_id, sync=False)
+
+    # Echo the last applied pose instead of round-tripping to UnrealCV
+    # (saves 2 RPCs). The only caller, apply_action_poses, discards
+    # these fields. roll/pitch are not preserved through this echo;
+    # downstream code should not rely on them from /step's response.
+    if positions and isinstance(positions[-1], (list, tuple)) and len(positions[-1]) >= 4:
+        last = positions[-1]
+        pos = [float(last[0]), float(last[1]), float(last[2])]
+        rot = [0.0, float(last[3]), 0.0]
+    else:
+        pos, rot = _get_pose()
 
     resp = {"position": pos, "rotation": rot, "steps_applied": steps_applied}
     if image is not None:
