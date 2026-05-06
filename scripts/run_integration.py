@@ -203,7 +203,7 @@ def run_integrated_control_loop(
     Returns the run_info dict written to disk.
     """
     from rvln.ai.llm_interface import LLMUserInterface
-    from rvln.ai.sequential_ltl_planner import SequentialLTLPlanner
+    from rvln.ai.ltl_planner import LTLSymbolicPlanner
     from rvln.eval.batch_runner import CUDAOutOfMemoryError
 
     instruction = task["instruction"]
@@ -243,8 +243,8 @@ def run_integrated_control_loop(
                 f"[REPLAN #{replan_count}] " if replan_count > 0 else "",
                 instruction,
             )
-            llm_interface = LLMUserInterface(model=llm_model, use_constraints=False)
-            planner = SequentialLTLPlanner(llm_interface)
+            llm_interface = LLMUserInterface(model=llm_model)
+            planner = LTLSymbolicPlanner(llm_interface)
             planner.plan_from_natural_language(instruction)
 
             ltl_plan = {
@@ -271,8 +271,6 @@ def run_integrated_control_loop(
                 safe_name = sanitize_run_label(current_subgoal, fallback="subgoal")
                 subgoal_dir = run_dir / f"subgoal_{subgoal_index:02d}_{safe_name}"
 
-                active_constraints: List[Any] = []
-
                 logger.info(
                     "--- Subgoal %d: '%s' ---", subgoal_index, current_subgoal,
                 )
@@ -280,7 +278,6 @@ def run_integrated_control_loop(
                 try:
                     sg_config = SubgoalConfig(
                         monitor_mode="full",
-                        use_constraints=False,
                         check_interval=check_interval,
                         max_steps=max_steps_per_subgoal,
                         max_corrections=max_corrections,
@@ -304,7 +301,6 @@ def run_integrated_control_loop(
                         subgoal_dir=subgoal_dir,
                         frame_offset=total_frame_count,
                         trajectory_log=trajectory_log,
-                        constraints=active_constraints,
                         ask_help_callback=_ask_user_for_help,
                     )
                 except CUDAOutOfMemoryError as e:
