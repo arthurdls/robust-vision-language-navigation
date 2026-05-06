@@ -6,7 +6,7 @@
     -7089,
     -5378,
     148,
-    89
+    92
   ],
   "expected_subgoal_count": 6,
   "max_steps_per_subgoal": 500,
