@@ -21,7 +21,7 @@ OpenVLA server must be running: python scripts/start_server.py
 
 Usage (from repo root):
   # Single task from tasks/condition0/
-  python scripts/run_integration.py --task seq_constraint_01.json
+  python scripts/run_integration.py --task task.json
   # All tasks in tasks/condition0/ (skips already completed)
   python scripts/run_integration.py --run_all_tasks
   # Ad-hoc command
@@ -393,9 +393,6 @@ def run_integrated_control_loop(
             all_vlm_records.extend(s.get("vlm_call_records", []))
         total_input_tokens = sum(r.get("input_tokens", 0) for r in all_vlm_records)
         total_output_tokens = sum(r.get("output_tokens", 0) for r in all_vlm_records)
-        any_constraint_violated = any(
-            s.get("constraint_violation_count", 0) > 0 for s in subgoal_summaries
-        )
         end_dt = datetime.fromisoformat(end_ts)
         start_dt = datetime.fromisoformat(start_ts)
         wall_clock_seconds = (end_dt - start_dt).total_seconds()
@@ -440,7 +437,6 @@ def run_integrated_control_loop(
             "total_input_tokens": total_input_tokens,
             "total_output_tokens": total_output_tokens,
             "vlm_call_records": all_vlm_records,
-            "any_constraint_violated": any_constraint_violated,
             "playback_mp4": str(playback_mp4) if playback_mp4 else None,
             "start_time": start_ts,
             "end_time": end_ts,

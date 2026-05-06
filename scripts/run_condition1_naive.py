@@ -243,7 +243,6 @@ def run_naive_control_loop(
         "total_corrections": 0,
         "total_input_tokens": 0,
         "total_output_tokens": 0,
-        "any_constraint_violated": None,
         "playback_mp4": str(playback_mp4) if playback_mp4 else None,
         "start_time": start_ts,
         "end_time": end_ts,
