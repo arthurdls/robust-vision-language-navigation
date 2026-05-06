@@ -415,7 +415,6 @@ def run_llm_planner_control_loop(
         "total_input_tokens": total_input_tokens,
         "total_output_tokens": total_output_tokens,
         "vlm_call_records": all_vlm_records,
-        "any_constraint_violated": None,
         "playback_mp4": str(playback_mp4) if playback_mp4 else None,
         "start_time": start_ts,
         "end_time": end_ts,

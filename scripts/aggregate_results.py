@@ -8,7 +8,6 @@ Experimental design: 7 conditions (C0-C6), 3 maps, 5 tasks per map,
 Metrics computed:
   Primary:
     M1 - Task Success Rate (all subgoals achieved)
-    M2 - Constraint Adherence Rate (no constraints violated)
     M3 - Subgoal Success Rate (fraction of individual subgoals completed)
   Diagnostic:
     M4 - Supervisor Correction Rate (rescued / total premature convergences)
@@ -22,7 +21,7 @@ Breakdowns:
   - Per-map (generalization across simulation environments)
 
 Statistical tests:
-  - Wilson confidence intervals for binary metrics (M1, M2, M3)
+  - Wilson confidence intervals for binary metrics (M1, M3)
   - Fisher's exact test for pairwise C0 vs each baseline
   - McNemar's test for paired comparisons (matched starting positions)
   - Bonferroni correction for 6 comparisons (threshold: p < 0.0083)
@@ -38,7 +37,7 @@ Known limitations:
   - Stochastic factors: simulator determinism is imperfect (propeller visual
     effects, rendering variations) and cannot be fully controlled.
   - Manual annotation: C1 and C3 require manual video review for task
-    success (M1) and constraint adherence (M2). Use --strict to enforce.
+    success (M1). Use --strict to enforce.
 """
 
 import argparse
@@ -78,8 +77,8 @@ CONDITION_ORDER = [
 ]
 
 # Bonferroni-corrected significance threshold (0.05 / 6 comparisons).
-# Applied to the M1 headline test family only; M2 / M3 are reported as
-# secondary analyses without a family-wise correction claim.
+# Applied to the M1 headline test family only; M3 is reported as a
+# secondary analysis without a family-wise correction claim.
 BONFERRONI_THRESHOLD = 0.05 / 6  # ~0.0083
 
 # M4 (supervisor correction rate) is only meaningful for conditions whose
@@ -131,7 +130,7 @@ def fishers_exact_test(
     ``family`` controls which significance flag is reported:
       * ``"primary"`` (default): used for the headline M1 family. Reports
         ``significant_bonferroni`` against ``BONFERRONI_THRESHOLD = 0.05/6``.
-      * ``"exploratory"``: used for M2 / M3 secondary analyses. Reports
+      * ``"exploratory"``: used for M3 secondary analyses. Reports
         the raw p-value and a ``significant_uncorrected`` flag at
         alpha=0.05; no family-wise correction claim is made because these
         comparisons are not the headline test.
@@ -473,57 +472,6 @@ def is_task_success(run: dict) -> bool | None:
     return False
 
 
-def is_constraint_adhered(run: dict, require_manual: bool = False) -> bool | None:
-    """
-    Check constraint adherence (M2) for an episode.
-
-    Per the experimental design (Section 6f), the official M2 source is a
-    *manual* video review for ALL 7 conditions, stored as
-    ``constraint_analysis.json`` next to the run's ``run_info.json``. The
-    runtime monitor's ``any_constraint_violated`` flag is logged for
-    diagnostic comparison but is not the headline source.
-
-    Behaviour:
-      * ``require_manual=True`` (used under --strict): only honour
-        ``_constraint_analysis``. Return ``None`` whenever the manual
-        annotation is missing, so missing-annotation cells are visible in
-        the report rather than silently filled in by the runtime flag.
-      * ``require_manual=False`` (default): fall back to the runtime
-        ``any_constraint_violated`` flag and per-subgoal counters. Useful
-        for early development before annotations exist; do NOT publish
-        these numbers without flagging the fallback.
-    """
-    ca = run.get("_constraint_analysis")
-    if ca:
-        if "any_constraint_violated" in ca:
-            return not ca["any_constraint_violated"]
-        if "constraint_adherence" in ca:
-            return bool(ca["constraint_adherence"])
-
-    if require_manual:
-        return None
-
-    acv = run.get("any_constraint_violated")
-    if acv is not None:
-        return not acv
-
-    # If any_constraint_violated is explicitly None, constraints were not
-    # checked at runtime (C1, C2, C3). Needs post-hoc analysis.
-    if "any_constraint_violated" in run and acv is None:
-        return None
-
-    # Check subgoal-level constraint violations
-    subgoal_summaries = run.get("subgoal_summaries", [])
-    if subgoal_summaries:
-        for sg in subgoal_summaries:
-            if sg.get("constraint_violation_count", 0) > 0:
-                return False
-        return True
-
-    # Cannot determine
-    return None
-
-
 def compute_subgoal_success_rate(run: dict) -> float | None:
     """
     Compute fraction of subgoals that were successfully completed in an episode.
@@ -745,7 +693,7 @@ def compute_api_cost(run: dict) -> dict:
 # ---------------------------------------------------------------------------
 
 def aggregate_condition(
-    condition: str, runs: list[dict], require_manual_m2: bool = False,
+    condition: str, runs: list[dict],
 ) -> dict[str, Any]:
     """Compute all metrics for a single condition."""
     n = len(runs)
@@ -766,18 +714,6 @@ def aggregate_condition(
                 task_successes += 1
 
     m1_rate, m1_ci_low, m1_ci_high = wilson_ci(task_successes, task_determined)
-
-    # M2: Constraint Adherence Rate
-    constraint_adhered = 0
-    constraint_determined = 0
-    for run in runs:
-        result = is_constraint_adhered(run, require_manual=require_manual_m2)
-        if result is not None:
-            constraint_determined += 1
-            if result:
-                constraint_adhered += 1
-
-    m2_rate, m2_ci_low, m2_ci_high = wilson_ci(constraint_adhered, constraint_determined)
 
     # M3: Subgoal Success Rate
     subgoal_rates = []
@@ -894,13 +830,6 @@ def aggregate_condition(
             "wilson_ci_lower": round(m1_ci_low, 4),
             "wilson_ci_upper": round(m1_ci_high, 4),
         },
-        "M2_constraint_adherence": {
-            "adhered": constraint_adhered,
-            "determined": constraint_determined,
-            "rate": round(m2_rate, 4),
-            "wilson_ci_lower": round(m2_ci_low, 4),
-            "wilson_ci_upper": round(m2_ci_high, 4),
-        },
         "M3_subgoal_success": {
             "successful_subgoals": successful_subgoals,
             "total_subgoals": total_subgoals,
@@ -966,13 +895,12 @@ def aggregate_condition(
 
 def aggregate_by_category(
     runs_by_condition: dict[str, list[dict]],
-    require_manual_m2: bool = False,
 ) -> dict[str, dict[str, dict]]:
     """
-    Group episodes by task category and compute M1/M2/M3 for each category
+    Group episodes by task category and compute M1/M3 for each category
     within each condition.
 
-    Returns a nested dict: {condition: {category: {M1, M2, M3 metrics}}}.
+    Returns a nested dict: {condition: {category: {M1, M3 metrics}}}.
     Episodes whose task lacks a category field are grouped under "unknown".
     """
     result: dict[str, dict[str, dict]] = {}
@@ -1004,17 +932,6 @@ def aggregate_by_category(
                         task_successes += 1
             m1_rate, m1_lo, m1_hi = wilson_ci(task_successes, task_determined)
 
-            # M2: Constraint Adherence Rate
-            constraint_adhered = 0
-            constraint_determined = 0
-            for run in cat_runs:
-                res = is_constraint_adhered(run, require_manual=require_manual_m2)
-                if res is not None:
-                    constraint_determined += 1
-                    if res:
-                        constraint_adhered += 1
-            m2_rate, m2_lo, m2_hi = wilson_ci(constraint_adhered, constraint_determined)
-
             # M3: Subgoal Success Rate
             successful_subgoals = 0
             total_subgoals = 0
@@ -1038,13 +955,6 @@ def aggregate_by_category(
                     "rate": round(m1_rate, 4),
                     "wilson_ci_lower": round(m1_lo, 4),
                     "wilson_ci_upper": round(m1_hi, 4),
-                },
-                "M2_constraint_adherence": {
-                    "adhered": constraint_adhered,
-                    "determined": constraint_determined,
-                    "rate": round(m2_rate, 4),
-                    "wilson_ci_lower": round(m2_lo, 4),
-                    "wilson_ci_upper": round(m2_hi, 4),
                 },
                 "M3_subgoal_success": {
                     "successful_subgoals": successful_subgoals,
@@ -1091,17 +1001,16 @@ def _normalize_map_name(run: dict) -> str:
 
 def aggregate_by_map(
     runs_by_condition: dict[str, list[dict]],
-    require_manual_m2: bool = False,
 ) -> dict[str, dict[str, dict]]:
     """
-    Group episodes by map and compute M1/M2/M3 for each map within each
+    Group episodes by map and compute M1/M3 for each map within each
     condition.
 
     Map labels are normalised to the task_dir_name (e.g. ``greek_island``)
     via :func:`_normalize_map_name` so env_id strings and on-disk path
     components don't produce duplicate buckets.
 
-    Returns: {condition: {map_name: {M1, M2, M3 metrics}}}.
+    Returns: {condition: {map_name: {M1, M3 metrics}}}.
     """
     result: dict[str, dict[str, dict]] = {}
 
@@ -1129,16 +1038,6 @@ def aggregate_by_map(
                         task_successes += 1
             m1_rate, m1_lo, m1_hi = wilson_ci(task_successes, task_determined)
 
-            constraint_adhered = 0
-            constraint_determined = 0
-            for run in map_runs:
-                res = is_constraint_adhered(run, require_manual=require_manual_m2)
-                if res is not None:
-                    constraint_determined += 1
-                    if res:
-                        constraint_adhered += 1
-            m2_rate, m2_lo, m2_hi = wilson_ci(constraint_adhered, constraint_determined)
-
             successful_subgoals = 0
             total_subgoals = 0
             for run in map_runs:
@@ -1161,13 +1060,6 @@ def aggregate_by_map(
                     "wilson_ci_lower": round(m1_lo, 4),
                     "wilson_ci_upper": round(m1_hi, 4),
                 },
-                "M2_constraint_adherence": {
-                    "adhered": constraint_adhered,
-                    "determined": constraint_determined,
-                    "rate": round(m2_rate, 4),
-                    "wilson_ci_lower": round(m2_lo, 4),
-                    "wilson_ci_upper": round(m2_hi, 4),
-                },
                 "M3_subgoal_success": {
                     "successful_subgoals": successful_subgoals,
                     "total_subgoals": total_subgoals,
@@ -1184,11 +1076,10 @@ def aggregate_by_map(
 
 def aggregate_by_map_and_category(
     runs_by_condition: dict[str, list[dict]],
-    require_manual_m2: bool = False,
 ) -> dict[str, dict[str, dict[str, dict]]]:
     """
     Cross-tabulate per-map AND per-category. Returns
-    ``{condition: {map: {category: {n, M1, M2, M3}}}}``.
+    ``{condition: {map: {category: {n, M1, M3}}}}``.
 
     Motivation: in the current task design, Greek Island is ~80% constrained
     and Suburb Neighborhood is ~80% sequential, so the marginal per-map and
@@ -1226,15 +1117,6 @@ def aggregate_by_map_and_category(
                             m1_succ += 1
                 m1_rate, m1_lo, m1_hi = wilson_ci(m1_succ, m1_det)
 
-                m2_succ = m2_det = 0
-                for run in cell_runs:
-                    res = is_constraint_adhered(run, require_manual=require_manual_m2)
-                    if res is not None:
-                        m2_det += 1
-                        if res:
-                            m2_succ += 1
-                m2_rate, m2_lo, m2_hi = wilson_ci(m2_succ, m2_det)
-
                 m3_succ = m3_total = 0
                 for run in cell_runs:
                     c = run.get("condition", "")
@@ -1254,13 +1136,6 @@ def aggregate_by_map_and_category(
                         "rate": round(m1_rate, 4),
                         "wilson_ci_lower": round(m1_lo, 4),
                         "wilson_ci_upper": round(m1_hi, 4),
-                    },
-                    "M2_constraint_adherence": {
-                        "adhered": m2_succ,
-                        "determined": m2_det,
-                        "rate": round(m2_rate, 4),
-                        "wilson_ci_lower": round(m2_lo, 4),
-                        "wilson_ci_upper": round(m2_hi, 4),
                     },
                     "M3_subgoal_success": {
                         "successful_subgoals": m3_succ,
@@ -1394,10 +1269,10 @@ def compute_pairwise_tests(
     Significance reporting:
       * M1 (task success) is the headline test family. Bonferroni-corrected
         at 0.05/6 (six C0-vs-baseline comparisons).
-      * M2 (constraint adherence) and M3 (per-episode subgoal success rate)
-        are secondary / exploratory. Reported with raw p-values at alpha=0.05;
-        no family-wise correction claim. M3 uses a paired Wilcoxon test
-        (clustering-aware) instead of an unpaired Fisher test.
+      * M3 (per-episode subgoal success rate) is secondary / exploratory.
+        Reported with raw p-values at alpha=0.05; no family-wise correction
+        claim. Uses a paired Wilcoxon test (clustering-aware) instead of an
+        unpaired Fisher test.
     """
     comparisons = {}
     c0 = condition_metrics.get("condition0")
@@ -1419,16 +1294,6 @@ def compute_pairwise_tests(
                 c0_m1["successes"], c0_m1["determined"],
                 cx_m1["successes"], cx_m1["determined"],
                 family="primary",
-            )
-
-        # M2: exploratory (no family-wise correction).
-        c0_m2 = c0["M2_constraint_adherence"]
-        cx_m2 = cx["M2_constraint_adherence"]
-        if c0_m2["determined"] > 0 and cx_m2["determined"] > 0:
-            cond_comparisons["M2_constraint_adherence"] = fishers_exact_test(
-                c0_m2["adhered"], c0_m2["determined"],
-                cx_m2["adhered"], cx_m2["determined"],
-                family="exploratory",
             )
 
         # M3: paired Wilcoxon signed-rank test on per-episode subgoal-success
@@ -1464,7 +1329,7 @@ def print_summary_table(condition_metrics: dict[str, dict], pairwise: dict[str, 
     print()
 
     # Header
-    header = f"{'Condition':<28} {'N':>4} {'M1 (Task)':>12} {'M2 (Const)':>12} {'M3 (Subg)':>12} {'M8 (Steps)':>10} {'M8 (sec)':>9}"
+    header = f"{'Condition':<28} {'N':>4} {'M1 (Task)':>12} {'M3 (Subg)':>12} {'M8 (Steps)':>10} {'M8 (sec)':>9}"
     print(header)
     print("-" * 100)
 
@@ -1475,16 +1340,14 @@ def print_summary_table(condition_metrics: dict[str, dict], pairwise: dict[str, 
         name = CONDITION_NAMES.get(cond, cond)
         n = metrics["n_episodes"]
         m1 = metrics["M1_task_success"]
-        m2 = metrics["M2_constraint_adherence"]
         m3 = metrics["M3_subgoal_success"]
         m8 = metrics["M8_episode_length"]
 
         m1_str = f"{m1['rate']:.2%}" if m1["determined"] > 0 else "N/A"
-        m2_str = f"{m2['rate']:.2%}" if m2["determined"] > 0 else "N/A"
         m3_str = f"{m3['rate']:.2%}" if m3["total_subgoals"] > 0 else "N/A"
 
         print(
-            f"{name:<28} {n:>4} {m1_str:>12} {m2_str:>12} {m3_str:>12} "
+            f"{name:<28} {n:>4} {m1_str:>12} {m3_str:>12} "
             f"{m8['avg_steps']:>10.1f} {m8['avg_wall_clock_s']:>9.1f}"
         )
 
@@ -1494,7 +1357,7 @@ def print_summary_table(condition_metrics: dict[str, dict], pairwise: dict[str, 
 
     # Confidence intervals
     print("Wilson 95% Confidence Intervals:")
-    print(f"{'Condition':<28} {'M1 CI':>20} {'M2 CI':>20} {'M3 CI':>20}")
+    print(f"{'Condition':<28} {'M1 CI':>20} {'M3 CI':>20}")
     print("-" * 100)
     for cond in CONDITION_ORDER:
         metrics = condition_metrics.get(cond)
@@ -1502,14 +1365,12 @@ def print_summary_table(condition_metrics: dict[str, dict], pairwise: dict[str, 
             continue
         name = CONDITION_NAMES.get(cond, cond)
         m1 = metrics["M1_task_success"]
-        m2 = metrics["M2_constraint_adherence"]
         m3 = metrics["M3_subgoal_success"]
 
         m1_ci = f"[{m1['wilson_ci_lower']:.3f}, {m1['wilson_ci_upper']:.3f}]" if m1["determined"] > 0 else "N/A"
-        m2_ci = f"[{m2['wilson_ci_lower']:.3f}, {m2['wilson_ci_upper']:.3f}]" if m2["determined"] > 0 else "N/A"
         m3_ci = f"[{m3['wilson_ci_lower']:.3f}, {m3['wilson_ci_upper']:.3f}]" if m3["total_subgoals"] > 0 else "N/A"
 
-        print(f"{name:<28} {m1_ci:>20} {m2_ci:>20} {m3_ci:>20}")
+        print(f"{name:<28} {m1_ci:>20} {m3_ci:>20}")
 
     print()
 
@@ -1551,7 +1412,7 @@ def print_summary_table(condition_metrics: dict[str, dict], pairwise: dict[str, 
             f"Statistical Comparisons (C0 vs Baselines). "
             f"M1 = primary headline test, Bonferroni-corrected at "
             f"p < {BONFERRONI_THRESHOLD:.4f} (0.05/6). "
-            f"M2 / M3 = exploratory secondary analyses, raw p at alpha=0.05."
+            f"M3 = exploratory secondary analysis, raw p at alpha=0.05."
         )
         print(f"{'Comparison':<22} {'Metric':<22} {'Family':<12} {'p-value':>10} {'Effect':>10} {'Sig?':>6}")
         print("-" * 100)
@@ -1592,7 +1453,7 @@ def print_summary_table(condition_metrics: dict[str, dict], pairwise: dict[str, 
     print("  - M3 statistical test: paired Wilcoxon signed-rank on per-episode rates.")
     print("  - M5 (qualitative): Requires manual video annotation, not computed here.")
     print(f"  - Bonferroni correction applied to M1 family only (6 comparisons, alpha = {BONFERRONI_THRESHOLD:.4f}).")
-    print("  - M2 / M3 reported with raw p-values; no family-wise correction claim.")
+    print("  - M3 reported with raw p-values; no family-wise correction claim.")
     if not HAS_SCIPY:
         print("  - [WARNING] scipy not installed. Statistical tests were skipped.")
     print(sep)
@@ -1600,7 +1461,7 @@ def print_summary_table(condition_metrics: dict[str, dict], pairwise: dict[str, 
 
 def print_category_table(category_metrics: dict[str, dict[str, dict]]):
     """Print a per-category breakdown showing how each condition performs
-    on sequential vs constrained tasks (M1, M2, M3)."""
+    on sequential vs constrained tasks (M1, M3)."""
     sep = "=" * 110
     print()
     print(sep)
@@ -1619,11 +1480,10 @@ def print_category_table(category_metrics: dict[str, dict[str, dict]]):
         header = (
             f"  {'Condition':<28} {'N':>4} "
             f"{'M1 (Task)':>12} {'M1 CI':>20} "
-            f"{'M2 (Const)':>12} {'M2 CI':>20} "
             f"{'M3 (Subg)':>12}"
         )
         print(header)
-        print("  " + "-" * 106)
+        print("  " + "-" * 80)
 
         for cond in CONDITION_ORDER:
             cond_data = category_metrics.get(cond, {})
@@ -1634,7 +1494,6 @@ def print_category_table(category_metrics: dict[str, dict[str, dict]]):
             name = CONDITION_NAMES.get(cond, cond)
             n = cat_data["n_episodes"]
             m1 = cat_data["M1_task_success"]
-            m2 = cat_data["M2_constraint_adherence"]
             m3 = cat_data["M3_subgoal_success"]
 
             m1_str = f"{m1['rate']:.2%}" if m1["determined"] > 0 else "N/A"
@@ -1642,17 +1501,11 @@ def print_category_table(category_metrics: dict[str, dict[str, dict]]):
                 f"[{m1['wilson_ci_lower']:.3f}, {m1['wilson_ci_upper']:.3f}]"
                 if m1["determined"] > 0 else "N/A"
             )
-            m2_str = f"{m2['rate']:.2%}" if m2["determined"] > 0 else "N/A"
-            m2_ci = (
-                f"[{m2['wilson_ci_lower']:.3f}, {m2['wilson_ci_upper']:.3f}]"
-                if m2["determined"] > 0 else "N/A"
-            )
             m3_str = f"{m3['rate']:.2%}" if m3["total_subgoals"] > 0 else "N/A"
 
             print(
                 f"  {name:<28} {n:>4} "
                 f"{m1_str:>12} {m1_ci:>20} "
-                f"{m2_str:>12} {m2_ci:>20} "
                 f"{m3_str:>12}"
             )
 
@@ -1681,11 +1534,10 @@ def print_map_table(map_metrics: dict[str, dict[str, dict]]):
         header = (
             f"  {'Condition':<28} {'N':>4} "
             f"{'M1 (Task)':>12} {'M1 CI':>20} "
-            f"{'M2 (Const)':>12} {'M2 CI':>20} "
             f"{'M3 (Subg)':>12}"
         )
         print(header)
-        print("  " + "-" * 106)
+        print("  " + "-" * 80)
 
         for cond in CONDITION_ORDER:
             cond_data = map_metrics.get(cond, {})
@@ -1696,7 +1548,6 @@ def print_map_table(map_metrics: dict[str, dict[str, dict]]):
             name = CONDITION_NAMES.get(cond, cond)
             n = md["n_episodes"]
             m1 = md["M1_task_success"]
-            m2 = md["M2_constraint_adherence"]
             m3 = md["M3_subgoal_success"]
 
             m1_str = f"{m1['rate']:.2%}" if m1["determined"] > 0 else "N/A"
@@ -1704,17 +1555,11 @@ def print_map_table(map_metrics: dict[str, dict[str, dict]]):
                 f"[{m1['wilson_ci_lower']:.3f}, {m1['wilson_ci_upper']:.3f}]"
                 if m1["determined"] > 0 else "N/A"
             )
-            m2_str = f"{m2['rate']:.2%}" if m2["determined"] > 0 else "N/A"
-            m2_ci = (
-                f"[{m2['wilson_ci_lower']:.3f}, {m2['wilson_ci_upper']:.3f}]"
-                if m2["determined"] > 0 else "N/A"
-            )
             m3_str = f"{m3['rate']:.2%}" if m3["total_subgoals"] > 0 else "N/A"
 
             print(
                 f"  {name:<28} {n:>4} "
                 f"{m1_str:>12} {m1_ci:>20} "
-                f"{m2_str:>12} {m2_ci:>20} "
                 f"{m3_str:>12}"
             )
 
@@ -1757,10 +1602,10 @@ def print_map_x_category_table(
             header = (
                 f"  {'Condition':<28} {'N':>4} "
                 f"{'M1 (Task)':>12} {'M1 CI':>20} "
-                f"{'M2 (Const)':>12} {'M3 (Subg)':>12}"
+                f"{'M3 (Subg)':>12}"
             )
             print(header)
-            print("  " + "-" * 90)
+            print("  " + "-" * 80)
             for cond in CONDITION_ORDER:
                 cell = map_x_category.get(cond, {}).get(map_name, {}).get(category)
                 if not cell:
@@ -1768,20 +1613,18 @@ def print_map_x_category_table(
                 name = CONDITION_NAMES.get(cond, cond)
                 n = cell["n_episodes"]
                 m1 = cell["M1_task_success"]
-                m2 = cell["M2_constraint_adherence"]
                 m3 = cell["M3_subgoal_success"]
                 m1_str = f"{m1['rate']:.2%}" if m1["determined"] > 0 else "N/A"
                 m1_ci = (
                     f"[{m1['wilson_ci_lower']:.3f}, {m1['wilson_ci_upper']:.3f}]"
                     if m1["determined"] > 0 else "N/A"
                 )
-                m2_str = f"{m2['rate']:.2%}" if m2["determined"] > 0 else "N/A"
                 m3_str = f"{m3['rate']:.2%}" if m3["total_subgoals"] > 0 else "N/A"
                 small_n = " (n<10)" if n < 10 else ""
                 print(
                     f"  {name:<28} {n:>4} "
                     f"{m1_str:>12} {m1_ci:>20} "
-                    f"{m2_str:>12} {m3_str:>12}{small_n}"
+                    f"{m3_str:>12}{small_n}"
                 )
             print()
     print(sep)
@@ -1864,8 +1707,8 @@ def write_json_output(
             "script": "aggregate_results.py",
             "bonferroni_threshold": BONFERRONI_THRESHOLD,
             "bonferroni_family": "M1 only (6 C0-vs-baseline comparisons)",
-            "m2_m3_significance": "exploratory (raw p-value at alpha=0.05; "
-                                  "no family-wise correction claim)",
+            "m3_significance": "exploratory (raw p-value at alpha=0.05; "
+                               "no family-wise correction claim)",
             "scipy_available": HAS_SCIPY,
         },
         "conditions": condition_metrics,
@@ -1899,7 +1742,6 @@ def write_csv_output(
     fieldnames = [
         "condition", "condition_label", "n_episodes",
         "m1_rate", "m1_ci_lower", "m1_ci_upper", "m1_successes", "m1_determined",
-        "m2_rate", "m2_ci_lower", "m2_ci_upper", "m2_adhered", "m2_determined",
         "m3_rate", "m3_ci_lower", "m3_ci_upper", "m3_successful", "m3_total",
         "m4_rate", "m4_total_convergences", "m4_rescued",
         "m6_mean_rtt_s", "m6_median_rtt_s", "m6_p95_rtt_s", "m6_total_calls",
@@ -1918,7 +1760,6 @@ def write_csv_output(
                 continue
 
             m1 = metrics["M1_task_success"]
-            m2 = metrics["M2_constraint_adherence"]
             m3 = metrics["M3_subgoal_success"]
             m4 = metrics["M4_correction_rate"]
             m6 = metrics["M6_latency"]
@@ -1935,11 +1776,6 @@ def write_csv_output(
                 "m1_ci_upper": m1["wilson_ci_upper"],
                 "m1_successes": m1["successes"],
                 "m1_determined": m1["determined"],
-                "m2_rate": m2["rate"],
-                "m2_ci_lower": m2["wilson_ci_lower"],
-                "m2_ci_upper": m2["wilson_ci_upper"],
-                "m2_adhered": m2["adhered"],
-                "m2_determined": m2["determined"],
                 "m3_rate": m3["rate"],
                 "m3_ci_lower": m3["wilson_ci_lower"],
                 "m3_ci_upper": m3["wilson_ci_upper"],
@@ -2076,14 +1912,7 @@ def main():
     print()
 
     # ---- Annotation validation ----
-    # Three flavours of annotation are required for a fully reproducible run:
-    #   (a) C1 and C3 task_success: manual video-review verdict (M1 source).
-    #   (b) Every constrained-task episode (all 7 conditions) needs a
-    #       manual ``any_constraint_violated`` flag in constraint_analysis.json
-    #       so M2 is computed from the official source rather than the
-    #       runtime monitor flag.
-    #   (c) Each constrained task JSON should declare ``constraints_expected``
-    #       so the annotator knows which constraints to look for.
+    # C1 and C3 task_success requires manual video-review verdict (M1 source).
     missing_annotations: list[dict] = []
     for cond in ["condition1", "condition3"]:
         for run in runs_by_condition.get(cond, []):
@@ -2094,25 +1923,6 @@ def main():
                     "path": run["_source_path"],
                     "missing": "task_success annotation in constraint_analysis.json",
                 })
-    for cond, runs in runs_by_condition.items():
-        for run in runs:
-            task = run.get("task", {})
-            category = task.get("category")
-            if category == "constrained":
-                ce = task.get("constraints_expected")
-                if not ce or not isinstance(ce, list) or len(ce) == 0:
-                    missing_annotations.append({
-                        "condition": cond,
-                        "path": run["_source_path"],
-                        "missing": "constraints_expected in task JSON",
-                    })
-                ca = run.get("_constraint_analysis")
-                if not ca or "any_constraint_violated" not in ca:
-                    missing_annotations.append({
-                        "condition": cond,
-                        "path": run["_source_path"],
-                        "missing": "any_constraint_violated in constraint_analysis.json (manual M2 review)",
-                    })
 
     if missing_annotations:
         print(f"WARNING: {len(missing_annotations)} runs require manual annotation "
@@ -2122,27 +1932,18 @@ def main():
         print()
         print("  - To annotate C1/C3 task success: add {\"task_success\": true/false} "
               "to constraint_analysis.json in each run directory")
-        print("  - To annotate constraints: add constraints_expected list to the task JSON files")
         print()
 
         if args.strict:
             print("Exiting due to --strict flag.", file=sys.stderr)
             sys.exit(1)
 
-    # Under --strict, M2 must come from the manual constraint_analysis.json
-    # files; the runtime any_constraint_violated flag is suppressed. Missing
-    # annotation cells will appear as "determined=0" rather than being
-    # back-filled by the runtime monitor's flag.
-    require_manual_m2 = bool(args.strict)
-
     # Compute per-condition metrics
     condition_metrics = {}
     for cond in CONDITION_ORDER:
         runs = runs_by_condition.get(cond, [])
         if runs:
-            condition_metrics[cond] = aggregate_condition(
-                cond, runs, require_manual_m2=require_manual_m2,
-            )
+            condition_metrics[cond] = aggregate_condition(cond, runs)
 
     # Compute pairwise statistical tests
     pairwise = compute_pairwise_tests(condition_metrics)
@@ -2151,21 +1952,15 @@ def main():
     mcnemar_results = compute_paired_mcnemar_tests(runs_by_condition)
 
     # Compute per-category breakdown (sequential vs constrained)
-    category_metrics = aggregate_by_category(
-        runs_by_condition, require_manual_m2=require_manual_m2,
-    )
+    category_metrics = aggregate_by_category(runs_by_condition)
 
     # Compute per-map breakdown (generalization across environments)
-    map_metrics = aggregate_by_map(
-        runs_by_condition, require_manual_m2=require_manual_m2,
-    )
+    map_metrics = aggregate_by_map(runs_by_condition)
 
     # Compute per-map x per-category cross-tab (lead with this in the paper:
     # the marginal per-map and per-category tables are confounded because
     # task-category distribution is uneven across maps).
-    map_x_category = aggregate_by_map_and_category(
-        runs_by_condition, require_manual_m2=require_manual_m2,
-    )
+    map_x_category = aggregate_by_map_and_category(runs_by_condition)
 
     # Compute subgoal position breakdown
     subgoal_position = aggregate_by_subgoal_position(runs_by_condition)
