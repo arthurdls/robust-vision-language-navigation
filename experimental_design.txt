@@ -86,27 +86,14 @@ Implementation: Use the same LLM (gpt-5.4) to break the instruction
   into a numbered list of subgoals (text-to-text, no LTL formula).
   Execute subgoals sequentially with the same goal adherence monitoring as the
   full system. Advance to the next subgoal when the monitor confirms
-  completion. No automaton state tracking, no formal constraint
-  enforcement.
+  completion. No automaton state tracking.
 Why: Isolates the contribution of LTL formalism. Shows that without
-  the automaton state machine and formal constraint encoding:
+  the automaton state machine:
   (a) The LLM may hallucinate impossible orderings or skip steps.
-  (b) Temporal constraints ("never fly over X", "always stay above
-      10m") have no formal enforcement mechanism.
-  (c) Complex temporal logic (OR branches, concurrent obligations)
+  (b) Complex temporal logic (OR branches, concurrent obligations)
       cannot be expressed as a flat sequential list.
 Expected outcome: Performs reasonably on simple sequential tasks but
-  fails on tasks with temporal constraints, branching, or complex
-  dependencies. The gap vs. Condition 0 should be largest on tasks
-  with constraints.
-CONFOUND NOTE: C2 ablates BOTH LTL planning AND formal constraint
-  enforcement simultaneously. If C2 underperforms C0 on constrained
-  tasks, we cannot attribute the gap solely to the absence of LTL;
-  the lack of runtime constraint enforcement also contributes. This
-  is acknowledged as a limitation. The per-category breakdown
-  (sequential vs constrained) helps distinguish the sources: if C2
-  matches C0 on sequential tasks but diverges on constrained tasks,
-  the gap is attributable to constraint enforcement.
+  fails on tasks with branching or complex dependencies.
 
 CONDITION 3: OPEN-LOOP LTL (No Monitor, No Corrections)
 --------------------------------------------------------
@@ -213,137 +200,6 @@ Expected outcome: Reasonable progress tracking but unreliable
   similar-looking landmarks.
 
 
-3. TEMPORAL CONSTRAINT SUPPORT
-======================================================================
-
-The LTL planner supports temporal constraints (both avoidance and
-maintenance) in addition to goal sequencing. The system handles all
-constraint types that the Spot automaton can represent. Classification
-uses deterministic formula-tree walking, and runtime constraint
-checking uses BDD queries on the automaton. Four constraint forms are
-supported:
-
-  Negative (avoidance) constraints:
-  - G(!pi_X): Global avoidance. pi_X must never become true.
-    Example: "never fly over building C" with G(!pi_3).
-  - !pi_X U pi_Y: Scoped avoidance. pi_X must not become true until
-    pi_Y is achieved. Example: "stay away from the red car until you
-    reach the streetlight" with !pi_3 U pi_2.
-
-  Positive (maintenance) constraints:
-  - G(pi_X): Global maintenance. pi_X must always remain true.
-    Example: "always stay above 10 meters" with G(pi_2).
-  - pi_X U pi_Y: Scoped maintenance. pi_X must remain true until
-    pi_Y is achieved. Example: "keep the river visible until you
-    reach the tree" with pi_3 U pi_1.
-
-Each constraint carries a polarity (negative or positive) stored in
-a ConstraintInfo dataclass, which the monitor uses to label
-constraints as "AVOID" or "MAINTAIN" in VLM prompts.
-
-3a. LTL PROMPT DESIGN
------------------------------
-LTL_NL_SYSTEM_PROMPT includes documentation on constraint predicates:
-  - Constraint predicates represent CONDITIONS TO ENFORCE, not goals.
-  - Negative constraints: G(!pi_X) for unconditional avoidance,
-    !pi_X U pi_Y for scoped avoidance.
-  - Positive constraints: G(pi_X) for unconditional maintenance,
-    pi_X U pi_Y for scoped maintenance.
-  - Decision criteria: "never", "avoid", "stay away from" signal
-    negative constraint predicates; "always keep", "maintain",
-    "stay above" signal positive constraint predicates; "go to",
-    "approach", "reach" signal goals.
-
-LTL_NL_EXAMPLES_PROMPT includes worked examples:
-  - Global avoidance: "Go to tree, then streetlight, never fly over
-    building" with G(!pi_3)
-  - Scoped avoidance: "Approach sculpture, stay away from red car
-    until you reach it" with !pi_2 U pi_1
-  - Multiple avoidance: "Go to park, then traffic light, never go
-    near building A or B" with G(!pi_3) & G(!pi_4)
-  - Global maintenance: "Fly to the landmark, always stay above
-    10 meters" with G(pi_2)
-  - Scoped maintenance: "Go to tree, then streetlight, keep river
-    visible until tree" with (pi_3 U pi_1)
-  - Mixed constraints: "Navigate to bridge, stay above treeline,
-    never over highway" with G(pi_2) & G(!pi_3)
-
-3b. CONSTRAINT CLASSIFICATION AND RUNTIME CHECKING
-----------------------------------------------------
-Constraint handling has two phases: initial classification (syntactic,
-at plan time) and runtime activity checking (BDD-based, per step).
-
-INITIAL CLASSIFICATION (formula-tree walking):
-
-After the Spot automaton is built, each predicate is classified as
-goal or constraint by walking the parsed LTL formula tree. This is
-deterministic and requires no automaton probing:
-
-  G(pN)              -> positive constraint (maintain)
-  G(!pN)             -> negative constraint (avoid)
-  F(...)             -> all atomic propositions underneath are goals
-  positive pN left of U -> positive constraint (maintain until right)
-  negated !pN left of U -> sequenced goal, not a constraint
-  right of U         -> goal
-  bare AP / default  -> goal
-
-This approach covers all four supported constraint forms (G(pi_X),
-G(!pi_X), pi_X U pi_Y, !pi_X U pi_Y) and their compositions. It
-relies on the LLM producing formulas in these standard patterns,
-which the prompt design in section 3a is engineered to ensure.
-
-RUNTIME CONSTRAINT CHECKING (BDD queries):
-
-Active constraint detection per state uses polarity-aware BDDs:
-  - Negative: making the predicate TRUE produces no valid edge at
-    the current state (the automaton rejects the violation).
-  - Positive: making the predicate FALSE (with other positive
-    constraints set TRUE) produces no valid edge at the current
-    state.
-When a scoped constraint expires (e.g., !pi_X U pi_Y after pi_Y,
-or pi_X U pi_Y after pi_Y), the violation BDD starts matching
-edges and the constraint is released.
-
-Goal checking (get_next_predicate, advance_state) also satisfies
-positive constraints in BDD queries, so the automaton correctly
-identifies forward edges even when positive constraints are present.
-
-3c. GOAL ADHERENCE MONITOR CONSTRAINT HANDLING
------------------------------------------------
-The GoalAdherenceMonitor accepts a constraints parameter containing
-ConstraintInfo objects (with description and polarity). When
-constraints are present:
-
-  - Constraints are injected into DIARY_GLOBAL_PROMPT and
-    DIARY_CONVERGENCE_PROMPT after the subgoal line, labeled as
-    "AVOID: ..." for negative or "MAINTAIN: ..." for positive.
-  - During flight (global prompt): the model sets "should_stop"
-    to true when a constraint is violated or about to be violated.
-    No separate constraint_violated field is needed; the constraints
-    are listed in the prompt and the model reasons about them
-    directly. On should_stop, force_converge stops the drone and
-    triggers the convergence correction flow.
-  - During convergence: the diagnosis field includes
-    "constraint_violated" as an option. The corrective instruction
-    guidance covers both constraint types: move away from a
-    forbidden region for avoidance violations, or restore the
-    required condition for maintenance violations (e.g., "ascend
-    2 meters"). Corrections share the same budget as normal
-    convergence corrections.
-
-The SubgoalConverter is NOT modified. Constraints are handled entirely
-by the goal adherence monitor, since OpenVLA cannot process compound constraint
-instructions.
-
-3d. RUNNER INTEGRATION
-----------------------------------------------
-Before each subgoal, run_integration.py calls
-planner.get_active_constraints() to extract ConstraintInfo objects
-for constraints active at the current automaton state. These are
-passed to the GoalAdherenceMonitor via _run_subgoal. Constraint status
-(including polarity) is logged per subgoal in the result dict.
-
-
 4. TASK DESIGN
 ======================================================================
 
@@ -366,60 +222,32 @@ Three simulation maps (Unreal Engine, UnrealCV):
 Per-map results are reported separately by aggregate_results.py to
 demonstrate generalization across visually distinct environments.
 
-4b. TASK CATEGORIES (5 tasks per region, 15 total)
+4b. TASK CATEGORIES (2 tasks per region, 6 total)
 ---------------------------------------------------
 Each task is a multi-step long-horizon instruction. Tasks are designed
-to exercise different LTL operators and constraint types. For analysis,
-tasks are classified into two categories based on whether their
-instructions contain constraint language:
+to exercise different LTL operators for sequential navigation.
 
 Category: SEQUENTIAL (6 tasks across 3 maps)
-  Pure sequential navigation with no constraint language. Simple
-  ordered sequences (A then B then C) or multi-step traversals.
+  Pure sequential navigation. Simple ordered sequences (A then B
+  then C) or multi-step traversals.
   LTL: F pi_3 & (!pi_3 U pi_2) & (!pi_2 U pi_1)
   Purpose: Baseline difficulty. All conditions should handle these.
   Examples:
     - "Go past the streetlamp, then stop at the bridge..." (bridge_crossing_to_tree)
 
-Category: CONSTRAINED (9 tasks across 3 maps)
-  Instructions that include constraint language such as "maintain
-  altitude", "stay above/below/near", "never go on", "always stay",
-  "maintaining sight", etc. These are ordered sequences where temporal
-  constraints (avoidance or maintenance) must be enforced during
-  execution.
-  LTL: F pi_2 & (!pi_2 U pi_1) & (!pi_3 U pi_2) (avoidance)
-       F pi_2 & (!pi_2 U pi_1) & G(pi_3) (maintenance)
-  Purpose: THE KEY DIFFERENTIATOR. These tasks make the LTL formalism
-  strictly necessary. Without formal constraint encoding, Condition 2
-  (LLM planner) has no mechanism to enforce temporal constraints.
-  Examples:
-    - "Go past all of the pergolas ahead, maintain an altitude above the pergolas." (above_pergolas)
-    - "Never go on the road..." (sidewalk_to_crosswalk)
-    - "Stay above the water..." (shoreline_to_banner_to_statue)
-    - "...while staying above the clear trail." (trail_to_beach_over_rocks)
-    - "Go forward until the end of the road..." (orbit_white_house, maintenance: "maintain a view of the house")
-
 Task distribution per map:
-  downtown_west:           2 sequential, 3 constrained
-  greek_island:            1 sequential, 4 constrained
-  suburb_neighborhood_day: 3 sequential, 2 constrained
+  downtown_west:           2 sequential
+  greek_island:            2 sequential
+  suburb_neighborhood_day: 2 sequential
 
 With 3 starting position variants per task: 18 sequential episodes
-and 27 constrained episodes per condition (45 total).
-
-NOTE ON TASK BALANCE: 9 of the 15 tasks (60%) include meaningful
-temporal constraints (avoidance, maintenance, or both). This is
-critical: without them, the gap between Condition 0 and Condition 2
-narrows, undermining the LTL contribution. The aggregate_results.py
-script includes a per-category breakdown to show how each condition
-performs on sequential vs constrained tasks separately.
+per condition.
 
 4c. TASK JSON FORMAT
 ---------------------
 Each task JSON includes:
 {
   "task_id": "above_pergolas",
-  "category": "constrained",
   "instruction": "Go past all of the pergolas ahead, maintain an altitude above the pergolas.",
   "initial_pos": [11025, -1170, 230, 178],
   "expected_subgoal_count": 2,
@@ -427,9 +255,6 @@ Each task JSON includes:
   "max_corrections": 20,
   "diary_check_interval": 10
 }
-
-The "category" field is either "sequential" or "constrained", used by
-aggregate_results.py to produce per-category metric breakdowns.
 
 4d. STARTING POSITION VARIATIONS
 ----------------------------------
@@ -464,24 +289,6 @@ M1. Task Success Rate
     LTL subgoals were confirmed complete by the monitor (or by
     convergence in Condition 3).
   - Report: Mean +/- 95% Wilson confidence interval per condition.
-
-M2. Constraint Adherence Rate
-  - Definition: Of all episodes (successful or not), what fraction
-    maintained all temporal constraints (both avoidance and
-    maintenance) throughout execution?
-  - Measurement: Binary per episode. Determined by manual video review
-    across ALL conditions. The experimenter watches the recorded
-    episode and classifies whether each active constraint was
-    maintained throughout. This is done uniformly for all 7
-    conditions to ensure fair comparison.
-  - Report: Mean +/- 95% Wilson CI per condition.
-  - Rationale: Manual annotation is used instead of the automated
-    monitor's constraint_violated flag because (a) Conditions 1 and
-    3 have no runtime monitor, (b) the automated flag may miss
-    violations that occur during convergence, and (c) a uniform
-    measurement method across all conditions eliminates measurement
-    bias. The automated flag is still logged for diagnostic purposes
-    but is not the official M2 source.
 
 M3. Subgoal Success Rate
   - Definition: Fraction of individual subgoals (across all episodes)
@@ -542,7 +349,7 @@ M8. Average Episode Length
 
 6a. PER-EPISODE PROCEDURE
 ---------------------------
-1. Load task JSON (instruction, initial_pos, constraints).
+1. Load task JSON (instruction, initial_pos).
 2. Teleport drone to starting position. Wait for stabilization.
 3. Reset OpenVLA model state.
 4. Execute the pipeline for the active condition:
@@ -556,12 +363,12 @@ M8. Average Episode Length
 5. Log all frames, diary entries, monitor decisions, corrections,
    VLM call records, and trajectory poses.
 6. Record final outcome: success/failure, stop_reason, subgoal
-   completion status, constraint violations.
+   completion status.
 
 6b. EPISODE COUNT
 ------------------
-15 tasks x 3 starting variations = 45 episodes per condition
-7 conditions x 45 = 315 total episodes
+6 tasks x 3 starting variations = 18 episodes per condition
+7 conditions x 18 = 126 total episodes
 
 6c. RANDOMIZATION AND TASK ORDER
 ----------------------------------
@@ -601,27 +408,6 @@ For conditions without reliable automated success signals:
     in C3 and does not indicate true goal achievement.
   - All other conditions (C0, C2, C4, C5, C6) use the monitor's
     "monitor_complete" signal as the automated success criterion.
-
-6f. MANUAL CONSTRAINT ADHERENCE ANNOTATION
---------------------------------------------
-M2 (constraint adherence) is determined by manual video review for
-ALL 7 conditions. For each episode of a constrained task:
-  1. Load the recorded video and the task's constraint descriptions.
-  2. Watch the full episode and note any frames where a constraint
-     is violated (e.g., drone flies over a forbidden area, altitude
-     drops below the required threshold, target leaves the frame
-     when it should be maintained in view).
-  3. Classify the episode as adherent (no violations) or violated.
-
-This applies to all 27 constrained episodes per condition (9
-constrained tasks x 3 variants), for a total of 189 annotations
-(27 x 7 conditions). Sequential tasks (18 per condition) have no
-constraints and are excluded from M2.
-
-Annotation is done post-hoc from saved frame sequences and playback
-videos. The automated constraint_violated flag from the goal
-adherence monitor is logged separately for diagnostic comparison
-but is not the official M2 measurement.
 
 
 7. COMPUTE BUDGET
@@ -691,7 +477,7 @@ available, but VLM API rate limits may be a bottleneck.
 
 8a. PRIMARY COMPARISONS
 -------------------------
-For each primary metric (M1, M2, M3):
+For each primary metric (M1, M3):
   - Report mean and 95% Wilson confidence interval per condition.
   - Two complementary statistical tests:
     (a) Fisher's exact test: unpaired comparison of success counts
@@ -730,7 +516,6 @@ Text Diary             | Yes | No  | Yes | No  | No  | No  | Yes
 Displacement Data      | Yes | No  | Yes | No  | No  | No  | Yes
 Convergence Correction | Yes | No  | Yes | No  | Yes*| Yes | Yes
 Stall Detection        | Yes | No  | Yes | No  | No  | Yes+| Yes+
-Constraint Enforcement | Yes | No  | No  | No  | Yes | Yes | Yes
 
 C4*: Uses single-frame VLM, no diary. Has convergence corrections
      but based on single-frame assessment only.
@@ -767,11 +552,11 @@ A3. OpenVLA as the fixed low-level policy.
     instantiation. The contribution is the LTL + monitoring framework,
     not the specific VLA model.
 
-A4. VLM accuracy for constraint monitoring.
-    The goal adherence monitor relies on VLM visual understanding to detect
-    constraint violations. VLM errors (failing to notice the drone
-    is near a forbidden landmark) will propagate as undetected
-    violations. Quantify this in M5.
+A4. VLM accuracy for completion monitoring.
+    The goal adherence monitor relies on VLM visual understanding to
+    assess subgoal completion. VLM errors (failing to notice the
+    drone has or has not reached the target) will propagate as
+    incorrect completion decisions. Quantify this in M5.
 
 A5. Simulation fidelity.
     UnrealCV provides photorealistic rendering but lacks dynamic
@@ -795,23 +580,10 @@ Before running the full experiment suite:
     grid provides no measurable benefit in these pilots, consider
     dropping Condition 5 and reducing scope. (Per user NOTE2.)
 
-[ ] CONSTRAINT PIPELINE: Verify end-to-end in the simulator.
-    Run at least 3 tasks with temporal constraints and confirm:
-    (a) LTL planner generates correct formulas with G(!pi_X),
-        !pi_X U pi_Y, G(pi_X), or pi_X U pi_Y.
-    (b) Planner classifies constraints with correct polarity
-        (negative for avoidance, positive for maintenance).
-    (c) Runner extracts active constraints per subgoal and passes
-        them to the goal adherence monitor with polarity labels.
-    (d) Diary monitor detects violations and issues corrective commands.
-
 [ ] TASK SCOUTING: Use scripts/scout_locations.py to identify the 3
     map regions. For each region, verify:
-    (a) Sufficient landmark diversity for 5 tasks.
-    (b) Constraint tasks are physically meaningful (e.g., there IS a
-        building between the start and the tree that the drone must
-        avoid, or altitude bounds are verifiable).
-    (c) Starting positions are valid and the drone spawns correctly.
+    (a) Sufficient landmark diversity for 2 tasks.
+    (b) Starting positions are valid and the drone spawns correctly.
 
 [ ] CONDITION IMPLEMENTATIONS: Verify each modified script runs
     without errors on at least 1 task:
@@ -823,9 +595,7 @@ Before running the full experiment suite:
 
 [ ] ARTIFACT LOGGING: Verify all conditions produce comparable output
     artifacts (frames, trajectories, monitor logs, playback videos)
-    for post-hoc analysis. All conditions need saved frames and
-    playback videos for manual constraint adherence annotation
-    (see Section 6f).
+    for post-hoc analysis.
 
 
 11. PAPER FRAMING NOTES
@@ -837,12 +607,7 @@ Before running the full experiment suite:
   decomposition + sequential execution) applied to UAV navigation.
   Note that none of these prior methods target UAV control with LTL.
 
-- The strongest story comes from the gap between Condition 2 and
-  Condition 0 on constraint tasks (both avoidance and maintenance).
-  This is the unique contribution of LTL formalism over ad-hoc LLM
-  planning.
-
-- The second strongest story comes from Condition 3 vs. Condition 0.
+- The strongest story comes from Condition 3 vs. Condition 0.
   This proves that even with perfect planning (same LTL), execution
   monitoring is critical.
 
@@ -854,11 +619,9 @@ Before running the full experiment suite:
   concerns. Show that monitoring adds <X% wall-clock overhead in
   async mode.
 
-- Report results at three levels of granularity:
-  (a) Aggregate: overall M1/M2/M3 per condition (main results table).
-  (b) Per-category: sequential vs constrained tasks (demonstrates that
-      the LTL advantage comes from constrained tasks specifically).
-  (c) Per-map: results per simulation environment (demonstrates
+- Report results at two levels of granularity:
+  (a) Aggregate: overall M1/M3 per condition (main results table).
+  (b) Per-map: results per simulation environment (demonstrates
       generalization, not overfitting to one environment).
 
 - For C6, use the label "Text-Only Global Assessment" in all paper
@@ -871,23 +634,19 @@ Before running the full experiment suite:
 12. IMPLEMENTATION PRIORITY ORDER
 ======================================================================
 
-1. Temporal constraint support (Section 3) -- load-bearing for the
-   paper's core contribution. Without this, the LTL advantage over
-   Condition 2 is marginal.
-
-2. Task design and scouting (Section 4) -- tasks must be designed
+1. Task design and scouting (Section 4) -- tasks must be designed
    before any experiments run.
 
-3. Token cost validation (Section 10, first item) -- determines
+2. Token cost validation (Section 10, first item) -- determines
    whether the budget is feasible.
 
-4. Condition 3 implementation (run_condition3_open_loop.py) --
+3. Condition 3 implementation (run_condition3_open_loop.py) --
    most important baseline, run first.
 
-5. Condition 0 implementation (already exists as run_integration.py)
+4. Condition 0 implementation (already exists as run_integration.py)
    -- full system, run second.
 
-6. Remaining conditions (1, 2, 4, 5, 6) -- implement and run in
+5. Remaining conditions (1, 2, 4, 5, 6) -- implement and run in
    parallel if possible.
 
-7. Post-hoc analysis scripts and manual annotation.
+6. Post-hoc analysis scripts and manual annotation.
