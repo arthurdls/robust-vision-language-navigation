@@ -2463,7 +2463,7 @@ def main() -> None:
         if args.no_ai:
             from rvln.ai.no_ai_stubs import (
                 ManualLLMUserInterface as LLMUserInterface,
-                ManualSequentialLTLPlanner as LTLSymbolicPlanner,
+                ManualLTLSymbolicPlanner as LTLSymbolicPlanner,
             )
             if args.diary_mode != "frame":
                 logger.warning(
