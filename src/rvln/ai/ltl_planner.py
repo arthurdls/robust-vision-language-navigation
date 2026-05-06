@@ -219,8 +219,9 @@ class LTLSymbolicPlanner:
 
         if len(self.pi_map) == 1:
             k = next(iter(self.pi_map.keys()))
-            self._last_returned_predicate_key = k
-            return self.pi_map[k]
+            if k != self._last_returned_predicate_key:
+                self._last_returned_predicate_key = k
+                return self.pi_map[k]
         print("[LTL Planner] No tasks trigger a state change. Mission Complete.")
         self.finished = True
         return None

@@ -16,7 +16,6 @@ import pytest
 spot = pytest.importorskip("spot", reason="spot (conda-forge) not available outside rvln-sim")
 
 from rvln.ai.ltl_planner import (
-    ConstraintInfo,
     LTLSymbolicPlanner,
     _predicate_key_to_index,
     _normalize_pi_predicates,
@@ -263,160 +262,8 @@ def test_normalize_key_variants():
     assert next_p == "First"
 
 
-def test_classify_global_avoidance():
-    """G(!pi_3) makes pi_3 a negative constraint, not a goal."""
-    mock = MockLLM()
-    mock.ltl_nl_formula = {
-        "pi_predicates": {
-            "pi_1": "Go to tree A",
-            "pi_2": "Go to streetlight B",
-            "pi_3": "Flying over building C",
-        },
-        "ltl_nl_formula": "F pi_2 & (!pi_2 U pi_1) & G(!pi_3)",
-    }
-    planner = LTLSymbolicPlanner(mock)
-    planner.plan_from_natural_language("Go to A then B, never fly over C")
-
-    assert "pi_3" in planner.constraint_predicates
-    assert planner.constraint_predicates["pi_3"].polarity == "negative"
-    assert "pi_1" not in planner.constraint_predicates
-    assert "pi_2" not in planner.constraint_predicates
-
-
-def test_multiple_global_constraints():
-    """Multiple G(!pi_X) constraints all active simultaneously."""
-    mock = MockLLM()
-    mock.ltl_nl_formula = {
-        "pi_predicates": {
-            "pi_1": "Go to the park",
-            "pi_2": "Near building A",
-            "pi_3": "Near building B",
-        },
-        "ltl_nl_formula": "F pi_1 & G(!pi_2) & G(!pi_3)",
-    }
-    planner = LTLSymbolicPlanner(mock)
-    planner.plan_from_natural_language("Go to park, avoid both buildings")
-
-    assert "pi_2" in planner.constraint_predicates
-    assert "pi_3" in planner.constraint_predicates
-    assert "pi_1" not in planner.constraint_predicates
-
-    _ = planner.get_next_predicate()
-    constraints = planner.get_active_constraints()
-    assert len(constraints) == 2
-    descs = [c.description for c in constraints]
-    assert "Near building A" in descs
-    assert "Near building B" in descs
-
-
-def test_classify_global_positive():
-    """G(pi_2) makes pi_2 a positive constraint."""
-    mock = MockLLM()
-    mock.ltl_nl_formula = {
-        "pi_predicates": {
-            "pi_1": "Fly to the landmark",
-            "pi_2": "Above 10 meters altitude",
-        },
-        "ltl_nl_formula": "F pi_1 & G(pi_2)",
-    }
-    planner = LTLSymbolicPlanner(mock)
-    planner.plan_from_natural_language("Fly to landmark, always stay above 10m")
-
-    assert "pi_2" in planner.constraint_predicates
-    assert planner.constraint_predicates["pi_2"].polarity == "positive"
-    assert "pi_1" not in planner.constraint_predicates
-
-
-def test_positive_constraint_single_goal():
-    """G(pi_2) with single goal: full sequence works."""
-    mock = MockLLM()
-    mock.ltl_nl_formula = {
-        "pi_predicates": {
-            "pi_1": "Reach the tower",
-            "pi_2": "Altitude above 20m",
-        },
-        "ltl_nl_formula": "F pi_1 & G(pi_2)",
-    }
-    planner = LTLSymbolicPlanner(mock)
-    planner.plan_from_natural_language("reach tower, always above 20m")
-
-    order = []
-    while True:
-        p = planner.get_next_predicate()
-        if p is None:
-            break
-        order.append(p)
-        planner.advance_state(p)
-    assert order == ["Reach the tower"]
-    assert planner.finished
-
-
-def test_positive_constraint_multi_step_sequence():
-    """Positive constraint with three-step sequence: goals unaffected."""
-    mock = MockLLM()
-    mock.ltl_nl_formula = {
-        "pi_predicates": {
-            "pi_1": "Go to A",
-            "pi_2": "Go to B",
-            "pi_3": "Go to C",
-            "pi_4": "Keep road visible",
-        },
-        "ltl_nl_formula": "F pi_3 & (!pi_3 U pi_2) & (!pi_2 U pi_1) & G(pi_4)",
-    }
-    planner = LTLSymbolicPlanner(mock)
-    planner.plan_from_natural_language("A then B then C, always keep road visible")
-
-    assert planner.constraint_predicates["pi_4"].polarity == "positive"
-    assert "pi_1" not in planner.constraint_predicates
-    assert "pi_2" not in planner.constraint_predicates
-    assert "pi_3" not in planner.constraint_predicates
-
-    order = []
-    while True:
-        p = planner.get_next_predicate()
-        if p is None:
-            break
-        constraints = planner.get_active_constraints()
-        assert any(c.description == "Keep road visible" for c in constraints)
-        order.append(p)
-        planner.advance_state(p)
-    assert order == ["Go to A", "Go to B", "Go to C"]
-
-
-def test_scoped_positive_and_negative_together():
-    """Scoped positive (!pi_4 U pi_2) + scoped negative (!pi_3 U pi_1) together."""
-    mock = MockLLM()
-    mock.ltl_nl_formula = {
-        "pi_predicates": {
-            "pi_1": "Go to the tree",
-            "pi_2": "Go to the streetlight",
-            "pi_3": "Near the red car",
-            "pi_4": "River visible",
-        },
-        "ltl_nl_formula": "F pi_2 & (!pi_2 U pi_1) & (!pi_3 U pi_1) & (pi_4 U pi_1)",
-    }
-    planner = LTLSymbolicPlanner(mock)
-    planner.plan_from_natural_language("tree then streetlight, avoid car and keep river until tree")
-
-    assert planner.constraint_predicates["pi_3"].polarity == "negative"
-    assert planner.constraint_predicates["pi_4"].polarity == "positive"
-
-    current = planner.get_next_predicate()
-    assert current == "Go to the tree"
-    constraints = planner.get_active_constraints()
-    descs = {c.description: c.polarity for c in constraints}
-    assert descs["Near the red car"] == "negative"
-    assert descs["River visible"] == "positive"
-
-    planner.advance_state(current)
-    current = planner.get_next_predicate()
-    assert current == "Go to the streetlight"
-    constraints = planner.get_active_constraints()
-    assert len(constraints) == 0
-
-
 # -----------------------------------------------------------------------
-# Complex automaton traversal and constraint lifecycle
+# Complex automaton traversal
 # -----------------------------------------------------------------------
 
 def _run_full(planner):
@@ -431,18 +278,16 @@ def _run_full(planner):
     return order
 
 
-def _active_descs(planner):
-    """Return set of active constraint descriptions."""
-    return {c.description for c in planner.get_active_constraints()}
-
-
-def _active_map(planner):
-    """Return dict of active constraint description -> polarity."""
-    return {c.description: c.polarity for c in planner.get_active_constraints()}
+def _step(planner, n):
+    """Advance the planner through n steps."""
+    for _ in range(n):
+        p = planner.get_next_predicate()
+        assert p is not None
+        planner.advance_state(p)
 
 
 class TestLongSequence:
-    """Five-step ordered sequence with no constraints."""
+    """Five-step ordered sequence."""
 
     def _make(self):
         mock = MockLLM()
@@ -467,10 +312,6 @@ class TestLongSequence:
         order = _run_full(self._make())
         assert order == ["Go to A", "Go to B", "Go to C", "Go to D", "Go to E"]
 
-    def test_no_constraints(self):
-        planner = self._make()
-        assert planner.constraint_predicates == {}
-
     def test_finished_after_completion(self):
         planner = self._make()
         _run_full(planner)
@@ -486,433 +327,6 @@ class TestLongSequence:
             planner.advance_state(p)
             states.append(planner.current_automaton_state)
         assert len(set(states)) == 6, f"Expected 6 distinct states, got {states}"
-
-
-class TestGlobalConstraintThroughoutLongSequence:
-    """Four-step sequence with one global avoidance active at every step."""
-
-    def _make(self):
-        mock = MockLLM()
-        mock.ltl_nl_formula = {
-            "pi_predicates": {
-                "pi_1": "Go to A",
-                "pi_2": "Go to B",
-                "pi_3": "Go to C",
-                "pi_4": "Go to D",
-                "pi_5": "Near the danger zone",
-            },
-            "ltl_nl_formula": (
-                "F pi_4 & (!pi_4 U pi_3) & (!pi_3 U pi_2) "
-                "& (!pi_2 U pi_1) & G(!pi_5)"
-            ),
-        }
-        planner = LTLSymbolicPlanner(mock)
-        planner.plan_from_natural_language("A B C D, avoid danger zone")
-        return planner
-
-    def test_constraint_active_at_every_goal_step(self):
-        planner = self._make()
-        for i in range(4):
-            p = planner.get_next_predicate()
-            assert p is not None, f"Step {i+1} should return a goal"
-            assert "Near the danger zone" in _active_descs(planner), (
-                f"Global constraint should be active at step {i+1}"
-            )
-            planner.advance_state(p)
-        assert planner.get_next_predicate() is None
-        assert planner.finished
-
-    def test_goals_not_in_constraints(self):
-        planner = self._make()
-        assert "pi_1" not in planner.constraint_predicates
-        assert "pi_2" not in planner.constraint_predicates
-        assert "pi_3" not in planner.constraint_predicates
-        assert "pi_4" not in planner.constraint_predicates
-        assert "pi_5" in planner.constraint_predicates
-
-    def test_constraint_inactive_after_finish(self):
-        planner = self._make()
-        _run_full(planner)
-        assert planner.get_active_constraints() == []
-
-
-class TestMultipleGlobalConstraintsThroughSequence:
-    """Three-step sequence with three simultaneous global avoidance constraints."""
-
-    def _make(self):
-        mock = MockLLM()
-        mock.ltl_nl_formula = {
-            "pi_predicates": {
-                "pi_1": "Go to A",
-                "pi_2": "Go to B",
-                "pi_3": "Go to C",
-                "pi_4": "Near zone X",
-                "pi_5": "Near zone Y",
-                "pi_6": "Near zone Z",
-            },
-            "ltl_nl_formula": (
-                "F pi_3 & (!pi_3 U pi_2) & (!pi_2 U pi_1) "
-                "& G(!pi_4) & G(!pi_5) & G(!pi_6)"
-            ),
-        }
-        planner = LTLSymbolicPlanner(mock)
-        planner.plan_from_natural_language("A B C, avoid X Y Z")
-        return planner
-
-    def test_all_three_constraints_active_throughout(self):
-        planner = self._make()
-        for i in range(3):
-            p = planner.get_next_predicate()
-            assert p is not None
-            active = _active_descs(planner)
-            assert "Near zone X" in active, f"Step {i+1}: X should be active"
-            assert "Near zone Y" in active, f"Step {i+1}: Y should be active"
-            assert "Near zone Z" in active, f"Step {i+1}: Z should be active"
-            planner.advance_state(p)
-        assert planner.get_next_predicate() is None
-        assert planner.finished
-
-    def test_correct_order(self):
-        assert _run_full(self._make()) == ["Go to A", "Go to B", "Go to C"]
-
-
-class TestScopedConstraintReleaseMidSequence:
-    """Four-step sequence with scoped avoidance releasing after step 2."""
-
-    def _make(self):
-        mock = MockLLM()
-        mock.ltl_nl_formula = {
-            "pi_predicates": {
-                "pi_1": "Go to A",
-                "pi_2": "Go to B",
-                "pi_3": "Go to C",
-                "pi_4": "Go to D",
-                "pi_5": "Near the hazard",
-            },
-            # Avoid hazard until B is reached
-            "ltl_nl_formula": (
-                "F pi_4 & (!pi_4 U pi_3) & (!pi_3 U pi_2) "
-                "& (!pi_2 U pi_1) & (!pi_5 U pi_2)"
-            ),
-        }
-        planner = LTLSymbolicPlanner(mock)
-        planner.plan_from_natural_language("A B C D, avoid hazard until B")
-        return planner
-
-    def test_constraint_active_before_release_point(self):
-        planner = self._make()
-        # Step 1: Go to A - hazard should be active
-        p1 = planner.get_next_predicate()
-        assert p1 == "Go to A"
-        assert "Near the hazard" in _active_descs(planner)
-        planner.advance_state(p1)
-
-        # Step 2: Go to B - hazard should still be active (releases AFTER B)
-        p2 = planner.get_next_predicate()
-        assert p2 == "Go to B"
-        assert "Near the hazard" in _active_descs(planner)
-        planner.advance_state(p2)
-
-    def test_constraint_released_after_release_point(self):
-        planner = self._make()
-        _step(planner, 2)  # advance through A and B
-
-        # Step 3: Go to C - hazard should be released
-        p3 = planner.get_next_predicate()
-        assert p3 == "Go to C"
-        assert "Near the hazard" not in _active_descs(planner)
-        planner.advance_state(p3)
-
-        # Step 4: Go to D - still released
-        p4 = planner.get_next_predicate()
-        assert p4 == "Go to D"
-        assert "Near the hazard" not in _active_descs(planner)
-
-
-class TestTwoScopedConstraintsDifferentReleasePoints:
-    """Four-step sequence with two scoped constraints releasing at steps 1 and 3."""
-
-    def _make(self):
-        mock = MockLLM()
-        mock.ltl_nl_formula = {
-            "pi_predicates": {
-                "pi_1": "Go to A",
-                "pi_2": "Go to B",
-                "pi_3": "Go to C",
-                "pi_4": "Go to D",
-                "pi_5": "Near hazard alpha",
-                "pi_6": "Near hazard beta",
-            },
-            # alpha releases after A, beta releases after C
-            "ltl_nl_formula": (
-                "F pi_4 & (!pi_4 U pi_3) & (!pi_3 U pi_2) "
-                "& (!pi_2 U pi_1) & (!pi_5 U pi_1) & (!pi_6 U pi_3)"
-            ),
-        }
-        planner = LTLSymbolicPlanner(mock)
-        planner.plan_from_natural_language(
-            "A B C D, avoid alpha until A, avoid beta until C"
-        )
-        return planner
-
-    def test_both_active_initially(self):
-        planner = self._make()
-        p1 = planner.get_next_predicate()
-        assert p1 == "Go to A"
-        active = _active_descs(planner)
-        assert "Near hazard alpha" in active
-        assert "Near hazard beta" in active
-
-    def test_alpha_releases_after_A(self):
-        planner = self._make()
-        _step(planner, 1)  # complete A
-
-        p2 = planner.get_next_predicate()
-        assert p2 == "Go to B"
-        active = _active_descs(planner)
-        assert "Near hazard alpha" not in active, "Alpha should release after A"
-        assert "Near hazard beta" in active, "Beta should still be active"
-
-    def test_beta_releases_after_C(self):
-        planner = self._make()
-        _step(planner, 3)  # complete A, B, C
-
-        p4 = planner.get_next_predicate()
-        assert p4 == "Go to D"
-        active = _active_descs(planner)
-        assert "Near hazard alpha" not in active
-        assert "Near hazard beta" not in active, "Beta should release after C"
-
-    def test_full_order(self):
-        assert _run_full(self._make()) == [
-            "Go to A", "Go to B", "Go to C", "Go to D"
-        ]
-
-
-class TestGlobalPlusScopedConstraints:
-    """Global avoidance persists while scoped avoidance releases."""
-
-    def _make(self):
-        mock = MockLLM()
-        mock.ltl_nl_formula = {
-            "pi_predicates": {
-                "pi_1": "Go to A",
-                "pi_2": "Go to B",
-                "pi_3": "Go to C",
-                "pi_4": "Near the wall",      # scoped: releases after B
-                "pi_5": "Over the river",      # global: always active
-            },
-            "ltl_nl_formula": (
-                "F pi_3 & (!pi_3 U pi_2) & (!pi_2 U pi_1) "
-                "& (!pi_4 U pi_2) & G(!pi_5)"
-            ),
-        }
-        planner = LTLSymbolicPlanner(mock)
-        planner.plan_from_natural_language("A B C, avoid wall until B, never over river")
-        return planner
-
-    def test_both_active_at_step_1(self):
-        planner = self._make()
-        planner.get_next_predicate()
-        active = _active_descs(planner)
-        assert "Near the wall" in active
-        assert "Over the river" in active
-
-    def test_both_active_at_step_2(self):
-        planner = self._make()
-        _step(planner, 1)
-        planner.get_next_predicate()
-        active = _active_descs(planner)
-        assert "Near the wall" in active, "Scoped still active before B completes"
-        assert "Over the river" in active
-
-    def test_scoped_releases_global_persists_at_step_3(self):
-        planner = self._make()
-        _step(planner, 2)  # complete A and B
-        planner.get_next_predicate()
-        active = _active_descs(planner)
-        assert "Near the wall" not in active, "Scoped should release after B"
-        assert "Over the river" in active, "Global should still be active"
-
-
-class TestPositiveConstraintThroughSequence:
-    """Positive (maintenance) constraint stays active through entire 4-step sequence."""
-
-    def _make(self):
-        mock = MockLLM()
-        mock.ltl_nl_formula = {
-            "pi_predicates": {
-                "pi_1": "Go to A",
-                "pi_2": "Go to B",
-                "pi_3": "Go to C",
-                "pi_4": "Go to D",
-                "pi_5": "Above 10m altitude",
-            },
-            "ltl_nl_formula": (
-                "F pi_4 & (!pi_4 U pi_3) & (!pi_3 U pi_2) "
-                "& (!pi_2 U pi_1) & G(pi_5)"
-            ),
-        }
-        planner = LTLSymbolicPlanner(mock)
-        planner.plan_from_natural_language("A B C D, always above 10m")
-        return planner
-
-    def test_positive_constraint_at_every_step(self):
-        planner = self._make()
-        for i in range(4):
-            p = planner.get_next_predicate()
-            assert p is not None
-            active = _active_map(planner)
-            assert "Above 10m altitude" in active, f"Step {i+1}: positive constraint missing"
-            assert active["Above 10m altitude"] == "positive"
-            planner.advance_state(p)
-        assert planner.get_next_predicate() is None
-        assert planner.finished
-
-    def test_only_goals_in_execution_order(self):
-        order = _run_full(self._make())
-        assert order == ["Go to A", "Go to B", "Go to C", "Go to D"]
-
-
-class TestScopedPositiveRelease:
-    """Scoped positive constraint (pi_X U pi_Y) releases after Y is achieved."""
-
-    def _make(self):
-        mock = MockLLM()
-        mock.ltl_nl_formula = {
-            "pi_predicates": {
-                "pi_1": "Go to A",
-                "pi_2": "Go to B",
-                "pi_3": "Go to C",
-                "pi_4": "Road visible",
-            },
-            # Keep road visible until B
-            "ltl_nl_formula": (
-                "F pi_3 & (!pi_3 U pi_2) & (!pi_2 U pi_1) & (pi_4 U pi_2)"
-            ),
-        }
-        planner = LTLSymbolicPlanner(mock)
-        planner.plan_from_natural_language("A B C, keep road visible until B")
-        return planner
-
-    def test_active_before_release(self):
-        planner = self._make()
-        p1 = planner.get_next_predicate()
-        assert p1 == "Go to A"
-        active = _active_map(planner)
-        assert "Road visible" in active
-        assert active["Road visible"] == "positive"
-
-        planner.advance_state(p1)
-        p2 = planner.get_next_predicate()
-        assert p2 == "Go to B"
-        assert "Road visible" in _active_descs(planner)
-
-    def test_released_after_B(self):
-        planner = self._make()
-        _step(planner, 2)  # complete A and B
-
-        p3 = planner.get_next_predicate()
-        assert p3 == "Go to C"
-        assert "Road visible" not in _active_descs(planner)
-
-
-class TestMixedScopedConstraintTypes:
-    """Scoped negative + scoped positive releasing at different points."""
-
-    def _make(self):
-        mock = MockLLM()
-        mock.ltl_nl_formula = {
-            "pi_predicates": {
-                "pi_1": "Go to A",
-                "pi_2": "Go to B",
-                "pi_3": "Go to C",
-                "pi_4": "Go to D",
-                "pi_5": "Near the fence",     # negative, releases after A
-                "pi_6": "Lake visible",        # positive, releases after C
-            },
-            "ltl_nl_formula": (
-                "F pi_4 & (!pi_4 U pi_3) & (!pi_3 U pi_2) "
-                "& (!pi_2 U pi_1) & (!pi_5 U pi_1) & (pi_6 U pi_3)"
-            ),
-        }
-        planner = LTLSymbolicPlanner(mock)
-        planner.plan_from_natural_language(
-            "A B C D, avoid fence until A, keep lake visible until C"
-        )
-        return planner
-
-    def test_both_active_initially(self):
-        planner = self._make()
-        planner.get_next_predicate()
-        m = _active_map(planner)
-        assert m["Near the fence"] == "negative"
-        assert m["Lake visible"] == "positive"
-
-    def test_fence_released_lake_still_active_at_B(self):
-        planner = self._make()
-        _step(planner, 1)
-        planner.get_next_predicate()
-        active = _active_descs(planner)
-        assert "Near the fence" not in active
-        assert "Lake visible" in active
-
-    def test_both_released_at_D(self):
-        planner = self._make()
-        _step(planner, 3)
-        planner.get_next_predicate()
-        assert _active_descs(planner) == set()
-
-    def test_full_order(self):
-        assert _run_full(self._make()) == [
-            "Go to A", "Go to B", "Go to C", "Go to D"
-        ]
-
-
-class TestGlobalMixedWithScopedMixed:
-    """Global negative + global positive + scoped negative, all together."""
-
-    def _make(self):
-        mock = MockLLM()
-        mock.ltl_nl_formula = {
-            "pi_predicates": {
-                "pi_1": "Go to A",
-                "pi_2": "Go to B",
-                "pi_3": "Go to C",
-                "pi_4": "Above 20m",           # global positive
-                "pi_5": "Over the highway",     # global negative
-                "pi_6": "Near the crane",       # scoped negative, releases after B
-            },
-            "ltl_nl_formula": (
-                "F pi_3 & (!pi_3 U pi_2) & (!pi_2 U pi_1) "
-                "& G(pi_4) & G(!pi_5) & (!pi_6 U pi_2)"
-            ),
-        }
-        planner = LTLSymbolicPlanner(mock)
-        planner.plan_from_natural_language(
-            "A B C, always above 20m, never over highway, avoid crane until B"
-        )
-        return planner
-
-    def test_all_three_active_at_step_1(self):
-        planner = self._make()
-        planner.get_next_predicate()
-        m = _active_map(planner)
-        assert m["Above 20m"] == "positive"
-        assert m["Over the highway"] == "negative"
-        assert m["Near the crane"] == "negative"
-
-    def test_scoped_releases_globals_persist_at_step_3(self):
-        planner = self._make()
-        _step(planner, 2)
-        planner.get_next_predicate()
-        m = _active_map(planner)
-        assert "Above 20m" in m, "Global positive should persist"
-        assert "Over the highway" in m, "Global negative should persist"
-        assert "Near the crane" not in m, "Scoped should release after B"
-
-    def test_correct_order(self):
-        assert _run_full(self._make()) == ["Go to A", "Go to B", "Go to C"]
 
 
 class TestEdgeCases:
@@ -964,71 +378,6 @@ class TestEdgeCases:
         for _ in range(5):
             assert planner.get_next_predicate() is None
 
-    def test_constraints_empty_after_finished(self):
-        """Active constraints list is empty once mission is finished."""
-        mock = MockLLM()
-        mock.ltl_nl_formula = {
-            "pi_predicates": {
-                "pi_1": "Go to A",
-                "pi_2": "Danger zone",
-            },
-            "ltl_nl_formula": "F pi_1 & G(!pi_2)",
-        }
-        planner = LTLSymbolicPlanner(mock)
-        planner.plan_from_natural_language("A, avoid danger")
-        _run_full(planner)
-        assert planner.get_active_constraints() == []
-
-    def test_six_predicates_four_constraints(self):
-        """Complex formula with 2 goals and 4 constraints (2 global, 2 scoped)."""
-        mock = MockLLM()
-        mock.ltl_nl_formula = {
-            "pi_predicates": {
-                "pi_1": "Go to A",
-                "pi_2": "Go to B",
-                "pi_3": "Near zone X",       # global negative
-                "pi_4": "Near zone Y",       # global negative
-                "pi_5": "Near zone W",       # scoped negative, releases after A
-                "pi_6": "Path clear",        # global positive
-            },
-            "ltl_nl_formula": (
-                "F pi_2 & (!pi_2 U pi_1) "
-                "& G(!pi_3) & G(!pi_4) & (!pi_5 U pi_1) & G(pi_6)"
-            ),
-        }
-        planner = LTLSymbolicPlanner(mock)
-        planner.plan_from_natural_language("A then B with 4 constraints")
-
-        assert len(planner.constraint_predicates) == 4
-        assert planner.constraint_predicates["pi_3"].polarity == "negative"
-        assert planner.constraint_predicates["pi_4"].polarity == "negative"
-        assert planner.constraint_predicates["pi_5"].polarity == "negative"
-        assert planner.constraint_predicates["pi_6"].polarity == "positive"
-
-        # At step 1: all 4 active
-        p1 = planner.get_next_predicate()
-        assert p1 == "Go to A"
-        assert len(planner.get_active_constraints()) == 4
-
-        planner.advance_state(p1)
-
-        # At step 2: scoped W released, 3 remain
-        p2 = planner.get_next_predicate()
-        assert p2 == "Go to B"
-        active = _active_descs(planner)
-        assert "Near zone X" in active
-        assert "Near zone Y" in active
-        assert "Path clear" in active
-        assert "Near zone W" not in active
-
-
-def _step(planner, n):
-    """Advance the planner through n steps."""
-    for _ in range(n):
-        p = planner.get_next_predicate()
-        assert p is not None
-        planner.advance_state(p)
-
 
 # ------------------------------------------------------------------
 # Regression: last goal dropped when Spot produces fewer states
@@ -1062,11 +411,7 @@ def _make_smaller_automaton_planner():
 
     smaller = spot.postprocess(planner.automaton, "monitor", "small")
     planner.automaton = smaller
-    planner._bdd_false = spot.formula_to_bdd(
-        spot.formula("0"), planner.automaton.get_dict(), planner.automaton
-    )
     planner._sink_state = None
-    planner.constraint_predicates = planner._classify_predicates()
     planner._add_sink_state()
     planner.current_automaton_state = planner.automaton.get_init_state_number()
     planner.finished = False
@@ -1127,95 +472,79 @@ class TestLastGoalViaSinkEdge:
 
 
 # ------------------------------------------------------------------
-# Regression: single goal dropped when constraint is the last pi_map key
+# Regression: sink-edge fallback for the last goal
 # ------------------------------------------------------------------
 
-def _make_postprocessed_planner(formula, predicates, instruction):
-    """Build a planner with a postprocessed (smaller) automaton.
+class TestSinkEdgeFallback:
+    """Verify the sink-edge fallback in get_next_predicate returns the
+    correct last predicate when the automaton's only outgoing edge from the
+    current state leads to the added sink state.
 
-    spot.postprocess(aut, "monitor", "small") merges states, reproducing
-    the automaton structure that some Spot versions create natively.
-    """
-    mock = MockLLM()
-    mock.ltl_nl_formula = {
-        "pi_predicates": predicates,
-        "ltl_nl_formula": formula,
-    }
-    planner = LTLSymbolicPlanner(mock)
-    planner.plan_from_natural_language(instruction)
-
-    smaller = spot.postprocess(planner.automaton, "monitor", "small")
-    planner.automaton = smaller
-    planner._bdd_false = spot.formula_to_bdd(
-        spot.formula("0"), planner.automaton.get_dict(), planner.automaton
-    )
-    planner._sink_state = None
-    planner.constraint_predicates = planner._classify_predicates()
-    planner._add_sink_state()
-    planner.current_automaton_state = planner.automaton.get_init_state_number()
-    planner.finished = False
-    planner._last_returned_predicate_key = None
-    return planner
-
-
-class TestSingleGoalWithConstraintPostprocessed:
-    """Regression: a single goal (F pi_1) paired with a constraint (G(pi_2))
-    must still be returned when Spot postprocessing merges the automaton
-    down to a single state, forcing all transitions through the sink edge.
-
-    This is the exact pattern that caused the production failure:
-        F pi_1 & G(pi_2)  ->  0 subgoals (pi_1 skipped)
+    The test creates a standard three-step sequence, postprocesses the
+    automaton to merge states, and walks through with get_next_predicate /
+    advance_state to confirm all goals (including the last one) are returned.
     """
 
-    def test_positive_constraint(self):
-        """F pi_1 & G(pi_2): single goal + positive constraint."""
-        planner = _make_postprocessed_planner(
-            "F pi_1 & G(pi_2)",
-            {"pi_1": "Go past pergolas", "pi_2": "Above the pergolas"},
-            "go past pergolas, stay above them",
-        )
+    def _make(self):
+        mock = MockLLM()
+        mock.ltl_nl_formula = {
+            "pi_predicates": {
+                "pi_1": "Fly to landmark A",
+                "pi_2": "Fly to landmark B",
+                "pi_3": "Fly to landmark C",
+            },
+            "ltl_nl_formula": (
+                "F pi_3 & (!pi_3 U pi_2) & (!pi_2 U pi_1)"
+            ),
+        }
+        planner = LTLSymbolicPlanner(mock)
+        planner.plan_from_natural_language("A then B then C")
+
+        smaller = spot.postprocess(planner.automaton, "monitor", "small")
+        planner.automaton = smaller
+        planner._sink_state = None
+        planner._add_sink_state()
+        planner.current_automaton_state = planner.automaton.get_init_state_number()
+        planner.finished = False
+        planner._last_returned_predicate_key = None
+        return planner
+
+    def test_all_three_goals_returned(self):
+        """All three goals are returned in order, including via sink-edge."""
+        planner = self._make()
         order = _run_full(planner)
-        assert order == ["Go past pergolas"], (
-            f"Single goal must be returned, got {order}"
-        )
+        assert order == [
+            "Fly to landmark A",
+            "Fly to landmark B",
+            "Fly to landmark C",
+        ], f"Expected 3 goals in order, got {order}"
         assert planner.finished
 
-    def test_negative_constraint(self):
-        """F pi_1 & G(!pi_2): single goal + negative constraint."""
-        planner = _make_postprocessed_planner(
-            "F pi_1 & G(!pi_2)",
-            {"pi_1": "Reach landmark", "pi_2": "Near danger zone"},
-            "reach landmark, avoid danger zone",
+    def test_last_goal_via_sink_edge(self):
+        """Walk step-by-step and verify the last goal is returned."""
+        planner = self._make()
+        p1 = planner.get_next_predicate()
+        assert p1 == "Fly to landmark A"
+        planner.advance_state(p1)
+
+        p2 = planner.get_next_predicate()
+        assert p2 == "Fly to landmark B"
+        planner.advance_state(p2)
+
+        p3 = planner.get_next_predicate()
+        assert p3 == "Fly to landmark C", (
+            f"Last goal should be 'Fly to landmark C', got {p3!r}"
         )
-        order = _run_full(planner)
-        assert order == ["Reach landmark"], (
-            f"Single goal must be returned, got {order}"
-        )
+        planner.advance_state(p3)
+
+        assert planner.get_next_predicate() is None
         assert planner.finished
 
-    def test_two_goals_positive_constraint(self):
-        """F pi_2 & (!pi_2 U pi_1) & G(pi_3): two goals + positive constraint."""
-        planner = _make_postprocessed_planner(
-            "F pi_2 & (!pi_2 U pi_1) & G(pi_3)",
-            {"pi_1": "Go to A", "pi_2": "Go to B", "pi_3": "Keep altitude"},
-            "A then B, maintain altitude",
-        )
-        order = _run_full(planner)
-        assert order == ["Go to A", "Go to B"], (
-            f"Both goals must be returned in order, got {order}"
-        )
-        assert planner.finished
-
-    def test_no_double_return(self):
-        """After the sole goal completes, get_next_predicate returns None."""
-        planner = _make_postprocessed_planner(
-            "F pi_1 & G(pi_2)",
-            {"pi_1": "Go past pergolas", "pi_2": "Above the pergolas"},
-            "go past pergolas, stay above them",
-        )
-        order = _run_full(planner)
-        assert len(order) == 1
-        for _ in range(3):
+    def test_none_after_completion(self):
+        """After completing all goals, repeated calls return None."""
+        planner = self._make()
+        _run_full(planner)
+        for _ in range(5):
             assert planner.get_next_predicate() is None
         assert planner.finished
 
