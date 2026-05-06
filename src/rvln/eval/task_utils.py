@@ -82,8 +82,7 @@ def load_eval_task(path: Path) -> Dict[str, Any]:
         "max_corrections": int(data.get("max_corrections", DEFAULT_MAX_CORRECTIONS)),
         "expected_subgoal_count": expected_subgoals,
     }
-    for passthrough_key in ("task_id", "category", "difficulty", "region", "notes",
-                            "constraints_expected"):
+    for passthrough_key in ("task_id", "category", "difficulty", "region", "notes"):
         if passthrough_key in data:
             result[passthrough_key] = data[passthrough_key]
     return result
