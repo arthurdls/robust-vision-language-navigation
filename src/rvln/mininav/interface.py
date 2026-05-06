@@ -458,112 +458,7 @@ class FrameRecorder:
             self._fh = None
 
 
-class VideoRecorder:
-    """Stream camera frames into a single playback video on a dedicated thread.
-
-    Runs independently of the control loop: the thread reads the latest frame
-    from the camera at the configured fps and pushes it to disk. That way
-    the video keeps growing during everything the main thread blocks on --
-    convergence VLM polls, operator stdin prompts, OpenVLA round-trips,
-    long checkpoints -- so playback is continuous from camera-up to
-    shutdown rather than freezing at the first checkpoint.
-
-    The OpenVLA / goal-adherence monitor pipeline still writes per-step PNGs
-    on the main thread (the VLM needs frames on disk), but those live in a
-    temp dir without --record. This class produces a permanent
-    run_dir/playback.mp4 regardless of --record.
-
-    The writer opens lazily on the first frame so we don't commit to a size
-    before the camera has produced anything, and close() runs from the main
-    finally block so SIGINT / SIGTERM / errors all yield a playable file
-    (the moov atom for mp4 is only written on release()).
-    """
-
-    def __init__(self, video_path: Path, fps: float, camera: Any):
-        self.video_path = video_path
-        # Some codecs reject fps <= 0; clamp to 1 fps as a safety floor.
-        self.fps = float(fps) if fps and fps > 0 else 1.0
-        self.camera = camera
-        self._writer: Optional[cv2.VideoWriter] = None
-        self._open_failed = False
-        self._stop = threading.Event()
-        self._thread: Optional[threading.Thread] = None
-        self._frames_written = 0
-
-    def start(self) -> None:
-        """Begin background capture. Idempotent."""
-        if self._thread is not None and self._thread.is_alive():
-            return
-        self._stop.clear()
-        self._thread = threading.Thread(
-            target=self._run, name="video-recorder", daemon=True,
-        )
-        self._thread.start()
-
-    def _run(self) -> None:
-        period = 1.0 / self.fps
-        next_t = time.time()
-        while not self._stop.is_set():
-            now = time.time()
-            if now < next_t:
-                # Bound the sleep so a stop() request is picked up quickly
-                # without busy-waiting.
-                self._stop.wait(min(period, next_t - now))
-                continue
-            try:
-                ok, frame = self.camera.read()
-            except Exception as exc:
-                logger.warning("VideoRecorder: camera.read raised (%s).", exc)
-                ok, frame = False, None
-            if ok and frame is not None:
-                self._write_frame(frame)
-            # Schedule the next tick on the original cadence so a slow
-            # camera.read doesn't drift the video clock forever.
-            next_t += period
-            if next_t < now - period:
-                next_t = now + period
-
-    def _open(self, frame_bgr: np.ndarray) -> None:
-        h, w = frame_bgr.shape[:2]
-        fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-        writer = cv2.VideoWriter(str(self.video_path), fourcc, self.fps, (w, h))
-        if not writer.isOpened():
-            logger.warning(
-                "VideoRecorder: failed to open writer for %s (fourcc=mp4v, "
-                "%dx%d @ %.2f fps). Skipping video output.",
-                self.video_path, w, h, self.fps,
-            )
-            self._open_failed = True
-            return
-        self._writer = writer
-
-    def _write_frame(self, frame_bgr: np.ndarray) -> None:
-        if self._open_failed:
-            return
-        if self._writer is None:
-            self._open(frame_bgr)
-            if self._writer is None:
-                return
-        try:
-            self._writer.write(frame_bgr)
-            self._frames_written += 1
-        except Exception as exc:
-            logger.warning("VideoRecorder: write failed (%s).", exc)
-
-    def close(self) -> None:
-        self._stop.set()
-        if self._thread is not None and self._thread.is_alive():
-            self._thread.join(timeout=2.0)
-            if self._thread.is_alive():
-                logger.warning("VideoRecorder thread did not exit within 2s.")
-        if self._writer is not None:
-            self._writer.release()
-            self._writer = None
-        if self._frames_written:
-            logger.info(
-                "VideoRecorder: wrote %d frames to %s",
-                self._frames_written, self.video_path,
-            )
+from rvln.eval.video_recorder import VideoRecorder
 
 
 class DroneControlClient:
@@ -1265,7 +1160,6 @@ def run_subgoal(
     stall_window: int = DEFAULT_STALL_WINDOW,
     stall_threshold: float = 0.05,
     stall_completion_floor: float = 0.8,
-    constraints: Optional[List[Any]] = None,
     recorder: Optional["FrameRecorder"] = None,
     no_ai: bool = False,
     max_translation_cm_s: float = 50.0,
@@ -1324,7 +1218,6 @@ def run_subgoal(
         stall_window=stall_window,
         stall_threshold=stall_threshold,
         stall_completion_floor=stall_completion_floor,
-        constraints=constraints,
     )
 
     openvla.reset_model()
@@ -2570,7 +2463,7 @@ def main() -> None:
         if args.no_ai:
             from rvln.ai.no_ai_stubs import (
                 ManualLLMUserInterface as LLMUserInterface,
-                ManualSequentialLTLPlanner as SequentialLTLPlanner,
+                ManualSequentialLTLPlanner as LTLSymbolicPlanner,
             )
             if args.diary_mode != "frame":
                 logger.warning(
@@ -2579,11 +2472,11 @@ def main() -> None:
                 args.diary_mode = "frame"
         else:
             from rvln.ai.llm_interface import LLMUserInterface
-            from rvln.ai.sequential_ltl_planner import SequentialLTLPlanner
+            from rvln.ai.ltl_planner import LTLSymbolicPlanner
 
-        llm_interface = LLMUserInterface(model=llm_model, use_constraints=False)
+        llm_interface = LLMUserInterface(model=llm_model)
         recorder_ctx["llm_interface"] = llm_interface
-        planner = SequentialLTLPlanner(llm_interface)
+        planner = LTLSymbolicPlanner(llm_interface)
         planner.plan_from_natural_language(instruction)
 
         ltl_plan = {
@@ -2606,8 +2499,6 @@ def main() -> None:
         subgoal_index = 0
         while current_subgoal is not None and not stop_capture:
             subgoal_index += 1
-
-            active_constraints: List[Any] = []
 
             logger.info("Running subgoal %d: %s", subgoal_index, current_subgoal)
             result = run_subgoal(
@@ -2634,7 +2525,6 @@ def main() -> None:
                 stall_window=args.stall_window,
                 stall_threshold=args.stall_threshold,
                 stall_completion_floor=args.stall_completion_floor,
-                constraints=active_constraints,
                 recorder=recorder,
                 no_ai=args.no_ai,
                 max_translation_cm_s=max_translation_cm_s,
@@ -2657,9 +2547,9 @@ def main() -> None:
                     instruction, new_instruction,
                 )
                 instruction = new_instruction
-                llm_interface = LLMUserInterface(model=llm_model, use_constraints=False)
+                llm_interface = LLMUserInterface(model=llm_model)
                 recorder_ctx["llm_interface"] = llm_interface
-                planner = SequentialLTLPlanner(llm_interface)
+                planner = LTLSymbolicPlanner(llm_interface)
                 planner.plan_from_natural_language(new_instruction)
                 ltl_plan = {
                     "ltl_nl_formula": llm_interface.ltl_nl_formula.get("ltl_nl_formula", ""),
