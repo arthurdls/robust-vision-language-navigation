@@ -90,8 +90,8 @@ class TestParseJsonResponse:
 # -------------------------------------------------------------------------
 
 class TestParseGlobalResponse:
-    def _make_monitor_for_global(self, constraints=None):
-        m = _make_monitor(constraints=constraints)
+    def _make_monitor_for_global(self):
+        m = _make_monitor()
         m._last_completion_pct = 0.3
         return m
 
@@ -108,17 +108,6 @@ class TestParseGlobalResponse:
         m = self._make_monitor_for_global()
         result = m._parse_global_response(
             '{"complete": false, "completion_percentage": 0.6, "on_track": false, "should_stop": true}',
-            "diary entry",
-        )
-        assert result.action == "force_converge"
-
-    def test_should_stop_with_constraints_triggers_force_converge(self):
-        from rvln.ai.ltl_planner import ConstraintInfo
-        m = self._make_monitor_for_global(constraints=[
-            ConstraintInfo(description="Near building B", polarity="negative"),
-        ])
-        result = m._parse_global_response(
-            '{"complete": false, "completion_percentage": 0.3, "should_stop": true}',
             "diary entry",
         )
         assert result.action == "force_converge"
@@ -198,8 +187,8 @@ class TestFormatDisplacement:
 # -------------------------------------------------------------------------
 
 class TestOnConvergence:
-    def _setup_monitor(self, constraints=None):
-        m = _make_monitor(constraints=constraints)
+    def _setup_monitor(self):
+        m = _make_monitor()
         m._frame_paths = [Path(f"/tmp/f{i}.png") for i in range(4)]
         m._frame_timestamps = [float(i) for i in range(4)]
         m._step = 4
