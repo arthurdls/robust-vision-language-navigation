@@ -2,11 +2,11 @@
 """
 Condition 5: Image-Grid Only Monitor (No Text Diary).
 
-Uses the full LTL planner and SubgoalConverter. The GoalAdherenceMonitor runs
-normally for local checkpoints (2-frame VLM queries generate diary entries),
-but the GLOBAL and CONVERGENCE prompts are modified to remove the text diary
-and displacement data. The VLM sees only the subgoal text and the 3x3 image
-grid for progress assessment.
+Uses the full LTL planner and SubgoalConverter. Local 2-frame VLM diary calls
+are skipped (skip_local=True) since the global/convergence prompts do not use
+diary text. The GLOBAL and CONVERGENCE prompts are modified to remove the text
+diary and displacement data. The VLM sees only the subgoal text and the 3x3
+image grid for progress assessment.
 
 This tests whether VLMs can infer progress/completion from visual history
 alone without explicit textual state tracking.
