@@ -43,9 +43,8 @@ Default parameters (from config.py):
   - Convergence: position delta < 3.0 cm AND yaw delta < 1.0 deg
     for 10 consecutive steps
 
-Simulation: Unreal Engine via UnrealCV gym. Three maps:
-DowntownWest (urban), Greek_Island (coastal), SuburbNeighborhood_Day
-(residential). See Section 4a for details.
+Simulation: Unreal Engine via UnrealCV gym. Single map:
+DowntownWest (urban). See Section 4a for details.
 
 
 2. CONDITIONS (7 TOTAL: 1 FULL SYSTEM + 6 BASELINES)
@@ -87,13 +86,22 @@ Implementation: Use the same LLM (gpt-5.4) to break the instruction
   Execute subgoals sequentially with the same goal adherence monitoring as the
   full system. Advance to the next subgoal when the monitor confirms
   completion. No automaton state tracking.
-Why: Isolates the contribution of LTL formalism. Shows that without
-  the automaton state machine:
-  (a) The LLM may hallucinate impossible orderings or skip steps.
-  (b) Complex temporal logic (OR branches, concurrent obligations)
-      cannot be expressed as a flat sequential list.
-Expected outcome: Performs reasonably on simple sequential tasks but
-  fails on tasks with branching or complex dependencies.
+Why: SECONDARY COMPARISON. Included as a representative of existing
+  LLM-planner approaches (SayCan, Inner Monologue, Code-as-Policies)
+  applied to UAV navigation. Isolates the LTL formalism by replacing
+  the LTL planner + Spot automaton with a plain LLM text decomposition
+  while keeping everything else identical.
+  NOTE: All current tasks are purely sequential (Section 4b), so a
+  flat numbered list is an adequate representation. The expressiveness
+  advantage of LTL (OR branches, concurrent obligations, conditional
+  dependencies) requires non-sequential task structures, which are
+  left to future work. This comparison is therefore expected to yield
+  a small or null difference on the current task set.
+Expected outcome: Similar performance to Condition 0 on sequential
+  tasks. A flat list and a linear-chain LTL formula are functionally
+  equivalent for strict A-then-B-then-C orderings. Any observed
+  difference would reflect decomposition quality (how the LLM breaks
+  down the instruction) rather than formal expressiveness.
 
 CONDITION 3: OPEN-LOOP LTL (No Monitor, No Corrections)
 --------------------------------------------------------
@@ -106,20 +114,25 @@ Implementation: Use the full LTL planner and SubgoalConverter, but
   the drone stops moving (convergence detected), assume the subgoal is
   achieved and advance the automaton to the next state. No completion
   assessment, no corrective commands.
-Why: THE MOST IMPORTANT BASELINE. Directly attacks the assumption in
-  prior LTL + low-level-policy literature that low-level controllers
-  execute perfectly. By showing how often OpenVLA stops prematurely
-  (false convergence) and ruins the downstream LTL sequence, we
-  justify the entire goal adherence monitoring and supervisor architecture.
+Why: PRIMARY ABLATION AND HEADLINE COMPARISON. This is the single
+  most important baseline in the experiment. C3 vs C0 directly tests
+  the paper's core claim: that closed-loop goal adherence monitoring
+  is necessary for reliable long-horizon execution. Both conditions
+  share the same LTL planner, so any performance gap is attributable
+  entirely to the monitoring and correction pipeline.
+  Directly attacks the assumption in prior LTL + low-level-policy
+  literature that low-level controllers execute perfectly. By showing
+  how often OpenVLA stops prematurely (false convergence) and ruins
+  the downstream LTL sequence, we justify the entire goal adherence
+  monitoring and supervisor architecture.
 Expected outcome: Moderate planning accuracy (LTL decomposition works)
   but frequent execution failures. The drone will stop short, think
   it is done, and blindly advance, causing cascading failures in
   subsequent subgoals.
 SUCCESS METRIC NOTE: Convergence in C3 is self-fulfilling (the system
-  always considers convergence as "success"), so automated M1/M3
-  metrics are not meaningful. Task success for C3 must be determined
-  by manual video review, same as C1. The aggregate_results.py script
-  reports C3 M1 as "requires manual annotation" (returns None).
+  always considers convergence as "success"), so the automated signal
+  is not meaningful. Task success for C3 is determined by human video
+  review, same as all other conditions (see Section 6d).
 
 CONDITION 4: FRAME-BY-FRAME MONITOR (No Temporal Context)
 ----------------------------------------------------------
@@ -203,45 +216,50 @@ Expected outcome: Reasonable progress tracking but unreliable
 4. TASK DESIGN
 ======================================================================
 
-4a. ENVIRONMENTS
+4a. ENVIRONMENT
 -----------------
-Three simulation maps (Unreal Engine, UnrealCV):
+Single simulation map (Unreal Engine, UnrealCV):
 
   DowntownWest: Urban setting with diverse landmarks.
     Buildings, vehicles, streetlights, traffic lights, pergolas,
     sculptures, people, dogs. Mixed commercial/residential.
 
-  Greek_Island: Mediterranean coastal setting.
-    Shoreline, palm trees, Greek statues, banners, rocky trails,
-    bridges, houses on hills. Diverse terrain (beach, cliff, trail).
+All tasks run in this single map to keep costs manageable (up to
+~$45 for the 9 episodes per condition).
 
-  SuburbNeighborhood_Day: Residential suburban setting.
-    Houses, yards, parked cars, hallways, driveways, trees.
-    Quieter environment with fewer landmarks.
-
-Per-map results are reported separately by aggregate_results.py to
-demonstrate generalization across visually distinct environments.
-
-4b. TASK CATEGORIES (2 tasks per region, 6 total)
+4b. TASK LIST (3 tasks, 9 episodes per condition)
 ---------------------------------------------------
-Each task is a multi-step long-horizon instruction. Tasks are designed
-to exercise different LTL operators for sequential navigation.
+Each task is a multi-step long-horizon instruction in the DowntownWest
+map. Tasks are designed to exercise sequential navigation with diverse
+landmarks and altitude changes.
 
-Category: SEQUENTIAL (6 tasks across 3 maps)
-  Pure sequential navigation. Simple ordered sequences (A then B
-  then C) or multi-step traversals.
+Category: SEQUENTIAL (3 tasks, all in downtown_west)
+  Pure sequential navigation. Ordered sequences (A then B then C)
+  with multi-step traversals.
   LTL: F pi_3 & (!pi_3 U pi_2) & (!pi_2 U pi_1)
-  Purpose: Baseline difficulty. All conditions should handle these.
-  Examples:
-    - "Go past the streetlamp, then stop at the bridge..." (bridge_crossing_to_tree)
 
-Task distribution per map:
-  downtown_west:           2 sequential
-  greek_island:            2 sequential
-  suburb_neighborhood_day: 2 sequential
+Task 1: streetlamp_to_cars
+  "Go past the first streetlamp, then turn right until you see the
+  black car, then go to the black car, then turn toward the red car
+  and go to the red car. Finally, land in front of the traffic light
+  pole on the right."
+  Start: [-7500, 848, 396, -177]
 
-With 3 starting position variants per task: 18 sequential episodes
-per condition.
+Task 2: past_pergolas
+  "Go past the streetlamps, then approach the pergolas on the left.
+  Ascend above the pergolas. Pass all of the pergolas ahead, then
+  turn right until you see the pergolas. Go below the pergolas and
+  continue past them until you no longer see them. Then land near
+  the structure ahead."
+  Start: [-1435, -536, 404, 4.5]
+
+Task 3: above_building_europa
+  "Ascend to a height above the building ahead. Then go past the
+  building ahead. Then descend to the ground. Turn right until you
+  see a sign that says Europa, go to the building and then land."
+  Start: [-7155, -5301, 74, 89]
+
+With 3 starting position variants per task: 9 episodes per condition.
 
 4c. TASK JSON FORMAT
 ---------------------
@@ -285,17 +303,23 @@ PRIMARY METRICS (reported in main results table):
 M1. Task Success Rate
   - Definition: Fraction of episodes where the final long-horizon goal
     was fully completed (all subgoals achieved in correct order).
-  - Measurement: Binary per episode. A task is successful only if all
-    LTL subgoals were confirmed complete by the monitor (or by
-    convergence in Condition 3).
+  - Measurement: Binary per episode. Determined by human video review
+    for ALL conditions (C0-C6). The experimenter watches the recorded
+    episode and judges whether the instruction was fulfilled.
   - Report: Mean +/- 95% Wilson confidence interval per condition.
+  - Annotation: Recorded in results/annotations.csv (task_success column).
 
 M3. Subgoal Success Rate
   - Definition: Fraction of individual subgoals (across all episodes)
     that were successfully completed.
-  - Measurement: Per-subgoal binary. Confirmed by monitor (Conditions
-    0, 2, 4, 5, 6) or by convergence (Condition 3).
+  - Measurement: Per-subgoal count. The experimenter watches each
+    episode and records the number of subgoals completed out of the
+    total attempted. This applies to ALL conditions (C0-C6).
+    For C1 (naive, no explicit subgoals), the experimenter counts
+    how many instruction steps were visibly accomplished.
   - Report: Mean +/- 95% Wilson CI per condition.
+  - Annotation: Recorded in results/annotations.csv (subgoals_completed
+    and subgoals_total columns).
 
 DIAGNOSTIC METRICS (reported in analysis section):
 
@@ -309,13 +333,15 @@ M4. Supervisor Correction Rate (Rescue Rate)
 
 M5. False Positive / False Negative Rate of Convergence Assessment
   - False Positive: Monitor declares subgoal complete but it is not
-    (verified by post-hoc inspection or by failure of subsequent
-    subgoal).
+    (determined by comparing monitor decisions against the human
+    success judgment from M1/M3).
   - False Negative: Monitor issues correction when subgoal was
     actually complete (causes unnecessary additional steps).
   - Applicable to: Conditions 0, 4, 5, 6.
-  - Measurement: Manual annotation of a subset of episodes (at least
-    10 per condition) by reviewing frame sequences and monitor logs.
+  - Measurement: Compare monitor's automated decisions (from logs)
+    against human ground-truth judgments (from annotations.csv).
+    Since all episodes are human-reviewed, this can be computed
+    for all episodes, not just a subset.
 
 M6. Control Frequency / Latency
   - OpenVLA loop Hz: Frames per second of the control loop
@@ -367,8 +393,8 @@ M8. Average Episode Length
 
 6b. EPISODE COUNT
 ------------------
-6 tasks x 3 starting variations = 18 episodes per condition
-7 conditions x 18 = 126 total episodes
+3 tasks x 3 starting variations = 9 episodes per condition
+7 conditions x 9 = 63 total episodes
 
 6c. RANDOMIZATION AND TASK ORDER
 ----------------------------------
@@ -388,26 +414,32 @@ M8. Average Episode Length
   teleport + stabilization wait. There is no environmental drift
   or accumulated state across episodes.
 
-6d. MANUAL ANNOTATION
------------------------
-For M5 (false positive/negative analysis), manually annotate at least
-10 episodes per condition (70 total) by reviewing:
-  - Frame sequences around convergence events
-  - Monitor decisions (complete vs. stopped_short)
-  - Whether the decision was correct given the visual evidence
-This can be done post-hoc from saved artifacts.
+6d. HUMAN VIDEO REVIEW (ALL CONDITIONS)
+-----------------------------------------
+ALL conditions (C0-C6) use human video review as the ground-truth
+success criterion for M1 and M3. With only 9 episodes per condition
+(63 total), manual review is feasible and eliminates the
+monitor-as-judge circularity problem (where the monitor grades its
+own performance).
 
-6e. MANUAL SUCCESS DETERMINATION
-----------------------------------
-For conditions without reliable automated success signals:
-  - C1 (naive): Task success will be determined by manual video review.
-    The experimenter watches recorded episodes and classifies each as
-    success or failure based on whether the instruction was fulfilled.
-  - C3 (open loop): Task success will also be determined by manual
-    video review. Convergence (drone stops moving) is self-fulfilling
-    in C3 and does not indicate true goal achievement.
-  - All other conditions (C0, C2, C4, C5, C6) use the monitor's
-    "monitor_complete" signal as the automated success criterion.
+Procedure: After each episode completes, the experimenter watches the
+recorded video and fills in results/annotations.csv with:
+  - task_success: 1 if the full instruction was fulfilled, 0 otherwise
+  - subgoals_completed: count of subgoals visibly completed
+  - subgoals_total: count of subgoals the system attempted
+  - notes: optional free-text observations
+
+This replaces the prior approach where C0/C2/C4/C5/C6 used the
+monitor's "monitor_complete" signal and only C1/C3 used human review.
+Using a uniform measurement instrument across all conditions ensures
+that M1/M3 comparisons are apples-to-apples.
+
+For M5 (monitor false positive/negative analysis), the human ground
+truth from annotations.csv is compared against the monitor's automated
+decisions from the episode logs. This can be done post-hoc.
+
+Analysis: Run scripts/analyze_annotations.py to compute metrics and
+statistical tests from the completed CSV.
 
 
 7. COMPUTE BUDGET
@@ -441,12 +473,12 @@ logs. The image token count depends heavily on the VLM provider's
 image encoding. Adjust the budget after validation.
 
 Per-condition cost (at $2.50/MTok input, $10/MTok output for gpt-5.4):
-  - gpt-5.4 monitor: 45 eps x 685K tokens x $10/MTok = ~$308
+  - gpt-5.4 monitor: 9 eps x 685K tokens x $10/MTok = ~$62
 
 Total for 7 conditions:
-  - If all use gpt-5.4 monitor: ~$2,160
-  - If Conditions 1, 3 use no monitor: savings of ~$316
-  - Net estimate: ~$800-$1,100
+  - If all use gpt-5.4 monitor: ~$432
+  - If Conditions 1, 3 use no monitor: savings of ~$124
+  - Net estimate: ~$200-$320
 
 NOTE: Condition 1 (naive) and Condition 3 (open-loop) do not use the
 goal adherence monitor at all, saving significant cost. Condition 6 uses an
@@ -464,9 +496,9 @@ VLM for local diary entries.
 ------------------------------
 Per episode: ~5-15 minutes (depends on task complexity and number of
 convergence corrections)
-Per condition: 45 eps x 10 min avg = ~7.5 hours
-Total: 7 conditions x 7.5 hours = ~52.5 hours
-With setup/teardown overhead: ~60-70 hours
+Per condition: 9 eps x 10 min avg = ~1.5 hours
+Total: 7 conditions x 1.5 hours = ~10.5 hours
+With setup/teardown overhead: ~12-15 hours
 
 This can be parallelized if multiple simulation instances are
 available, but VLM API rate limits may be a bottleneck.
@@ -475,37 +507,80 @@ available, but VLM API rate limits may be a bottleneck.
 8. STATISTICAL ANALYSIS PLAN
 ======================================================================
 
-8a. PRIMARY COMPARISONS
--------------------------
-For each primary metric (M1, M3):
-  - Report mean and 95% Wilson confidence interval per condition.
-  - Two complementary statistical tests:
-    (a) Fisher's exact test: unpaired comparison of success counts
-        between C0 and each baseline. Reports odds ratio as effect size.
-    (b) McNemar's test: paired comparison using matched episodes
-        (same task_id = same task + same starting position). Because
-        starting positions are fixed across conditions, each episode
-        in C0 has a natural pair in every other condition. McNemar's
-        is more powerful than Fisher's when the pairing is valid.
-        Uses exact binomial when n_discordant < 25, chi-square
-        approximation otherwise.
-  - Significance threshold: p < 0.05 with Bonferroni correction for
-    6 pairwise comparisons (adjusted threshold: p < 0.0083).
-  - Both tests are computed by aggregate_results.py and reported in
-    JSON, CSV, and console output.
+8a. STATISTICAL APPROACH (SMALL-SAMPLE DESIGN)
+-------------------------------------------------
+With 9 episodes per condition (3 tasks x 3 near-identical variants),
+statistical power is very limited. The effective independent sample
+size is ~3 (one per task), since the 3 variants per task are small
+spatial perturbations and produce highly correlated outcomes. The
+statistical approach is designed accordingly.
 
-8b. EFFECT SIZE
-----------------
-With n=45 per condition, a Fisher's exact test can detect a difference
-of ~25 percentage points (e.g., 85% vs. 60%) at 80% power with
-alpha = 0.05. Design tasks to produce large effect sizes. If pilot
-runs suggest smaller gaps, increase episode count or reduce the
-number of conditions.
+SUCCESS CRITERION: All M1 and M3 judgments come from human video
+review (results/annotations.csv), applied uniformly across all
+conditions. This eliminates monitor-as-judge circularity.
+
+PRIMARY EVIDENCE: Per-task breakdown table.
+  A 3-task x 7-condition matrix showing pass/fail per variant.
+  This is the most informative output at this sample size. Readers
+  can directly inspect which tasks each condition succeeds or fails
+  on. Presented as the main results table in the paper.
+
+SUPPLEMENTARY EVIDENCE: Episode-level and task-level statistics.
+  - Wilson 95% CI per condition for M1 and M3.
+  - Task-level pass rate: a task "passes" a condition if >= 2/3
+    variants succeeded. This gives the honest n=3 summary.
+
+PRIMARY COMPARISONS (2 pre-specified, unadjusted alpha = 0.05):
+  - C0 vs C3: Monitoring ablation (headline comparison).
+  - C0 vs C1: Decomposition necessity.
+  No Bonferroni correction. With n=9 and only 2 pre-specified
+  comparisons, any multiple-comparison correction makes detection
+  of real effects nearly impossible. Fisher's exact test at n=9
+  requires extreme differences even at unadjusted alpha (e.g.,
+  9/9 vs 3/9 gives p ~ 0.009; 8/9 vs 2/9 gives p ~ 0.015;
+  7/9 vs 2/9 gives p ~ 0.057). Pre-specification of the 2
+  comparisons, rather than post-hoc correction, is the accepted
+  approach when the comparison set is small and fixed.
+  Two tests per comparison:
+    (a) Fisher's exact test (unpaired, on success counts).
+    (b) McNemar's exact binomial (paired by task+variant).
+
+SECONDARY COMPARISONS (descriptive only):
+  - C0 vs C2: LTL vs. flat LLM decomposition.
+  - C0 vs C4: Single-frame monitor.
+  - C0 vs C5: Grid-only monitor.
+  - C0 vs C6: Text-only global assessment.
+  Reported as proportions + Wilson CIs. No hypothesis tests.
+  With n=9 and expected small/null effects for some of these
+  (especially C2), hypothesis tests are uninformative.
+
+All statistics computed by scripts/analyze_annotations.py.
+
+PSEUDO-REPLICATION NOTE: The 3 variants per task are small
+perturbations (0.3-1.2m offset, 0-5 deg yaw). Outcomes within
+a task cluster are highly correlated. The episode-level Wilson CIs
+and Fisher's exact p-values treat all 9 as independent, which
+overstates confidence. The task-level pass rate (n=3) is the
+more honest measure. Both are reported; the paper should note
+this caveat.
+
+8b. FRAMING
+------------
+With n=9 episodes (effectively n=3 tasks), this experiment is a
+proof-of-concept demonstration, not a definitive hypothesis test.
+The primary evidence is the per-task breakdown table and qualitative
+video analysis. Statistical tests supplement but do not replace
+the descriptive results. If the full system (C0) succeeds on most
+tasks while C3 (no monitoring) consistently fails, the pattern is
+compelling regardless of p-values. Design tasks to produce large,
+visually obvious effect sizes.
 
 8c. ABLATION SUMMARY TABLE
 ----------------------------
-Present a table showing which components are present in each condition:
+Present a table showing which components are present in each condition.
+Comparison tiers: C1, C3 = primary comparisons; C2, C4, C5, C6 = secondary.
 
+                       |     | PRIMARY |     | PRIMARY | --- SECONDARY ---|
 Component              | C0  | C1  | C2  | C3  | C4  | C5  | C6
 -----------------------|-----|-----|-----|-----|-----|-----|-----
 LTL Decomposition      | Yes | No  | No  | Yes | Yes | Yes | Yes
@@ -541,11 +616,10 @@ A1. Low-level UAV safety is handled separately.
     State this as a scope limitation in the paper.
 
 A2. Simulation-only evaluation.
-    All experiments run across 3 Unreal Engine maps (DowntownWest,
-    Greek_Island, SuburbNeighborhood_Day) providing visual diversity.
-    Per-map results are reported to demonstrate generalization.
-    Acknowledge simulation-only limitation in the paper and suggest
-    real-world validation as future work.
+    All experiments run in a single Unreal Engine map (DowntownWest).
+    Acknowledge simulation-only limitation and single-map scope in
+    the paper and suggest multi-environment and real-world validation
+    as future work.
 
 A3. OpenVLA as the fixed low-level policy.
     The system is designed to be policy-agnostic. OpenVLA is one
@@ -580,10 +654,9 @@ Before running the full experiment suite:
     grid provides no measurable benefit in these pilots, consider
     dropping Condition 5 and reducing scope. (Per user NOTE2.)
 
-[ ] TASK SCOUTING: Use scripts/scout_locations.py to identify the 3
-    map regions. For each region, verify:
-    (a) Sufficient landmark diversity for 2 tasks.
-    (b) Starting positions are valid and the drone spawns correctly.
+[ ] TASK SCOUTING: Verify the 3 tasks in DowntownWest:
+    (a) Starting positions are valid and the drone spawns correctly.
+    (b) Instructions reference visible landmarks from each start.
 
 [ ] CONDITION IMPLEMENTATIONS: Verify each modified script runs
     without errors on at least 1 task:
@@ -601,28 +674,35 @@ Before running the full experiment suite:
 11. PAPER FRAMING NOTES
 ======================================================================
 
-- Frame Condition 2 as a SOTA-representative baseline. Cite SayCan,
-  Inner Monologue, Code-as-Policies as related LLM-planner methods
-  and argue Condition 2 captures their core approach (LLM text
-  decomposition + sequential execution) applied to UAV navigation.
-  Note that none of these prior methods target UAV control with LTL.
+- HEADLINE RESULT: Condition 3 vs. Condition 0. This is the primary
+  comparison and should anchor the results section. Both share the
+  same LTL planner, so any performance gap is attributable entirely
+  to the monitoring and correction pipeline. This proves that even
+  with correct planning, execution monitoring is critical.
 
-- The strongest story comes from Condition 3 vs. Condition 0.
-  This proves that even with perfect planning (same LTL), execution
-  monitoring is critical.
+- Condition 2 is a SECONDARY comparison. Frame it as a
+  SOTA-representative baseline (cite SayCan, Inner Monologue,
+  Code-as-Policies) but discuss the result honestly: C2 is expected
+  to perform similarly to C0 on the current sequential task set,
+  because a flat numbered list is functionally equivalent to a
+  linear-chain LTL formula for strict A-then-B-then-C orderings.
+  If C2 and C0 produce similar results, state this is "consistent
+  with expectations for sequential tasks" and note that evaluating
+  LTL's expressiveness advantage (OR branches, concurrent
+  obligations, conditional dependencies) requires non-sequential
+  task structures, which is future work.
 
 - Conditions 4, 5, 6 are design ablations that justify architectural
-  choices. They can go in an ablation subsection or appendix if
-  space is tight.
+  choices in the monitoring pipeline. They can go in an ablation
+  subsection or appendix if space is tight.
 
 - Report M7 (token overhead) prominently to preempt feasibility
   concerns. Show that monitoring adds <X% wall-clock overhead in
   async mode.
 
-- Report results at two levels of granularity:
-  (a) Aggregate: overall M1/M3 per condition (main results table).
-  (b) Per-map: results per simulation environment (demonstrates
-      generalization, not overfitting to one environment).
+- Report results at the aggregate level: overall M1/M3 per condition
+  (main results table). With a single map, per-map breakdown is not
+  applicable. Acknowledge this as a scope limitation.
 
 - For C6, use the label "Text-Only Global Assessment" in all paper
   text and tables. Explicitly note in the methods section that C6's

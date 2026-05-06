@@ -1,4 +1,4 @@
 {
-  "instruction": "Go past the first streetlamp, then turn right until you see the black car, then go to the black car, then turn toward the red car and go to the red car. Finally, land in front of the traffic light pole on the right.",
-  "initial_pos": [-7500, 848, 396, -177]
+  "instruction": "Go past the streetlamps, then approach the pergolas on the left. Ascend above the pergolas. Pass all of the pergolas ahead, then turn right until you see the pergolas. Go below the pergolas and continue past them until you no longer see them. Then land near the structure ahead.",
+  "initial_pos": [-1435, -536, 404, 4.5]
 }

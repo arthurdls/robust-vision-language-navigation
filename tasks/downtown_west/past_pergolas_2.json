@@ -1,4 +1,15 @@
 {
+  "task_id": "past_pergolas_2",
+  "category": "sequential",
   "instruction": "Go past the streetlamps, then approach the pergolas on the left. Ascend above the pergolas. Pass all of the pergolas ahead, then turn right until you see the pergolas. Go below the pergolas and continue past them until you no longer see them. Then land near the structure ahead.",
-  "initial_pos": [-1508, -461, 339, 4.5]
+  "initial_pos": [
+    -1352,
+    -603,
+    487,
+    4.5
+  ],
+  "expected_subgoal_count": 7,
+  "max_steps_per_subgoal": 500,
+  "max_corrections": 20,
+  "diary_check_interval": 10
 }
