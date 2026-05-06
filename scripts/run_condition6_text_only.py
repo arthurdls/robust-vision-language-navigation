@@ -138,13 +138,10 @@ def run_text_only_control_loop(
         safe_name = sanitize_run_label(current_subgoal, fallback="subgoal")
         subgoal_dir = run_dir / f"subgoal_{subgoal_index:02d}_{safe_name}"
 
-        active_constraints = planner.get_active_constraints()
-
         logger.info("--- Subgoal %d: '%s' ---", subgoal_index, current_subgoal)
 
         sg_config = SubgoalConfig(
             monitor_mode="text_only",
-            use_constraints=True,
             check_interval=check_interval,
             max_steps=max_steps_per_subgoal,
             max_corrections=max_corrections,
@@ -160,7 +157,6 @@ def run_text_only_control_loop(
             drone_cam_id=drone_cam_id, frames_dir=frames_dir,
             subgoal_dir=subgoal_dir, frame_offset=total_frame_count,
             trajectory_log=trajectory_log,
-            constraints=active_constraints,
             ask_help_callback=make_ask_help_callback(),
         )
 
