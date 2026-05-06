@@ -451,7 +451,7 @@ class TestParseLtlNlComprehensive:
         assert "AND" in result
         assert "ALWAYS" in result
 
-    def test_multiple_negative_constraints(self):
+    def test_multiple_global_negations(self):
         """G(!pi_3) & G(!pi_4)"""
         result = parse_ltl_nl("G(!pi_3) & G(!pi_4)", self.PMAP)
         assert "AND" in result
