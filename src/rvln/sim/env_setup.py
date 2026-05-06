@@ -190,6 +190,22 @@ def setup_sim_env(
 
 # ─── Camera helpers ───────────────────────────────────────────────────────────
 
+def _push_to_playback(env: Any, image: Optional[np.ndarray]) -> None:
+    """If a playback buffer is attached to *env*, update it with the latest frame.
+
+    The buffer is set up by ``rvln.eval.video_recorder.ensure_episode_playback``;
+    this hook is a no-op when no recorder is active.
+    """
+    if image is None:
+        return
+    buf = getattr(env, "_playback_buffer", None)
+    if buf is not None:
+        try:
+            buf.update(image)
+        except Exception as exc:
+            logger.warning("playback buffer update failed: %s", exc)
+
+
 def set_drone_cam_and_get_image(env: Any, cam_id: Optional[int] = None) -> Optional[np.ndarray]:
     """Capture a frame from the drone's camera via the sim server.
 
@@ -197,25 +213,30 @@ def set_drone_cam_and_get_image(env: Any, cam_id: Optional[int] = None) -> Optio
     """
     from rvln.sim.sim_client import SimClient
 
+    image: Optional[np.ndarray] = None
     if isinstance(env, SimClient):
         image, _pos, _rot = env.get_frame(cam_id)
-        return image
-    # Fallback for direct gym env (scout_locations)
-    cam = cam_id if cam_id is not None else env.unwrapped.agents[env.unwrapped.player_list[0]]['cam_id']
-    x, y, z = env.unwrapped.unrealcv.get_obj_location(env.unwrapped.player_list[0])
-    roll, yaw, pitch = env.unwrapped.unrealcv.get_obj_rotation(env.unwrapped.player_list[0])
-    env.unwrapped.unrealcv.set_cam(cam, [x, y, z], [roll, pitch, yaw])
-    for attempt in range(2):
-        try:
-            return env.unwrapped.unrealcv.get_image(cam, "lit")
-        except TypeError:
-            logger.warning(
-                "get_image returned invalid data (attempt %d/2). Retrying after short delay.",
-                attempt + 1,
-            )
-            time.sleep(0.5)
-    logger.warning("get_image failed after retries.")
-    return None
+    else:
+        # Fallback for direct gym env (scout_locations)
+        cam = cam_id if cam_id is not None else env.unwrapped.agents[env.unwrapped.player_list[0]]['cam_id']
+        x, y, z = env.unwrapped.unrealcv.get_obj_location(env.unwrapped.player_list[0])
+        roll, yaw, pitch = env.unwrapped.unrealcv.get_obj_rotation(env.unwrapped.player_list[0])
+        env.unwrapped.unrealcv.set_cam(cam, [x, y, z], [roll, pitch, yaw])
+        for attempt in range(2):
+            try:
+                image = env.unwrapped.unrealcv.get_image(cam, "lit")
+                break
+            except TypeError:
+                logger.warning(
+                    "get_image returned invalid data (attempt %d/2). Retrying after short delay.",
+                    attempt + 1,
+                )
+                time.sleep(0.5)
+        if image is None:
+            logger.warning("get_image failed after retries.")
+
+    _push_to_playback(env, image)
+    return image
 
 
 def interactive_camera_select(env: Any, initial_pos: List[float], batch: Any) -> int:
@@ -371,4 +392,5 @@ def apply_action_poses(
                 image = set_drone_cam_and_get_image(env, drone_cam_id)
             time.sleep(sleep_s)
 
+    _push_to_playback(env, image)
     return image, current_pose, steps

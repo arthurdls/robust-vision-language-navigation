@@ -122,7 +122,7 @@ def init_env(env_id: str, time_dilation: int = 10, seed: int = 0) -> dict:
     if time_dilation > 0:
         env = td_mod.TimeDilationWrapper(env, time_dilation)
     env.unwrapped.agents_category = ["drone"]
-    env = configUE.ConfigUEWrapper(env, resolution=(256, 256))
+    env = configUE.ConfigUEWrapper(env, resolution=(512, 512))
     env = augmentation.RandomPopulationWrapper(env, 2, 2, random_target=False)
     env.reset(seed=seed)
 

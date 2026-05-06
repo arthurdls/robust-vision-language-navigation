@@ -227,7 +227,7 @@ class OpenAIProvider(BaseLLM):
         if media_type == "image":
             content = [
                 {"type": "text", "text": text},
-                {"type": "image_url", "image_url": {"url": data_uri_or_url}}
+                {"type": "image_url", "image_url": {"url": data_uri_or_url, "detail": "high"}}
             ]
         elif media_type == "video":
             content = [

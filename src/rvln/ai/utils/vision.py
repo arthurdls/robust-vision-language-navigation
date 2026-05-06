@@ -78,6 +78,10 @@ def build_frame_grid(
 
     Formula: width  = cols * frame_w + (cols + 1) * padding_px
              height = rows * frame_h + (rows + 1) * padding_px
+
+    The output is clamped so the long side never exceeds *max_size* (the GPT
+    "high" detail per-side limit is 2048; "original" is 6000). If the natural
+    grid exceeds that, every cell is shrunk uniformly before composition.
     """
     if Image is None:
         raise RuntimeError("PIL is required. Install with: pip install Pillow")
@@ -97,6 +101,20 @@ def build_frame_grid(
     cell_w, cell_h = frames[0].size
     cell_w = max(cell_w, 1)
     cell_h = max(cell_h, 1)
+
+    # Shrink cells uniformly if the natural grid would exceed max_size on
+    # either axis. This is the GPT-vision safety clamp: 2048 per side at
+    # detail="high". Padding is fixed, so we solve cell_max from the
+    # remaining axis budget rather than scaling cell+padding together.
+    natural_w = cols * cell_w + (cols + 1) * p
+    natural_h = rows * cell_h + (rows + 1) * p
+    if max_size and (natural_w > max_size or natural_h > max_size):
+        max_cell_w = max(1, (max_size - (cols + 1) * p) // cols)
+        max_cell_h = max(1, (max_size - (rows + 1) * p) // rows)
+        # Preserve aspect ratio: pick the tighter of the two scale factors.
+        scale = min(max_cell_w / cell_w, max_cell_h / cell_h)
+        cell_w = max(1, int(cell_w * scale))
+        cell_h = max(1, int(cell_h * scale))
 
     W = int(cols * cell_w + (cols + 1) * p)
     H = int(rows * cell_h + (rows + 1) * p)
