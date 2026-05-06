@@ -7,7 +7,7 @@ Goal Adherence Monitoring
 
 Pipeline: NL --> LTL-NL (via LLM + Spot automaton) --> Subgoal sequence
           --> SubgoalConverter --> OpenVLA control loop
-          + GoalAdherenceMonitor (local + global prompts, 3x3 image grid,
+          + Goal adherence monitor (local + global prompts, 3x3 image grid,
             text diary, displacement tracking)
           + Convergence detection + Post-Convergence Supervisor Mode
             (corrective commands up to budget)
@@ -20,7 +20,7 @@ Key components:
   - SubgoalConverter: Rewrites planner predicates into short OpenVLA
     instructions. Strips visual detection conditions ("until you see X")
     and converts spatial proximity ("until near X") to approach commands.
-  - GoalAdherenceMonitor: Periodic VLM checkpoints during execution.
+  - Goal adherence monitor: Periodic VLM checkpoints during execution.
     Local prompt: 2-frame comparison ("what changed?").
     Global prompt: sampled 3x3 grid + text diary + displacement +
     completion history ("how complete?").
@@ -30,7 +30,7 @@ Key components:
     navigation. Takes image + proprioceptive state + instruction,
     outputs action poses.
 
-Default parameters (from config.py):
+Default parameters (from project configuration):
   - LLM model: gpt-5.4 (planning, subgoal conversion, C6 global checks)
   - VLM model: gpt-5.4 (goal adherence monitoring: local, global, convergence)
   - SubgoalConverter uses the LLM model (gpt-5.4), not the VLM, since
@@ -38,10 +38,12 @@ Default parameters (from config.py):
   - Max steps per subgoal: 500
   - Diary check interval: every 10 frames
   - Max corrections per subgoal: 20
-  - Stall window: 10 checkpoints
+  - Stall window: 10 checkpoints (hardware override: 5)
   - Stall threshold: 0.05 (completion spread)
   - Convergence: position delta < 3.0 cm AND yaw delta < 1.0 deg
     for 10 consecutive steps
+  - Diary mode: frame-based for simulation eval (10-frame interval);
+    run_hardware forces time-based (3 s interval)
 
 Simulation: Unreal Engine via UnrealCV gym. Single map:
 DowntownWest (urban). See Section 4a for details.
@@ -53,21 +55,32 @@ DowntownWest (urban). See Section 4a for details.
 CONDITION 0: FULL SYSTEM (Proposed Method)
 ------------------------------------------
 Pipeline: NL --> LTL-NL --> Subgoal --> SubgoalConverter --> OpenVLA
-          + GoalAdherenceMonitor (local + global with 3x3 grid + text diary
+          + Goal adherence monitor (local + global with 3x3 grid + text diary
             + displacement) + Convergence corrections + Stall detection
-Script: run_integration.py
 Why: This is the proposed method. All other conditions ablate or
      replace components of this pipeline.
+
+2a. REPLICATION MAP (entry points only)
+----------------------------------------
+These names identify where each condition is run in the codebase. They
+do not specify the scientific definition of the conditions, which is
+given by the pipeline descriptions above.
+  C0: run_integration.py
+  C1: run_condition1_naive.py
+  C2: run_condition2_llm_planner.py
+  C3: run_condition3_open_loop.py
+  C4: run_condition4_single_frame.py
+  C5: run_condition5_grid_only.py
+  C6: run_condition6_text_only.py
 
 CONDITION 1: NAIVE END-TO-END VLA
 ---------------------------------
 Pipeline: Full NL instruction --> OpenVLA
           (no LTL decomposition, no subgoal conversion, no monitoring)
-Script: run_condition1_naive.py
-Implementation: Pass the entire long-horizon instruction directly to
-  OpenVLA as a single instruction string. No LTL decomposition, no
-  goal adherence monitoring, no convergence corrections. Run the basic control
-  loop with convergence detection only (stop when drone stops moving).
+Procedure: The entire long-horizon instruction is passed directly to
+  OpenVLA as a single string. There is no LTL decomposition, no goal
+  adherence monitoring, and no supervisor corrections. The low-level
+  loop runs until convergence (drone stops moving).
 Why: Proves the base OpenVLA model cannot handle long-horizon,
   multi-step instructions. Establishes that task decomposition is
   strictly necessary.
@@ -78,14 +91,13 @@ CONDITION 2: LLM SEQUENTIAL PLANNER (No LTL)
 ---------------------------------------------
 Pipeline: NL --> LLM text-to-text decomposition --> Sequential subgoals
           --> SubgoalConverter --> OpenVLA
-          + GoalAdherenceMonitor (full, same as Condition 0)
-Script: Modified run_integration.py (replace LTL planner with simple
-  LLM decomposition, no Spot automaton, no formal state machine)
-Implementation: Use the same LLM (gpt-5.4) to break the instruction
-  into a numbered list of subgoals (text-to-text, no LTL formula).
-  Execute subgoals sequentially with the same goal adherence monitoring as the
-  full system. Advance to the next subgoal when the monitor confirms
-  completion. No automaton state tracking.
+          + Goal adherence monitor (full, same as Condition 0)
+Procedure: The same language model (gpt-5.4) decomposes the
+  instruction into a numbered list of subgoals (text only, no LTL
+  formula, no automaton). Subgoals are executed in order with the
+  same closed-loop monitor and corrections as Condition 0. The next
+  subgoal starts when the monitor reports completion. There is no
+  formal state machine.
 Why: SECONDARY COMPARISON. Included as a representative of existing
   LLM-planner approaches (SayCan, Inner Monologue, Code-as-Policies)
   applied to UAV navigation. Isolates the LTL formalism by replacing
@@ -108,12 +120,10 @@ CONDITION 3: OPEN-LOOP LTL (No Monitor, No Corrections)
 Pipeline: NL --> LTL-NL --> Subgoal --> SubgoalConverter --> OpenVLA
           (NO goal adherence monitoring, NO convergence corrections)
           Advance to next subgoal on convergence (drone stops = done).
-Script: run_condition3_open_loop.py
-Implementation: Use the full LTL planner and SubgoalConverter, but
-  run the basic OpenVLA control loop without any VLM monitoring. When
-  the drone stops moving (convergence detected), assume the subgoal is
-  achieved and advance the automaton to the next state. No completion
-  assessment, no corrective commands.
+Procedure: Full LTL-based planning and subgoal conversion as in
+  Condition 0, but the control loop has no monitor. When the drone
+  stops (convergence), the system treats the subgoal as done and
+  advances. There is no completion check and no corrective commands.
 Why: PRIMARY ABLATION AND HEADLINE COMPARISON. This is the single
   most important baseline in the experiment. C3 vs C0 directly tests
   the paper's core claim: that closed-loop goal adherence monitoring
@@ -139,39 +149,53 @@ CONDITION 4: FRAME-BY-FRAME MONITOR (No Temporal Context)
 Pipeline: NL --> LTL-NL --> Subgoal --> SubgoalConverter --> OpenVLA
           + Single-frame VLM check (current frame + subgoal only)
           + Convergence corrections (using single-frame assessment)
-Script: Modified run_integration.py (replace GoalAdherenceMonitor with
-  a single-frame VLM query at each checkpoint)
-Implementation: At each checkpoint interval, send ONLY the current
-  camera frame and the subgoal text to the VLM. Ask: "Is the drone
-  currently at the goal?" No diary history, no image grid, no
-  displacement data, no completion percentage tracking. On convergence,
-  use the same single-frame query to decide complete vs. stopped_short
-  and issue corrections.
+Entry point: same integration harness as Condition 0, monitor set to
+  the single-frame variant.
+Procedure: At each checkpoint, the monitor sees only the current
+  first-person frame and the subgoal text. There is no running text
+  diary, no multi-frame grid, and no odometry block in the assessment.
+  The protocol does not run a separate local two-frame narrative
+  update, because that text is not used in this condition. Stall
+  detection still uses completion history across checkpoints, but
+  each per-checkpoint completion estimate is based on a single frame
+  only. Convergence uses the same single-frame assessment. Monitor
+  instructions describe only the inputs that are actually provided, so
+  the model is not told to expect diary or displacement. Completion
+  rules, orientation tolerance, and single-step correction guidance
+  match the full system in strictness; only the available sensory
+  context differs.
 Why: Proves that temporal context (the diary) is necessary. A VLM
   looking at a single frame cannot distinguish between:
   - "Stalled" (no progress for many steps)
   - "Making slow progress" (gradually approaching)
   - "Achieved" (arrived at goal)
-  Without history, the VLM has no way to detect stalls, track
-  regression (moving away from target), or calibrate completion
-  percentage over time.
+  Without history, the VLM has no way to track regression (moving
+  away from target) or calibrate completion percentage over time.
+  Stall detection still fires based on the completion history, but
+  each individual completion estimate lacks temporal grounding.
 Expected outcome: Higher false positive rate (premature completion
-  declarations) and inability to detect stalls. Success rate lower
+  declarations) and degraded stall detection. Success rate lower
   than full system, particularly on approach/traversal tasks where
   completion requires observing change over time.
 
 CONDITION 5: IMAGE-GRID ONLY MONITOR (No Text Diary)
 -----------------------------------------------------
 Pipeline: NL --> LTL-NL --> Subgoal --> SubgoalConverter --> OpenVLA
-          + GoalAdherenceMonitor with 3x3 image grid but NO text diary
+          + Goal adherence monitor with 3x3 image grid but NO text diary
             and NO displacement data
           + Convergence corrections (using grid only)
-Script: Modified run_integration.py (remove diary text and displacement
-  from global/convergence prompts, keep image grid)
-Implementation: Same checkpoint interval. Build the 3x3 grid of
-  sampled frames as normal. But remove the running text diary entries
-  and displacement [x, y, z, yaw] data from the global and convergence
-  prompts. The VLM sees only the subgoal text and the image grid.
+Entry point: same integration harness as Condition 0, monitor set to
+  the grid-only variant.
+Procedure: Checkpoints use the same sampled 3x3 frame grid as the full
+  system. Global and convergence assessments omit the running text diary
+  and the displacement summary; the assessor sees only the subgoal and
+  the grid. There is no local two-frame narrative stage in this
+  condition, because those entries are not fed into global or
+  convergence in this ablation. Monitor instructions describe only the
+  inputs provided (subgoal + grid). Completion rules, orientation
+  tolerance, and single-step correction guidance match the full system
+  in strictness; only the available channels (visual sequence vs.
+  visual + diary + odometry) differ.
 Why: Tests whether VLMs can infer progress/completion from visual
   history alone without explicit textual state tracking. Isolates the
   contribution of the text diary and odometry data.
@@ -180,27 +204,35 @@ Expected outcome: VLM can detect gross completion (target clearly
   - Precise distance estimation (no displacement data)
   - Detecting subtle regression (text diary tracks "moved closer then
     moved away")
-  - Stall detection (no completion percentage history to detect plateau)
+  - Stall detection (completion percentage history still tracked, but
+    each estimate lacks textual grounding from the diary)
   Performance between Condition 4 and Condition 0.
 
 CONDITION 6: TEXT-ONLY GLOBAL ASSESSMENT (No Image Grid)
 ----------------------------------------------------------
 Pipeline: NL --> LTL-NL --> Subgoal --> SubgoalConverter --> OpenVLA
-          + GoalAdherenceMonitor with text diary + displacement but NO
-            3x3 image grid (use standard LLM, not VLM)
+          + Goal adherence monitor with text diary + displacement but NO
+            3x3 image grid (global and convergence use a text-only LLM)
           + Convergence corrections (using text + displacement only)
-Script: Modified run_integration.py (remove image grid from global/
-  convergence prompts, use LLM instead of VLM for global checks)
-Implementation: Keep the local prompt (2-frame VLM query for diary
-  entries, since it needs images). For global and convergence checks,
-  send only the text diary and displacement data to a text-only LLM.
-  No image grid in the global/convergence prompts.
+Entry point: same integration harness as Condition 0, monitor set to
+  the text-only global variant.
+Procedure: Local checkpoints still build a short diary by comparing
+  consecutive frames (this stage requires images). Global and
+  convergence assessments use only the text diary, displacement, and
+  prior completion summary via a text-only language model; no image
+  grid is attached to those calls. Monitor instructions for those stages
+  describe text-based reasoning from the diary and odometry. Completion
+  rules, orientation tolerance, and single-step correction guidance are
+  aligned with other conditions in strictness; obstacle-related guidance
+  is omitted at the global and convergence stages because there is no
+  direct image input there. Only the available sensory channel for those
+  stages (text + odometry vs. text + odometry + grid) differs from the
+  full system.
 
-  NOTE: The local prompt still requires a VLM call (it compares two
-  frames to generate the diary entry). The key change is that the
-  global assessment (completion %, complete/incomplete, corrections)
-  is made by a text-only LLM reading the diary entries and
-  displacement, with no image grid.
+  NOTE: The paper should label this condition "Text-Only Global
+  Assessment": a vision model still produces diary entries from frames,
+  but completion and corrections at global and convergence are decided
+  without an image grid.
 Why: Tests whether the text diary and odometry data are sufficient
   for completion assessment, or whether visual confirmation from the
   image grid is strictly required. The text log might say "moved
@@ -265,10 +297,10 @@ With 3 starting position variants per task: 9 episodes per condition.
 ---------------------
 Each task JSON includes:
 {
-  "task_id": "above_pergolas",
-  "instruction": "Go past all of the pergolas ahead, maintain an altitude above the pergolas.",
-  "initial_pos": [11025, -1170, 230, 178],
-  "expected_subgoal_count": 2,
+  "task_id": "streetlamp_to_cars",
+  "instruction": "Go past the first streetlamp, then turn right ...",
+  "initial_pos": [-7500, 848, 396, -177],
+  "expected_subgoal_count": 5,
   "max_steps_per_subgoal": 500,
   "max_corrections": 20,
   "diary_check_interval": 10
@@ -278,21 +310,22 @@ Each task JSON includes:
 ----------------------------------
 Each task runs 3 times with different starting positions. All three
 variants are small spatial perturbations of the same general
-viewpoint, with offsets of 0.3-1.2 meters and yaw changes of 0-5
-degrees. This tests robustness to minor initial condition variation
-(sensor noise, imprecise takeoff positioning) without requiring
-entirely different scenarios.
+viewpoint, with position offsets of 65-135 cm and yaw changes of
+3-4 degrees. This tests robustness to minor initial condition
+variation (sensor noise, imprecise takeoff positioning) without
+requiring entirely different scenarios.
 
 Variations:
   - Run 1: Default position (as specified in task JSON)
-  - Run 2: Nearby perturbation (30-120 UE units offset, 0-5 deg yaw)
-  - Run 3: Nearby perturbation (45-125 UE units offset, 0-5 deg yaw)
+  - Run 2: Nearby perturbation (65-135 cm offset, +3 to +4 deg yaw)
+  - Run 3: Nearby perturbation (65-135 cm offset, -3 to -4 deg yaw)
 
-NOTE: The three variants are close together by design. They do NOT
-test orientation robustness (e.g., approaching the same goal from
-a different heading). If orientation sensitivity is important for
-the paper, consider adding a fourth variant with a 90-degree yaw
-rotation, or revising existing variant-2 files to include one.
+NOTE: The three variants are close together by design. They test
+minor orientation robustness (small yaw perturbations in both
+directions) but NOT large heading changes (e.g., approaching the
+same goal from a 90-degree rotated heading). If orientation
+sensitivity is important for the paper, consider adding a fourth
+variant with a larger yaw rotation.
 
 
 5. EVALUATION METRICS
@@ -378,14 +411,8 @@ M8. Average Episode Length
 1. Load task JSON (instruction, initial_pos).
 2. Teleport drone to starting position. Wait for stabilization.
 3. Reset OpenVLA model state.
-4. Execute the pipeline for the active condition:
-   - Condition 0: run_integration.py (full pipeline)
-   - Condition 1: Single OpenVLA pass with raw instruction
-   - Condition 2: LLM decomposition + goal adherence monitoring
-   - Condition 3: run_condition3_open_loop.py (LTL + blind execution)
-   - Condition 4: Single-frame monitor variant
-   - Condition 5: Grid-only monitor variant
-   - Condition 6: Text-only global assessment variant
+4. Execute the pipeline for the active condition (see Section 2a for
+   entry-point names).
 5. Log all frames, diary entries, monitor decisions, corrections,
    VLM call records, and trajectory poses.
 6. Record final outcome: success/failure, stop_reason, subgoal
@@ -557,7 +584,7 @@ SECONDARY COMPARISONS (descriptive only):
 All statistics computed by scripts/analyze_annotations.py.
 
 PSEUDO-REPLICATION NOTE: The 3 variants per task are small
-perturbations (0.3-1.2m offset, 0-5 deg yaw). Outcomes within
+perturbations (65-135 cm offset, 3-4 deg yaw). Outcomes within
 a task cluster are highly correlated. The episode-level Wilson CIs
 and Fisher's exact p-values treat all 9 as independent, which
 overstates confidence. The task-level pass rate (n=3) is the
@@ -585,24 +612,49 @@ Component              | C0  | C1  | C2  | C3  | C4  | C5  | C6
 -----------------------|-----|-----|-----|-----|-----|-----|-----
 LTL Decomposition      | Yes | No  | No  | Yes | Yes | Yes | Yes
 Spot Automaton         | Yes | No  | No  | Yes | Yes | Yes | Yes
-Diary Monitor          | Yes | No  | Yes | No  | No* | Mod | Mod
+Local VLM (diary gen)  | Yes | No  | Yes | No  | No  | No  | Yes
 3x3 Image Grid         | Yes | No  | Yes | No  | No  | Yes | No
 Text Diary             | Yes | No  | Yes | No  | No  | No  | Yes
 Displacement Data      | Yes | No  | Yes | No  | No  | No  | Yes
 Convergence Correction | Yes | No  | Yes | No  | Yes*| Yes | Yes
-Stall Detection        | Yes | No  | Yes | No  | No  | Yes+| Yes+
+Stall Detection        | Yes | No  | Yes | No  | Yes*| Yes | Yes
+Monitor instruction set| Full| n/a | Full| n/a | SF  | GO  | TO
 
-C4*: Uses single-frame VLM, no diary. Has convergence corrections
-     but based on single-frame assessment only.
-Mod: Modified version (C5 = grid only, C6 = text-only global).
-Yes+: C5 and C6 use the shared subgoal_runner which triggers stall
-     detection, but unlike C0 and C2 they have no ask_help callback,
-     so a stall stops the subgoal rather than skipping it.
-C6 NOTE: C6 still uses a VLM for the LOCAL prompt (2-frame comparison
-     to generate diary entries). Only the GLOBAL and CONVERGENCE
-     assessments use a text-only LLM. In the paper, label this
-     condition clearly: "Text-Only Global Assessment" rather than
-     simply "Text Only" to avoid implying no VLM is used at all.
+ABORT SEMANTICS (uniform across all conditions):
+  All conditions use the same human-interaction and abort policy. In
+  non-interactive (batch) mode, any stall, max-step, or max-correction
+  limit that would request operator help ends the episode and is
+  recorded under a single failure class so M1 and M3 stay comparable
+  across conditions.
+
+C4*: Single-frame global and convergence VLM, no diary, no local
+     narrative stage. Convergence corrections and stall detection
+     both operate on single-frame completion estimates (the stall
+     logic still uses history across checkpoints). "SF" = instructions
+     reference only the current frame and subgoal.
+C5:  Image grid for global and convergence, no text diary, no
+     displacement, no local two-frame narrative (not used by this
+     ablation). "GO" = instructions reference the subgoal and the
+     frame grid only.
+C6:  Local two-frame comparison still produces diary text. Global and
+     convergence use a text-only assessor (no image grid). In the
+     paper, use the label "Text-Only Global Assessment" so readers do
+     not infer that no vision is used anywhere. "TO" = text-only
+     instruction set for global and convergence; obstacle guidance is
+     omitted there because those stages have no images.
+
+Instruction control: For monitor-based conditions, written
+     instructions are matched in scope and strictness (what counts as
+     done, orientation tolerance, one-step corrections) while varying
+     only the information channels under study. Obstacle-related
+     guidance is included when the assessor receives images (C0, C4,
+     C5) and withheld for C6 at global and convergence, where there is
+     no direct visual input.
+
+Checkpoint scheduling (C6): Whether checkpoints are triggered by frame
+     count or by elapsed time, global and convergence for Condition 6
+     always follow the text-and-odometry protocol with no image grid,
+     so the ablation is well defined across scheduling modes.
 
 
 9. KEY ASSUMPTIONS AND LIMITATIONS
@@ -658,13 +710,8 @@ Before running the full experiment suite:
     (a) Starting positions are valid and the drone spawns correctly.
     (b) Instructions reference visible landmarks from each start.
 
-[ ] CONDITION IMPLEMENTATIONS: Verify each modified script runs
-    without errors on at least 1 task:
-    - Condition 1: Raw instruction to OpenVLA
-    - Condition 2: LLM sequential planner (no LTL)
-    - Condition 4: Single-frame monitor
-    - Condition 5: Grid-only monitor
-    - Condition 6: Text-only global monitor
+[ ] PILOT RUNS: Complete one pilot episode per condition using the
+    replication map (Section 2a) before batch evaluation.
 
 [ ] ARTIFACT LOGGING: Verify all conditions produce comparable output
     artifacts (frames, trajectories, monitor logs, playback videos)
@@ -711,22 +758,12 @@ Before running the full experiment suite:
   assessments are text-only.
 
 
-12. IMPLEMENTATION PRIORITY ORDER
+12. RECOMMENDED ROLLOUT ORDER
 ======================================================================
 
-1. Task design and scouting (Section 4) -- tasks must be designed
-   before any experiments run.
-
-2. Token cost validation (Section 10, first item) -- determines
-   whether the budget is feasible.
-
-3. Condition 3 implementation (run_condition3_open_loop.py) --
-   most important baseline, run first.
-
-4. Condition 0 implementation (already exists as run_integration.py)
-   -- full system, run second.
-
-5. Remaining conditions (1, 2, 4, 5, 6) -- implement and run in
-   parallel if possible.
-
-6. Post-hoc analysis scripts and manual annotation.
+1. Task design and scouting (Section 4).
+2. Token cost pilot (Section 10, first item) to confirm budget.
+3. Primary baseline (Condition 3) before the full system (Condition 0).
+4. Full system (Condition 0), then remaining conditions in any order
+   that balances compute and risk.
+5. Post-hoc analysis and manual annotation.
