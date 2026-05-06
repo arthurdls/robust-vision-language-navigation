@@ -1,0 +1,15 @@
+{
+  "task_id": "above_building_europa",
+  "category": "sequential",
+  "instruction": "Ascend to a height above the building ahead. Then go past the building ahead. Then descend to the ground. Turn right until you see a sign that says Europa, go to the building and then land.",
+  "initial_pos": [
+    -7155,
+    -5301,
+    74,
+    89
+  ],
+  "expected_subgoal_count": 6,
+  "max_steps_per_subgoal": 500,
+  "max_corrections": 20,
+  "diary_check_interval": 10
+}

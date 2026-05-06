@@ -1,4 +1,4 @@
 {
-  "instruction": "Go past the first streetlamp, then turn right until you see the black car, then go to the black car, then turn toward the red car and go to the red car. Finally, land in front of the traffic light pole on the right.",
-  "initial_pos": [-7500, 848, 396, -177]
+  "instruction": "Ascend to a height above the building ahead. Then go past the building ahead. Then descend to the ground. Turn right until you see a sign that says Europa, go to the building and then land.",
+  "initial_pos": [-7089, -5378, 148, 89]
 }

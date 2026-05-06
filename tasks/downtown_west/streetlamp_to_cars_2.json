@@ -1,0 +1,15 @@
+{
+  "task_id": "streetlamp_to_cars_2",
+  "category": "sequential",
+  "instruction": "Go past the first streetlamp, then turn right until you see the black car, then go to the black car, then turn toward the red car and go to the red car. Finally, land in front of the traffic light pole on the right.",
+  "initial_pos": [
+    -7423,
+    762,
+    462,
+    -177
+  ],
+  "expected_subgoal_count": 5,
+  "max_steps_per_subgoal": 500,
+  "max_corrections": 20,
+  "diary_check_interval": 10
+}
