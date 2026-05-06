@@ -25,8 +25,6 @@ from ..paths import FORMULA_CACHE_DIR
 from .prompts import (
     LTL_NL_SYSTEM_PROMPT,
     LTL_NL_EXAMPLES_PROMPT,
-    LTL_NL_SYSTEM_PROMPT_SEQUENTIAL,
-    LTL_NL_EXAMPLES_PROMPT_SEQUENTIAL,
     LTL_NL_RESTATED_TASK_PROMPT,
     LTL_NL_CHECK_PREDICATES_PROMPT,
     LTL_NL_CHECK_SEMANTICS_PROMPT,
@@ -139,25 +137,17 @@ class LLMUserInterface():
     }
     """
 
-    def __init__(self, model: str = DEFAULT_LLM_MODEL, use_constraints: bool = True):
+    def __init__(self, model: str = DEFAULT_LLM_MODEL):
         self._model = model
-        self._use_constraints = use_constraints
         self._base_llm = LLMFactory.create(model=model, rate_limit_seconds=0.0)
 
-        if use_constraints:
-            system_prompt = LTL_NL_SYSTEM_PROMPT
-            examples_prompt = LTL_NL_EXAMPLES_PROMPT
-        else:
-            system_prompt = LTL_NL_SYSTEM_PROMPT_SEQUENTIAL
-            examples_prompt = LTL_NL_EXAMPLES_PROMPT_SEQUENTIAL
-
         self._initial_context = [
-            {"role": "system", "content": system_prompt},
-            {"role": "system", "content": examples_prompt},
+            {"role": "system", "content": LTL_NL_SYSTEM_PROMPT},
+            {"role": "system", "content": LTL_NL_EXAMPLES_PROMPT},
             {"role": "system", "content": LTL_NL_RESTATED_TASK_PROMPT},
         ]
         self._prompt_version = _prompt_version_for(
-            (system_prompt, examples_prompt, LTL_NL_RESTATED_TASK_PROMPT)
+            (LTL_NL_SYSTEM_PROMPT, LTL_NL_EXAMPLES_PROMPT, LTL_NL_RESTATED_TASK_PROMPT)
         )
 
         self._history = list(self._initial_context)
