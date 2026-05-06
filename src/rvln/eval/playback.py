@@ -7,7 +7,7 @@ them to video. Used by scripts/playback.py and experiment runners.
 
 import json
 import logging
-import re
+
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Union
 
@@ -65,36 +65,6 @@ def load_frame_labels(run_dir: Path) -> Dict[int, str]:
     return labels
 
 
-def load_constraint_text(run_dir: Path) -> Optional[str]:
-    """Extract the constraint (G-predicate) text from ``run_info.json``.
-
-    Parses the LTL formula for ``G(pi_X)`` references and looks up the
-    corresponding predicate text.  Returns a joined string when constraints
-    exist, or ``None`` when there are none.
-    """
-    run_dir = Path(run_dir)
-    info_path = run_dir / "run_info.json"
-    if not info_path.exists():
-        return None
-
-    try:
-        info = json.loads(info_path.read_text())
-    except (json.JSONDecodeError, OSError):
-        return None
-
-    plan = info.get("ltl_plan", {})
-    formula = plan.get("ltl_nl_formula", "")
-    predicates = plan.get("pi_predicates", {})
-    if not formula or not predicates:
-        return None
-
-    g_vars = re.findall(r"G\((pi_\d+)\)", formula)
-    if not g_vars:
-        return None
-
-    texts = [predicates[v] for v in g_vars if v in predicates]
-    return ", ".join(texts) if texts else None
-
 
 def draw_label_overlay(img, text: str) -> None:
     """Draw *text* on the top-left of *img* (BGR numpy array, modified in place).
@@ -132,39 +102,6 @@ def draw_label_overlay(img, text: str) -> None:
     cv2.putText(img, text, (x, y), font, scale, color, thickness, cv2.LINE_AA)
 
 
-def draw_constraint_overlay(img, text: str) -> None:
-    """Draw constraint text at the bottom of *img* with a yellow label."""
-    import cv2
-
-    font = cv2.FONT_HERSHEY_SIMPLEX
-    scale = 0.4
-    thickness = 1
-    color = (0, 200, 255)  # yellow-orange (BGR)
-    margin = 8
-
-    label = f"Constraint: {text}"
-    (tw, th), baseline = cv2.getTextSize(label, font, scale, thickness)
-
-    max_w = img.shape[1] - 2 * margin
-    if tw > max_w:
-        scale = scale * max_w / tw
-        (tw, th), baseline = cv2.getTextSize(label, font, scale, thickness)
-
-    x = margin
-    y = img.shape[0] - margin - baseline
-    pad = 4
-    overlay = img.copy()
-    cv2.rectangle(
-        overlay,
-        (x - pad, y - th - pad),
-        (x + tw + pad, y + baseline + pad),
-        (0, 0, 0),
-        cv2.FILLED,
-    )
-    alpha = 0.7
-    cv2.addWeighted(overlay, alpha, img, 1 - alpha, 0, img)
-    cv2.putText(img, label, (x, y), font, scale, color, thickness, cv2.LINE_AA)
-
 
 def is_primary_timeline_frame(path: Union[str, Path]) -> bool:
     """True if *path* is a main-sequence frame (excludes convergence snapshots)."""
@@ -194,7 +131,6 @@ def write_frames_to_mp4(
     fps: float = 10.0,
     fourcc: str = "mp4v",
     frame_labels: Optional[Dict[int, str]] = None,
-    constraint_text: Optional[str] = None,
 ) -> Path:
     """Encode image sequence to MP4 using OpenCV.
 
@@ -210,8 +146,6 @@ def write_frames_to_mp4(
         Four-character codec.
     frame_labels
         Optional mapping from frame index to overlay label text.
-    constraint_text
-        Optional constraint string drawn at the bottom of every frame.
     """
     import cv2
 
@@ -243,8 +177,6 @@ def write_frames_to_mp4(
                 img = cv2.resize(img, (w, h), interpolation=cv2.INTER_AREA)
             if frame_labels and idx in frame_labels:
                 draw_label_overlay(img, frame_labels[idx])
-            if constraint_text:
-                draw_constraint_overlay(img, constraint_text)
             writer.write(img)
     finally:
         writer.release()
@@ -270,11 +202,10 @@ def save_run_directory_mp4(
         logger.warning("No frames found under %s; skipping MP4.", run_dir)
         return None
     frame_labels = load_frame_labels(run_dir) if overlay else None
-    constraint_text = load_constraint_text(run_dir) if overlay else None
     out_path = run_dir / out_name
     write_frames_to_mp4(
         paths, out_path, fps=fps, fourcc=fourcc,
-        frame_labels=frame_labels, constraint_text=constraint_text,
+        frame_labels=frame_labels,
     )
     logger.info("Saved video to %s", out_path)
     return out_path
