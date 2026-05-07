@@ -80,7 +80,7 @@ logger = logging.getLogger(__name__)
 
 def run_open_loop_control_loop(
     env, batch, task, server_url, run_dir,
-    llm_model, converter_model, drone_cam_id,
+    llm_model, drone_cam_id,
     save_mp4=False, mp4_fps=10.0,
     seed=DEFAULT_SEED, time_dilation=DEFAULT_TIME_DILATION, env_id="",
     save_frames=True,
@@ -129,7 +129,9 @@ def run_open_loop_control_loop(
     if current_subgoal is None:
         raise RuntimeError("LTL planning produced no subgoals.")
 
-    converter = SubgoalConverter(model=converter_model)
+    # SubgoalConverter is a text-to-text decomposer of LTL predicates into
+    # OpenVLA instructions; it shares the LLM model with the LTL planner.
+    converter = SubgoalConverter(model=llm_model)
 
     while current_subgoal is not None:
         subgoal_index += 1
@@ -218,10 +220,11 @@ def run_open_loop_control_loop(
                         break
                 last_pose = list(current_pose)
 
-                if response.get("done") is True:
-                    logger.info("Model reported done at step %d.", step)
-                    stop_reason = "model_done"
-                    break
+                # OpenVLA's "done" signal is unreliable for long-horizon tasks
+                # (frequent false positives). For experimental uniformity all
+                # conditions terminate via convergence or step-budget
+                # exhaustion only; C3 then advances the LTL automaton on
+                # either of those termination reasons.
             finally:
                 _step_timer.end_step()
         else:
@@ -277,6 +280,11 @@ def run_open_loop_control_loop(
     wall_clock_seconds = (end_dt - start_dt).total_seconds()
 
     run_info = {
+        # C3 is the open-loop ablation: by design, every subgoal advances
+        # whether it converged or hit max_steps. There is no abort path
+        # (Section 8c exception). aborted is always False here so the
+        # analysis-script schema is uniform across conditions.
+        "aborted": False,
         "completed": True,
         "condition": "condition3_open_loop",
         "task": task,
@@ -286,10 +294,9 @@ def run_open_loop_control_loop(
         "server_url": server_url,
         "drone_cam_id": drone_cam_id,
         "llm_model": llm_model,
-        "converter_model": converter_model,
         "models": {
             "ltl_nl_planning": llm_model,
-            "subgoal_converter": converter_model,
+            "subgoal_converter": llm_model,
             "openvla_predict_url": server_url,
         },
         "config": {
@@ -339,8 +346,9 @@ def main():
     parser.add_argument("--sim_host", type=str, default=DEFAULT_SIM_HOST)
     parser.add_argument("--sim_port", type=int, default=DEFAULT_SIM_PORT)
     parser.add_argument("--sim_api_port", type=int, default=DEFAULT_SIM_API_PORT)
-    parser.add_argument("--llm_model", default=DEFAULT_LLM_MODEL)
-    parser.add_argument("--converter_model", default=DEFAULT_LLM_MODEL)
+    parser.add_argument("--llm_model", default=DEFAULT_LLM_MODEL,
+                        help="Model for LTL planning and SubgoalConverter "
+                             f"(default: {DEFAULT_LLM_MODEL})")
     parser.add_argument("--max-steps-per-subgoal", type=int, default=DEFAULT_MAX_STEPS_PER_SUBGOAL)
     parser.add_argument("-o", "--results_dir", default=str(CONDITION3_RESULTS_DIR))
     parser.add_argument("--save-mp4", action="store_true")
@@ -400,7 +408,6 @@ def main():
                 run_info = run_open_loop_control_loop(
                     env=env, batch=batch, task=task, server_url=server_url,
                     run_dir=run_dir, llm_model=args.llm_model,
-                    converter_model=args.converter_model,
                     drone_cam_id=drone_cam_id, save_mp4=args.save_mp4, mp4_fps=args.mp4_fps,
                     seed=args.seed, time_dilation=args.time_dilation,
                     env_id=map_info.env_id,

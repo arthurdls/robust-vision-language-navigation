@@ -57,6 +57,7 @@ from rvln.config import (
 from rvln.eval.subgoal_runner import SubgoalConfig, run_subgoal
 from rvln.eval.task_utils import (
     get_completed_task_ids,
+    is_abort_stop_reason,
     make_ask_help_callback,
     resolve_eval_tasks,
     sanitize_run_label,
@@ -87,7 +88,7 @@ logger = logging.getLogger(__name__)
 
 def run_text_only_control_loop(
     env, batch, task, server_url, run_dir,
-    llm_model, vlm_model, drone_cam_id,
+    llm_model, monitor_model, drone_cam_id,
     save_mp4=False, mp4_fps=10.0,
     check_interval_s=None, max_seconds=None,
     seed=DEFAULT_SEED, time_dilation=DEFAULT_TIME_DILATION,
@@ -125,6 +126,8 @@ def run_text_only_control_loop(
     trajectory_log = []
     total_frame_count = 0
     subgoal_index = 0
+    aborted = False
+    final_stop_reason: str = ""
 
     origin_x, origin_y, origin_z = initial_pos[0], initial_pos[1], initial_pos[2]
     origin_yaw = initial_pos[3]
@@ -150,7 +153,7 @@ def run_text_only_control_loop(
         )
         subgoal_result = run_subgoal(
             env=env, batch=batch, server_url=server_url,
-            subgoal_nl=current_subgoal, monitor_model=vlm_model, llm_model=llm_model,
+            subgoal_nl=current_subgoal, monitor_model=monitor_model, llm_model=llm_model,
             config=sg_config,
             origin_x=origin_x, origin_y=origin_y,
             origin_z=origin_z, origin_yaw=origin_yaw,
@@ -164,11 +167,13 @@ def run_text_only_control_loop(
         subgoal_summaries.append(subgoal_result)
 
         sr = subgoal_result["stop_reason"]
-        if sr in ("abort", "ask_help"):
+        if is_abort_stop_reason(sr):
             logger.info(
                 "Episode aborted (stop_reason=%s) at subgoal '%s'.",
                 sr, current_subgoal,
             )
+            aborted = True
+            final_stop_reason = sr
             break
 
         planner.advance_state(current_subgoal)
@@ -203,7 +208,9 @@ def run_text_only_control_loop(
     wall_clock_seconds = (end_dt - start_dt).total_seconds()
 
     run_info = {
-        "completed": True,
+        "aborted": aborted,
+        "completed": not aborted,
+        "stop_reason": final_stop_reason,
         "condition": "condition6_text_only",
         "task": task,
         "seed": seed,
@@ -213,12 +220,12 @@ def run_text_only_control_loop(
         "drone_cam_id": drone_cam_id,
         "diary_mode": diary_mode,
         "llm_model": llm_model,
-        "vlm_model": vlm_model,
+        "monitor_model": monitor_model,
         "models": {
             "ltl_nl_planning": llm_model,
             "subgoal_converter": llm_model,
-            "local_diary_vlm": vlm_model,
-            "text_only_global_llm": llm_model,
+            "local_diary_vlm": monitor_model,
+            "text_only_global_llm": monitor_model,
             "openvla_predict_url": server_url,
         },
         "config": {
@@ -275,7 +282,7 @@ def main():
     parser.add_argument("--sim_port", type=int, default=DEFAULT_SIM_PORT)
     parser.add_argument("--sim_api_port", type=int, default=DEFAULT_SIM_API_PORT)
     parser.add_argument("--llm_model", default=DEFAULT_LLM_MODEL)
-    parser.add_argument("--vlm_model", default=DEFAULT_VLM_MODEL)
+    parser.add_argument("--monitor_model", default=DEFAULT_VLM_MODEL)
     parser.add_argument("--diary-mode", choices=("frame", "time"), default=DEFAULT_DIARY_MODE)
     parser.add_argument("--diary-check-interval", type=int, default=None)
     parser.add_argument("--diary-check-interval-s", type=float, default=DEFAULT_DIARY_CHECK_INTERVAL_S)
@@ -339,7 +346,7 @@ def main():
                 run_info = run_text_only_control_loop(
                     env=env, batch=batch, task=task, server_url=server_url,
                     run_dir=run_dir, llm_model=args.llm_model,
-                    vlm_model=args.vlm_model,
+                    monitor_model=args.monitor_model,
                     drone_cam_id=drone_cam_id, save_mp4=args.save_mp4, mp4_fps=args.mp4_fps,
                     check_interval_s=args.diary_check_interval_s if use_time_mode else None,
                     max_seconds=args.max_seconds_per_subgoal if use_time_mode else None,

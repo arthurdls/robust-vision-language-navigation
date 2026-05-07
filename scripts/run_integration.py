@@ -154,6 +154,12 @@ def run_integrated_control_loop(
     subgoal_summaries: List[Dict[str, Any]] = []
     trajectory_log: List[Dict[str, Any]] = []
     ltl_plans: List[Dict[str, Any]] = []
+    # Accumulator for LLM call records produced by the LTL planner. Each
+    # replan creates a fresh LLMUserInterface, so we have to copy its
+    # records into a run-level list before discarding the interface.
+    # Without this, M7 token totals omit planning calls (which biases
+    # cost estimates against C0 and other LTL-using conditions).
+    planner_call_records: List[Dict[str, Any]] = []
     total_frame_count = 0
     subgoal_index = 0
     replan_count = 0
@@ -174,6 +180,13 @@ def run_integrated_control_loop(
             llm_interface = LLMUserInterface(model=llm_model)
             planner = LTLSymbolicPlanner(llm_interface)
             planner.plan_from_natural_language(instruction)
+            # Capture planner LLM calls (one per replan) before the
+            # interface is reused/discarded. Tag each record with the
+            # replan index for post-hoc analysis.
+            for rec in llm_interface.llm_call_records:
+                rec_with_idx = dict(rec)
+                rec_with_idx["replan_index"] = replan_count
+                planner_call_records.append(rec_with_idx)
 
             ltl_plan = {
                 "ltl_nl_formula": llm_interface.ltl_nl_formula.get("ltl_nl_formula", ""),
@@ -319,8 +332,14 @@ def run_integrated_control_loop(
         all_vlm_records = []
         for s in subgoal_summaries:
             all_vlm_records.extend(s.get("vlm_call_records", []))
-        total_input_tokens = sum(r.get("input_tokens", 0) for r in all_vlm_records)
-        total_output_tokens = sum(r.get("output_tokens", 0) for r in all_vlm_records)
+        # Include planner LLM calls in M7 token totals so the cost figure
+        # accounts for every model call in the run, not just monitor +
+        # converter calls inside subgoal_runner.
+        all_call_records = planner_call_records + all_vlm_records
+        total_input_tokens = sum(r.get("input_tokens", 0) for r in all_call_records)
+        total_output_tokens = sum(r.get("output_tokens", 0) for r in all_call_records)
+        total_image_tokens = sum(r.get("image_tokens", 0) for r in all_call_records)
+        total_cached_tokens = sum(r.get("cached_tokens", 0) for r in all_call_records)
         end_dt = datetime.fromisoformat(end_ts)
         start_dt = datetime.fromisoformat(start_ts)
         wall_clock_seconds = (end_dt - start_dt).total_seconds()
@@ -364,6 +383,9 @@ def run_integrated_control_loop(
             "total_corrections": total_corrections,
             "total_input_tokens": total_input_tokens,
             "total_output_tokens": total_output_tokens,
+            "total_image_tokens": total_image_tokens,
+            "total_cached_tokens": total_cached_tokens,
+            "planner_call_records": planner_call_records,
             "vlm_call_records": all_vlm_records,
             "playback_mp4": str(playback_mp4) if playback_mp4 else None,
             "start_time": start_ts,

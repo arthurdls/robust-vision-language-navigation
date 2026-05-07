@@ -55,6 +55,7 @@ from rvln.config import (
 from rvln.eval.subgoal_runner import SubgoalConfig, run_subgoal
 from rvln.eval.task_utils import (
     get_completed_task_ids,
+    is_abort_stop_reason,
     make_ask_help_callback,
     resolve_eval_tasks,
     sanitize_run_label,
@@ -121,6 +122,8 @@ def run_single_frame_control_loop(
     trajectory_log = []
     total_frame_count = 0
     subgoal_index = 0
+    aborted = False
+    final_stop_reason: str = ""
 
     origin_x, origin_y, origin_z = initial_pos[0], initial_pos[1], initial_pos[2]
     origin_yaw = initial_pos[3]
@@ -158,11 +161,13 @@ def run_single_frame_control_loop(
         subgoal_summaries.append(subgoal_result)
 
         sr = subgoal_result["stop_reason"]
-        if sr in ("abort", "ask_help"):
+        if is_abort_stop_reason(sr):
             logger.info(
                 "Episode aborted (stop_reason=%s) at subgoal '%s'.",
                 sr, current_subgoal,
             )
+            aborted = True
+            final_stop_reason = sr
             break
 
         planner.advance_state(current_subgoal)
@@ -197,7 +202,9 @@ def run_single_frame_control_loop(
     wall_clock_seconds = (end_dt - start_dt).total_seconds()
 
     run_info = {
-        "completed": True,
+        "aborted": aborted,
+        "completed": not aborted,
+        "stop_reason": final_stop_reason,
         "condition": "condition4_single_frame",
         "task": task,
         "seed": seed,

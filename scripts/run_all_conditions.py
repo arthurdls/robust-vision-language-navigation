@@ -324,7 +324,6 @@ def _run_single_task(
         run_info = control_loop(
             **common_kwargs,
             llm_model=args.llm_model,
-            converter_model=args.llm_model,
         )
     elif condition == 4:
         run_info = control_loop(
@@ -343,7 +342,7 @@ def _run_single_task(
         run_info = control_loop(
             **common_kwargs,
             llm_model=args.llm_model,
-            vlm_model=args.vlm_model,
+            monitor_model=args.monitor_model,
             diary_mode=args.diary_mode,
         )
     else:
@@ -419,11 +418,29 @@ def _run_map(
     This ensures the first variant of every task is run across all conditions
     before any second variant begins.
     """
-    tasks = discover_tasks(REPO_ROOT / "tasks" / map_info.task_dir_name)
+    # Preliminary-results scope: the experimental task lives in
+    # tasks/rvln_tests/, not in a per-map subdirectory. (The historical
+    # 9-task / 3-variant set under tasks/<map_dir_name>/ has been moved to
+    # tasks/.old/9_tasks/ and is no longer used.) See experimental_design.txt
+    # Section 4b. Fall back to the per-map dir if rvln_tests is empty so
+    # future per-map task suites still work.
+    tasks_dir = REPO_ROOT / "tasks" / "rvln_tests"
+    tasks = discover_tasks(tasks_dir)
     if not tasks:
-        logger.warning("No tasks found in tasks/%s/, skipping map.", map_info.task_dir_name)
+        legacy_dir = REPO_ROOT / "tasks" / map_info.task_dir_name
+        tasks = discover_tasks(legacy_dir)
+        if tasks:
+            tasks_dir = legacy_dir
+    if not tasks:
+        logger.warning(
+            "No tasks found in %s (or legacy %s), skipping map.",
+            tasks_dir, REPO_ROOT / "tasks" / map_info.task_dir_name,
+        )
         return
-    logger.info("Found %d shared task(s) for map '%s'", len(tasks), map_info.task_dir_name)
+    logger.info(
+        "Found %d task(s) in %s for map '%s'",
+        len(tasks), tasks_dir, map_info.task_dir_name,
+    )
 
     held_ids = _resolve_hold_ids(getattr(args, "hold", None), tasks, map_info.task_dir_name)
 
@@ -554,9 +571,16 @@ def main():
     parser.add_argument("--sim-controller", type=str, default=None,
                         help="Remote sim controller address (host:port). "
                              "Omit to manage the simulator locally as a subprocess.")
-    parser.add_argument("--llm_model", type=str, default=DEFAULT_LLM_MODEL)
-    parser.add_argument("--monitor_model", type=str, default=DEFAULT_VLM_MODEL)
-    parser.add_argument("--vlm_model", type=str, default=DEFAULT_VLM_MODEL)
+    parser.add_argument(
+        "--llm_model", type=str, default=DEFAULT_LLM_MODEL,
+        help="Model for LTL planner, SubgoalConverter, and C2's LLM "
+             f"decomposer (default: {DEFAULT_LLM_MODEL})",
+    )
+    parser.add_argument(
+        "--monitor_model", type=str, default=DEFAULT_VLM_MODEL,
+        help="Model for the goal-adherence monitor in C0/C2/C4/C5/C6 "
+             f"(default: {DEFAULT_VLM_MODEL})",
+    )
     parser.add_argument("--diary_mode", type=str, default=DEFAULT_DIARY_MODE)
     parser.add_argument("--results_dir", default=str(REPO_ROOT / "results"))
     parser.add_argument("--save-mp4", action="store_true")

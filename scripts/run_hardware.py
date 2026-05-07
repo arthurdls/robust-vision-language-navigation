@@ -99,9 +99,12 @@ CONFIG = {
     "action_small_steps": 1000,
 
     # ---- LTL planner / subgoal converter ---------------------------------
-    "llm_model": "gpt-5.4",
+    # gpt-4o (cheaper, structured text-to-text). Mirrors DEFAULT_LLM_MODEL
+    # in src/rvln/config.py.
+    "llm_model": "gpt-4o",
 
     # ---- Goal-adherence monitor (TIME MODE ONLY) -------------------------
+    # gpt-5.4 for the visual monitor. Mirrors DEFAULT_VLM_MODEL.
     "monitor_model": "gpt-5.4",
     "diary_check_interval_s": 3.0,
     # Spacing (seconds) between cells in the 9-frame global VLM grid.

@@ -189,10 +189,10 @@ def run_naive_control_loop(
                     break
             last_pose = list(current_pose)
 
-            if response.get("done") is True:
-                logger.info("Model reported done at step %d.", step)
-                stop_reason = "model_done"
-                break
+            # OpenVLA's "done" signal is unreliable for long-horizon tasks
+            # (frequent false positives). For experimental uniformity all
+            # conditions terminate via convergence (drone stopped moving)
+            # or step-budget exhaustion only.
         finally:
             _step_timer.end_step()
     else:
@@ -220,6 +220,11 @@ def run_naive_control_loop(
     wall_clock_seconds = (end_dt - start_dt).total_seconds()
 
     run_info: Dict[str, Any] = {
+        # C1 has no monitor and no abort path; episodes terminate on
+        # convergence (drone stopped) or step-budget exhaustion. Both are
+        # natural terminations, not aborts. aborted is always False here
+        # so the analysis-script schema is uniform across conditions.
+        "aborted": False,
         "completed": True,
         "condition": "condition1_naive",
         "task": task,
