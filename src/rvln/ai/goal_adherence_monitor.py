@@ -45,6 +45,22 @@ Key behaviours:
     correction (flag overshoot early, prefer small corrections over large
     late ones).
 
+Pipelined async dispatch (time-based mode only):
+  When ``check_interval_s`` is set, checkpoint VLM calls are dispatched
+  concurrently (not serially): a ``ThreadPoolExecutor`` (max 16 workers)
+  runs each checkpoint's two VLM calls (local 2-frame "what changed",
+  global progress assessment) in its own worker thread, and a single
+  publisher thread drains a per-stage reorder buffer in strict dispatch
+  order so the dashboard always reflects the chronological progression
+  even when OpenAI returns arrive out of order. The dispatcher launches
+  a fresh worker every ``check_interval_s`` regardless of whether prior
+  workers have finished, so steady-state checkpoint cadence on the disk
+  matches ``check_interval_s`` independent of per-call latency. A
+  per-step timeout (default 30 s) skips a stuck step so a single hung
+  call cannot stall the dashboard indefinitely; skipped steps are
+  logged and any late-arriving result is dropped from live state but
+  still written to disk for replay.
+
 Corrective-action history (visible to the convergence VLM):
   The monitor maintains a per-subgoal log of every corrective it has
   issued during convergence checks (``self._correction_history``,

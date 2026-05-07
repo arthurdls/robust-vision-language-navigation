@@ -247,6 +247,18 @@ python scripts/run_hardware.py \
 
 The hardware interface supports interactive operator help (new instruction, replan, skip, abort), time-based asynchronous diary checkpoints, and external odometry via HTTP or UDP.
 
+**Pipelined VLM checkpoints.** With `--diary-mode time` and
+`--diary_check_interval_s` (e.g. 1 s), the goal-adherence monitor now
+dispatches VLM calls concurrently and writes `checkpoint_NNNN/` directories
+in strict dispatch order. With a 1 s dispatch interval and ~3 s per VLM
+roundtrip you should see roughly three calls in flight at any moment and a
+new checkpoint dir on disk every second once the pipeline has filled.
+Out-of-order returns from OpenAI are reordered before publish so the
+dashboard never visually regresses; hung calls are skipped after 30 s. The
+pool size and per-step timeout are configurable via
+`--monitor_max_inflight` and `--monitor_dispatch_timeout_s` (or the
+matching keys in `scripts/run_hardware.py`'s CONFIG).
+
 ## Citation
 
 If you find this work useful, please cite:
