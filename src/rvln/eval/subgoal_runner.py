@@ -81,6 +81,17 @@ class SubgoalConfig:
 
 # ---------------------------------------------------------------------------
 # Prompt templates for ablation modes
+#
+# The two convergence templates below (GRID_ONLY for C5, SINGLE_FRAME for C4)
+# include a ``{corrections_block}`` placeholder because they intentionally
+# omit ``{diary}`` -- past correctives still need to reach the convergence
+# VLM somehow, so the monitor renders them as an explicit oldest-first
+# block via _format_correction_history_block(). The diary-using templates
+# in rvln.ai.prompts (DIARY_CONVERGENCE_PROMPT, TEXT_ONLY_CONVERGENCE_PROMPT)
+# instead carry past correctives inline as ``[CONVERGENCE @ step N]``
+# markers that the monitor writes into the diary itself, so they do NOT
+# include the block placeholder. Keep these two delivery paths mutually
+# exclusive when editing or adding templates.
 # ---------------------------------------------------------------------------
 
 GRID_ONLY_GLOBAL_PROMPT = """\

@@ -30,6 +30,43 @@ Key behaviours:
     correction (flag overshoot early, prefer small corrections over large
     late ones).
 
+Corrective-action history (visible to the convergence VLM):
+  The monitor maintains a per-subgoal log of every corrective it has
+  issued during convergence checks (``self._correction_history``,
+  exposed as ``correction_history``). Each entry is
+  ``{step, diagnosis, completion_pct, instruction}``. Two delivery
+  forms surface this log to the next convergence prompt, depending on
+  whether the active prompt template displays the diary:
+
+    * Diary-using templates (default DIARY_CONVERGENCE_PROMPT used by
+      C0 / C2; TEXT_ONLY_CONVERGENCE_PROMPT used by C6): every
+      issued corrective also drops a
+      ``[CONVERGENCE @ step N]: corrective issued
+      (<diagnosis>, <pct>% complete) -- "<instruction>"`` marker into
+      ``self._diary``, so the convergence VLM sees past correctives
+      interleaved with frame observations and can localise each one
+      in the temporal record. The diary preface in those templates
+      explains the marker convention and tells the VLM to switch
+      axes if completion has not improved since the most recent
+      marker. No separate corrections block is rendered.
+    * Non-diary templates (GRID_ONLY / SINGLE_FRAME used by C5 / C4):
+      ``_format_correction_history_block()`` renders the same log as
+      an oldest-first ``corrections_block`` placeholder which those
+      templates substitute. When the log is empty the block emits a
+      "first convergence check" sentinel so the VLM does not
+      hallucinate prior-correction reasoning on cycle 0.
+
+  Both forms are written for every monitor-based condition; the
+  marker/block split only affects which surface the convergence VLM
+  sees the data through. The persisted ``diary`` (in
+  ``diary_summary.json``) always carries the markers regardless of
+  condition, so offline analysis can reconstruct the full temporal
+  record. ``correction_history`` is also persisted directly. C1 and
+  C3 have no monitor and no convergence cycle, so neither form
+  applies. The history is implicitly reset per subgoal because
+  ``GoalAdherenceMonitor`` is constructed fresh per subgoal in
+  ``run_subgoal()``.
+
 Correction-awareness gap:
   Periodic checkpoints (on_frame / _run_checkpoint) continue to run during
   corrective instruction execution, but they always evaluate against the

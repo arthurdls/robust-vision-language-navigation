@@ -3,6 +3,27 @@ Prompt templates for the AI subsystem.
 
 All LLM prompt text lives here so it is easy to review, edit, and keep
 consistent. Consumer modules import the constants they need.
+
+Convergence prompts (DIARY_CONVERGENCE_PROMPT, TEXT_ONLY_CONVERGENCE_PROMPT
+here; GRID_ONLY_CONVERGENCE_PROMPT and SINGLE_FRAME_CONVERGENCE_PROMPT live
+in rvln.eval.subgoal_runner) are how the GoalAdherenceMonitor evaluates a
+stopped drone and asks the VLM whether the subgoal is complete or what
+corrective to issue. Past correctives reach these prompts in two forms:
+
+  - Templates that render ``{diary}`` (DIARY, TEXT_ONLY) inherit
+    ``[CONVERGENCE @ step N]: corrective issued ...`` markers that the
+    monitor appends to the diary at each correction site. The diary
+    preface in those templates documents the marker convention and
+    carries the "switch axes if completion has not improved since the
+    most recent marker" directive.
+  - Templates that omit ``{diary}`` (GRID_ONLY, SINGLE_FRAME) substitute
+    a separate ``{corrections_block}`` placeholder that the monitor
+    fills via ``_format_correction_history_block()``.
+
+Editors of these templates: keep ``{diary}`` and ``{corrections_block}``
+mutually exclusive within a single template. If you start surfacing the
+diary in a template that previously used the block, drop the block
+placeholder so the VLM does not see past correctives twice.
 """
 
 # ---------------------------------------------------------------------------
