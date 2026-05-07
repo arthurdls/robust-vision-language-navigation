@@ -209,8 +209,13 @@ class DashboardRequestHandler(http.server.BaseHTTPRequestHandler):
         return "application/octet-stream"
 
     def _serve_static(self, name: str, mime: str) -> None:
-        path = _STATIC_DIR / name
-        if ".." in name or not path.is_file():
+        try:
+            path = (_STATIC_DIR / name).resolve()
+            path.relative_to(_STATIC_DIR.resolve())
+        except (ValueError, OSError):
+            self._send_simple(404, b"not found")
+            return
+        if not path.is_file():
             self._send_simple(404, b"not found")
             return
         body = path.read_bytes()

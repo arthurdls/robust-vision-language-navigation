@@ -119,7 +119,11 @@
                           >= body.scrollHeight - 4;
       body.classList.add("fading");
       setTimeout(() => {
-        body.textContent = content || "";
+        if (content) {
+          body.textContent = content;
+        } else {
+          body.innerHTML = '<span class="text-empty">no entries yet</span>';
+        }
         body.classList.remove("fading");
         if (wasAtBottom) body.scrollTop = body.scrollHeight;
       }, 90);

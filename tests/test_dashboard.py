@@ -167,6 +167,16 @@ class TestRoutes:
         status, _, _ = self._get(port, "/img/banana")
         assert status == 404
 
+    def test_static_route_rejects_path_traversal(self, running_server):
+        _, port, _ = running_server
+        for bad in [
+            "/static//etc/passwd",
+            "/static/../../etc/passwd",
+            "/static/%2e%2e/%2e%2e/etc/passwd",
+        ]:
+            status, _, _ = self._get(port, bad)
+            assert status == 404, f"{bad} returned {status}, expected 404"
+
 
 from unittest.mock import MagicMock, patch
 from rvln.mininav.dashboard import find_chromium_executable, launch_browser
