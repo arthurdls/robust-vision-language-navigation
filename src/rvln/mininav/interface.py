@@ -1184,6 +1184,8 @@ def run_subgoal(
     action_small_delta_pos: float = ACTION_SMALL_DELTA_POS,
     action_small_delta_yaw: float = ACTION_SMALL_DELTA_YAW,
     action_small_steps: int = ACTION_SMALL_STEPS,
+    monitor_max_inflight: int = 16,
+    monitor_dispatch_timeout_s: float = 30.0,
 ) -> Dict[str, Any]:
     """Execute a single subgoal with OpenVLA, goal adherence monitoring, and operator help.
 
@@ -1245,6 +1247,8 @@ def run_subgoal(
         stall_window=stall_window,
         stall_threshold=stall_threshold,
         stall_completion_floor=stall_completion_floor,
+        max_inflight=monitor_max_inflight,
+        dispatch_timeout_s=monitor_dispatch_timeout_s,
     )
 
     openvla.reset_model()
@@ -2129,6 +2133,26 @@ def parse_args() -> argparse.Namespace:
         ),
     )
     g_monitor.add_argument(
+        "--monitor_max_inflight", type=int, default=16,
+        help=(
+            "Pipelined-monitor in-flight cap (time-based mode only). "
+            "ThreadPoolExecutor size used to run checkpoint VLM calls "
+            "concurrently. Default 16. With 1 s dispatch and ~3 s VLM "
+            "latency, only ~3 are in flight; the cap mainly bounds "
+            "growth if the OpenAI endpoint stalls."
+        ),
+    )
+    g_monitor.add_argument(
+        "--monitor_dispatch_timeout_s", type=float, default=30.0,
+        help=(
+            "Pipelined-monitor per-step timeout in seconds (time-based "
+            "mode only). If a checkpoint's local or global VLM call "
+            "has not returned this long after dispatch, the reorder "
+            "buffer skips its slot so a single hung call cannot "
+            "indefinitely stall the dashboard. Default 30.0."
+        ),
+    )
+    g_monitor.add_argument(
         "--global_grid_spacing_s", type=float, default=DEFAULT_GLOBAL_GRID_SPACING_S,
         help=(
             "Spacing (in seconds) between samples in the global VLM grid. "
@@ -2547,6 +2571,8 @@ def main() -> None:
                 action_small_delta_pos=args.action_small_delta_pos,
                 action_small_delta_yaw=args.action_small_delta_yaw,
                 action_small_steps=args.action_small_steps,
+                monitor_max_inflight=args.monitor_max_inflight,
+                monitor_dispatch_timeout_s=args.monitor_dispatch_timeout_s,
             )
             frame_offset += result["total_steps"]
             subgoal_summaries.append(result)

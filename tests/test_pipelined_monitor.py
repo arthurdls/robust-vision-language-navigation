@@ -335,3 +335,40 @@ def test_pipelined_out_of_order_returns_release_in_dispatch_order(tmp_path):
             assert len(steps) >= 2
     finally:
         m.cleanup()
+
+
+def test_monitor_accepts_max_inflight_and_dispatch_timeout_kwargs(tmp_path):
+    art = tmp_path / "diary_artifacts"
+    art.mkdir(parents=True, exist_ok=True)
+    with patch.object(GoalAdherenceMonitor, "_make_llm", return_value=MagicMock()):
+        m = GoalAdherenceMonitor(
+            subgoal="x",
+            check_interval=2,
+            model="gpt-4o",
+            artifacts_dir=art,
+            check_interval_s=0.05,
+            max_inflight=4,
+            dispatch_timeout_s=2.5,
+        )
+    try:
+        assert m._max_inflight == 4
+        assert m._dispatch_timeout_s == 2.5
+        # The thread pool's _max_workers reflects max_inflight
+        assert m._executor._max_workers == 4
+    finally:
+        m.cleanup()
+
+
+def test_monitor_defaults_when_buffer_kwargs_omitted(tmp_path):
+    art = tmp_path / "diary_artifacts"
+    art.mkdir(parents=True, exist_ok=True)
+    with patch.object(GoalAdherenceMonitor, "_make_llm", return_value=MagicMock()):
+        m = GoalAdherenceMonitor(
+            subgoal="x", check_interval=2, model="gpt-4o",
+            artifacts_dir=art, check_interval_s=0.05,
+        )
+    try:
+        assert m._max_inflight == 16
+        assert m._dispatch_timeout_s == 30.0
+    finally:
+        m.cleanup()

@@ -127,6 +127,16 @@ CONFIG = {
     "stall_threshold": 0.05,
     "stall_completion_floor": 0.5,
 
+    # ---- Pipelined-monitor buffer (TIME MODE ONLY) -----------------------
+    # In-flight cap on concurrent checkpoint VLM calls. With 1 s dispatch
+    # and ~3 s VLM latency only ~3 calls are in flight; this cap mainly
+    # protects against a hung OpenAI endpoint piling up workers.
+    "monitor_max_inflight": 16,
+    # Per-step timeout for the reorder buffer. If a checkpoint's local or
+    # global call has not returned this long after dispatch, its slot is
+    # skipped so the dashboard does not stall.
+    "monitor_dispatch_timeout_s": 30.0,
+
     # ---- Pose source (exactly one of these) -----------------------------
     # dead_reckoning ON by default since most hardware runs do not have a
     # live odometry feed wired up. To switch to real odometry, set
