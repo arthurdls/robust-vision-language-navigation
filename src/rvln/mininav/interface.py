@@ -810,6 +810,7 @@ def to_command_from_action_pose(
     current_relative_pose: List[float],
     max_translation_cm_s: float,
     max_rotation_rad_s: float,
+    apply_dead_zone: bool = True,
 ) -> np.ndarray:
     """Convert an OpenVLA target pose into a velocity wire command.
 
@@ -823,12 +824,15 @@ def to_command_from_action_pose(
     safety caps. The wire-side unit conversion (cm/s -> m/s by default)
     is applied later in DroneControlClient.send_command.
 
-    Translation dead-zone: each of vx/vy/vz is independently snapped to
-    0 when ``abs(v) < 1.0`` cm. OpenVLA emits sub-cm hover-noise on each
-    axis when the model "wants to stay put"; without the snap, the
-    wire-side ``scale_output_translation`` multiplier amplifies that
-    noise into real drift on the drone. Yaw is intentionally left out
-    of this dead-zone since it has its own scaling path
+    Translation dead-zone (``apply_dead_zone=True``, default): each of
+    vx/vy/vz is independently snapped to 0 when ``abs(v) < 1.0`` cm.
+    OpenVLA emits sub-cm hover-noise on each axis when the model "wants
+    to stay put"; without the snap, the wire-side
+    ``scale_output_translation`` multiplier amplifies that noise into
+    real drift on the drone. Pass ``apply_dead_zone=False`` to disable
+    (e.g. for diagnostics, or when running with ``scale_output_translation``
+    small enough that the noise is harmless). Yaw is intentionally left
+    out of this dead-zone since it has its own scaling path
     (``scale_output_rotation``); only the ``max_rotation_rad_s`` cap in
     ``_clip_velocity`` applies to vyaw.
     """
@@ -841,9 +845,10 @@ def to_command_from_action_pose(
     vz = z - float(current_relative_pose[2])
     # current_relative_pose stores yaw in degrees; OpenVLA emits radians.
     vyaw = yaw - math.radians(float(current_relative_pose[3]))
-    if abs(vx) < 1.0: vx = 0.0
-    if abs(vy) < 1.0: vy = 0.0
-    if abs(vz) < 1.0: vz = 0.0
+    if apply_dead_zone:
+        if abs(vx) < 1.0: vx = 0.0
+        if abs(vy) < 1.0: vy = 0.0
+        if abs(vz) < 1.0: vz = 0.0
     vx, vy, vz, vyaw = _clip_velocity(
         vx, vy, vz, vyaw, max_translation_cm_s, max_rotation_rad_s,
     )
@@ -1181,6 +1186,7 @@ def run_subgoal(
     no_ai: bool = False,
     max_translation_cm_s: float = 50.0,
     max_rotation_rad_s: float = math.radians(20.0),
+    openvla_dead_zone: bool = True,
     action_small_delta_pos: float = ACTION_SMALL_DELTA_POS,
     action_small_delta_yaw: float = ACTION_SMALL_DELTA_YAW,
     action_small_steps: int = ACTION_SMALL_STEPS,
@@ -1531,6 +1537,7 @@ def run_subgoal(
                     cmd = to_command_from_action_pose(
                         action_pose, current_rel,
                         max_translation_cm_s, max_rotation_rad_s,
+                        apply_dead_zone=openvla_dead_zone,
                     )
                     last_cmd_sent = cmd
                     control.send_command(global_frame_idx, cmd)
@@ -2068,6 +2075,19 @@ def parse_args() -> argparse.Namespace:
             "(default: %(default)s)"
         ),
     )
+    g_openvla.add_argument(
+        "--no-openvla-dead-zone", dest="openvla_dead_zone",
+        action="store_false", default=True,
+        help=(
+            "Disable the per-axis 1cm translation dead-zone applied to "
+            "the OpenVLA per-step delta (vx/vy/vz) in "
+            "to_command_from_action_pose. Default ON: sub-cm hover-noise "
+            "is snapped to 0 per direction so the wire-side "
+            "scale_output_translation multiplier doesn't amplify it into "
+            "drift. Pass --no-openvla-dead-zone to send the raw deltas "
+            "through unchanged (e.g. for diagnostics)."
+        ),
+    )
 
     g_converge = parser.add_argument_group(
         "Small-motion auto-converge (post-OpenVLA convergence detector)",
@@ -2568,6 +2588,7 @@ def main() -> None:
                 no_ai=args.no_ai,
                 max_translation_cm_s=max_translation_cm_s,
                 max_rotation_rad_s=max_rotation_rad_s,
+                openvla_dead_zone=args.openvla_dead_zone,
                 action_small_delta_pos=args.action_small_delta_pos,
                 action_small_delta_yaw=args.action_small_delta_yaw,
                 action_small_steps=args.action_small_steps,

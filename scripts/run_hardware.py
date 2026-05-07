@@ -88,6 +88,13 @@ CONFIG = {
 
     # ---- OpenVLA ---------------------------------------------------------
     "openvla_predict_url": "http://127.0.0.1:5007/predict",
+    # Per-axis 1cm translation dead-zone on OpenVLA's per-step delta.
+    # Default True: sub-cm hover-noise on vx/vy/vz is snapped to 0
+    # before the wire-side scale_output_translation multiplier so the
+    # noise can't be amplified into drift. Set to False to send raw
+    # deltas through unchanged (useful when diagnosing whether the
+    # model is actually emitting motion).
+    "openvla_dead_zone": True,
 
     # ---- Small-motion auto-converge --------------------------------------
     # When OpenVLA emits N consecutive "small" steps the run forces a
@@ -178,6 +185,7 @@ _DASHED_FLAGS = {
 # we translate False -> "--<flag>" and True -> "(nothing, rely on default)".
 _INVERTED_BOOL_FLAGS = {
     "dashboard": "no-dashboard",
+    "openvla_dead_zone": "no-openvla-dead-zone",
 }
 
 
