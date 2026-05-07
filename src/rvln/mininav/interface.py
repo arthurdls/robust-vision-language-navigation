@@ -822,6 +822,15 @@ def to_command_from_action_pose(
     vz (cm/s), yaw_rate (rad/s)]`` after clipping to the configured
     safety caps. The wire-side unit conversion (cm/s -> m/s by default)
     is applied later in DroneControlClient.send_command.
+
+    Translation dead-zone: each of vx/vy/vz is independently snapped to
+    0 when ``abs(v) < 1.0`` cm. OpenVLA emits sub-cm hover-noise on each
+    axis when the model "wants to stay put"; without the snap, the
+    wire-side ``scale_output_translation`` multiplier amplifies that
+    noise into real drift on the drone. Yaw is intentionally left out
+    of this dead-zone since it has its own scaling path
+    (``scale_output_rotation``); only the ``max_rotation_rad_s`` cap in
+    ``_clip_velocity`` applies to vyaw.
     """
     x = float(action_pose[0])
     y = float(action_pose[1])
@@ -832,8 +841,6 @@ def to_command_from_action_pose(
     vz = z - float(current_relative_pose[2])
     # current_relative_pose stores yaw in degrees; OpenVLA emits radians.
     vyaw = yaw - math.radians(float(current_relative_pose[3]))
-    # Sub-cm per-axis deltas are model hover-noise; zero them so the
-    # wire-side scale_output_translation can't amplify them into drift.
     if abs(vx) < 1.0: vx = 0.0
     if abs(vy) < 1.0: vy = 0.0
     if abs(vz) < 1.0: vz = 0.0
