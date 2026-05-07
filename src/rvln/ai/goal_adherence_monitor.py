@@ -102,6 +102,7 @@ Correction-awareness gap:
 
 import json
 import logging
+import os
 import shutil
 import tempfile
 import threading
@@ -134,6 +135,27 @@ from .utils.llm_providers import BaseLLM, LLMFactory
 from .utils.vision import build_frame_grid, query_vlm, sample_frames_every_n
 
 logger = logging.getLogger(__name__)
+
+
+def _atomic_write_text(path: Path, data: str) -> None:
+    """Write text to ``path`` atomically.
+
+    A reader observing ``path`` will see either the previous contents or the
+    new contents, never a partial write. Implemented via write-to-tempfile +
+    os.replace, which is atomic on POSIX (and reasonably atomic on Windows).
+    Required for the pipelined monitor: the dashboard polls at 4 Hz while
+    workers may rewrite ``diary.txt`` and similar files concurrently.
+    """
+    tmp = path.with_name(f".{path.name}.tmp.{os.getpid()}.{threading.get_ident()}")
+    try:
+        tmp.write_text(data)
+        os.replace(tmp, path)
+    except Exception:
+        try:
+            tmp.unlink()
+        except OSError:
+            pass
+        raise
 
 
 # ---------------------------------------------------------------------------
