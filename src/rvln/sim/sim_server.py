@@ -1,7 +1,7 @@
 """
 Sim API server: wraps the gym/UnrealCV environment behind a Flask HTTP API.
 
-Started by run_simulator.py after the Unreal binary is ready. Client scripts
+Started by start_simulator.py after the Unreal binary is ready. Client scripts
 talk to this server instead of connecting to UnrealCV directly.
 
 Endpoints:
@@ -140,7 +140,7 @@ def handle_health():
 @app.route("/map_info", methods=["GET"])
 def handle_map_info():
     if _map_info is None:
-        return jsonify({"error": "map info not configured (is run_simulator.py running?)"}), 500
+        return jsonify({"error": "map info not configured (is start_simulator.py running?)"}), 500
     return jsonify(_map_info)
 
 
@@ -157,7 +157,7 @@ def init_env(env_id: str, time_dilation: int = 10, seed: int = 0) -> dict:
                 "cam_count": _env.unwrapped.unrealcv.get_camera_num() if _env else 0}
 
     if _map_info is None:
-        raise RuntimeError("map info not configured (is run_simulator.py running?)")
+        raise RuntimeError("map info not configured (is start_simulator.py running?)")
 
     import os
     import gymnasium as gym

@@ -20,7 +20,7 @@ Usage (local, single machine):
 
 Usage (remote, orchestrator on one machine, simulator on another):
   # On the simulator machine:
-  python scripts/run_sim_controller.py --port 9002
+  python scripts/start_sim_controller.py --port 9002
 
   # On the orchestrator machine:
   python scripts/run_all_conditions.py --sim-controller 192.168.0.101:9002 --sim_host 192.168.0.101
@@ -100,7 +100,7 @@ CONDITION_PREFIXES = {
 }
 
 
-_SIMULATOR_SCRIPT = Path(__file__).resolve().parent / "run_simulator.py"
+_SIMULATOR_SCRIPT = Path(__file__).resolve().parent / "start_simulator.py"
 
 
 class SimManager:

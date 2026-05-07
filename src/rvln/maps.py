@@ -1,7 +1,7 @@
 """
 Centralized registry of supported simulation maps.
 
-run_simulator uses resolve_map() to select the map. Client scripts
+start_simulator uses resolve_map() to select the map. Client scripts
 query the running simulator via SimClient.get_map_info() instead.
 validate_task_map() checks that a task path matches the active map.
 """
@@ -106,5 +106,5 @@ def validate_task_map(task_path: str, map_info: MapInfo) -> None:
         raise SystemExit(
             f"Map mismatch: task '{task_path}' is for map '{expected_scene}', "
             f"but the simulator is running '{map_info.name}'.\n"
-            f"Restart the simulator with:  python scripts/run_simulator.py --scene {expected_scene}"
+            f"Restart the simulator with:  python scripts/start_simulator.py --scene {expected_scene}"
         )

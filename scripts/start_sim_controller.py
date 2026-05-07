@@ -9,12 +9,12 @@ simulator for different maps. The orchestrator sends requests like:
     POST /stop
     GET  /status
 
-This script manages the run_simulator.py process locally. It should be left
+This script manages the start_simulator.py process locally. It should be left
 running on the simulator machine for the duration of a multi-map experiment.
 
 Usage:
-  python scripts/run_sim_controller.py
-  python scripts/run_sim_controller.py --port 9002
+  python scripts/start_sim_controller.py
+  python scripts/start_sim_controller.py --port 9002
 """
 
 import argparse
@@ -58,7 +58,7 @@ def _get_local_ip() -> str:
 
 app = Flask(__name__)
 
-_SIMULATOR_SCRIPT = Path(__file__).resolve().parent / "run_simulator.py"
+_SIMULATOR_SCRIPT = Path(__file__).resolve().parent / "start_simulator.py"
 
 _sim_proc: subprocess.Popen | None = None
 _current_scene: str | None = None

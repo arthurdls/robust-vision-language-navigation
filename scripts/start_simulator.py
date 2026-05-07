@@ -8,9 +8,9 @@ for the UnrealCV TCP port to accept connections, then prints connection
 instructions for the control machine.
 
 Usage (from repo root):
-  python scripts/run_simulator.py
-  python scripts/run_simulator.py --port 9000 --gpu-id 0
-  python scripts/run_simulator.py --scene DowntownWest --no-offscreen
+  python scripts/start_simulator.py
+  python scripts/start_simulator.py --port 9000 --gpu-id 0
+  python scripts/start_simulator.py --scene DowntownWest --no-offscreen
 """
 
 import argparse
@@ -190,7 +190,7 @@ def launch_simulator(cmd: list[str]) -> subprocess.Popen:
     """Launch the simulator binary and return the Popen handle.
 
     The child inherits the caller's process group so that a single
-    os.killpg() from the orchestrator can tear down both run_simulator.py
+    os.killpg() from the orchestrator can tear down both start_simulator.py
     and the UE binary together.
     """
     return subprocess.Popen(

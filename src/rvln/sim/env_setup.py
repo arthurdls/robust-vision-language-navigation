@@ -158,7 +158,7 @@ def setup_sim_env(
 ) -> Any:
     """Connect to the sim API server and initialize the environment.
 
-    Returns a SimClient. The server (run_simulator.py) must already be running.
+    Returns a SimClient. The server (start_simulator.py) must already be running.
     The server determines which map to use; clients query it via
     client.get_map_info() after connecting.
 

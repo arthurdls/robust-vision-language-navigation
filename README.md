@@ -187,7 +187,7 @@ python scripts/run_all_conditions.py --map downtown_west --conditions 0,1,3
 ```bash
 # On the simulator machine (has the GPU + Unreal binaries):
 conda activate rvln-sim
-python scripts/run_sim_controller.py --port 9002
+python scripts/start_sim_controller.py --port 9002
 
 # On the orchestrator machine:
 conda activate rvln-sim
@@ -214,10 +214,10 @@ robust-vision-language-navigation/
   src/gym_unrealcv/         UnrealCV gym environments (vendored from UAV-Flow)
   scripts/                  CLI entry points
     run_all_conditions.py   Orchestrator: runs conditions across maps
-    run_sim_controller.py   Remote simulator lifecycle daemon
+    start_sim_controller.py Remote simulator lifecycle daemon
     run_integration.py      Full system (C0)
     run_condition{2-6}_*.py Ablation conditions
-    run_simulator.py        Launches Unreal binary + sim API server
+    start_simulator.py      Launches Unreal binary + sim API server
     start_server.py         OpenVLA server
     run_hardware_openvla.py Real-drone pipeline (OpenVLA driver)
     run_hardware_gpt.py     Real-drone pipeline (GPT-5.4 driver)
