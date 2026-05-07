@@ -646,13 +646,33 @@ def run_subgoal(
                 break
 
             if any(o != 0.0 for o in openvla_pose_origin):
-                yaw_origin_rad = math.radians(openvla_pose_origin[3])
+                # The OpenVLA server rotates the egocentric action by
+                # `proprio_yaw = current_pose[3] - openvla_pose_origin[3]`
+                # (we strip origin yaw when building proprio so the model sees
+                # the drone facing 0 at the start of the low-level instruction).
+                # That rotation is short by `openvla_pose_origin[3]` -- the
+                # yaw the drone was holding when the corrective was issued --
+                # so the returned (x, y) is expressed in a frame rotated
+                # relative to the subgoal frame by -openvla_pose_origin[3].
+                # Rotate the position delta by openvla_pose_origin[3] before
+                # translating, so dx/dy align with the drone's heading at the
+                # start of the low-level instruction (not the subgoal start).
+                yaw_origin_deg = float(openvla_pose_origin[3])
+                yaw_origin_rad = math.radians(yaw_origin_deg)
+                proprio_x = current_pose[0] - openvla_pose_origin[0]
+                proprio_y = current_pose[1] - openvla_pose_origin[1]
+                cos_o = math.cos(yaw_origin_rad)
+                sin_o = math.sin(yaw_origin_rad)
                 reframed_poses = []
                 for pose in action_poses:
                     if isinstance(pose, (list, tuple)) and len(pose) >= 4:
+                        delta_x = float(pose[0]) - proprio_x
+                        delta_y = float(pose[1]) - proprio_y
+                        rotated_dx = cos_o * delta_x - sin_o * delta_y
+                        rotated_dy = sin_o * delta_x + cos_o * delta_y
                         reframed_poses.append([
-                            float(pose[0]) + openvla_pose_origin[0],
-                            float(pose[1]) + openvla_pose_origin[1],
+                            current_pose[0] + rotated_dx,
+                            current_pose[1] + rotated_dy,
                             float(pose[2]) + openvla_pose_origin[2],
                             float(pose[3]) + yaw_origin_rad,
                         ])
