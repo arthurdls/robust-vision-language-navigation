@@ -67,7 +67,11 @@ class RunState:
 
 
 def _parse_subgoal_dir(p: Path) -> Optional[dict]:
-    """subgoal_03_descend_to_the_ground -> {"index": 3, "name": "descend_to_the_ground"}."""
+    """subgoal_03_descend_to_the_ground -> {"index": 3, "name": "descend_to_the_ground"}.
+
+    When diary_summary.json is present, also include the untruncated `label`
+    string from that file (the dirname suffix is capped at 40 chars upstream).
+    """
     parts = p.name.split("_", 2)
     if len(parts) < 3 or parts[0] != "subgoal":
         return None
@@ -75,7 +79,15 @@ def _parse_subgoal_dir(p: Path) -> Optional[dict]:
         idx = int(parts[1])
     except ValueError:
         return None
-    return {"index": idx, "name": parts[2]}
+    info: dict = {"index": idx, "name": parts[2]}
+    try:
+        data = json.loads((p / "diary_summary.json").read_text(errors="replace"))
+        label = data.get("subgoal")
+        if isinstance(label, str) and label.strip():
+            info["label"] = label.strip()
+    except (OSError, ValueError):
+        pass
+    return info
 
 
 def _read_text(path: Path) -> str:

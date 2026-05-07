@@ -27,6 +27,17 @@
     return d.toTimeString().slice(0, 8);
   };
 
+  const prettyJsonIfPossible = (s) => {
+    if (!s) return s;
+    const trimmed = s.trim();
+    if (!trimmed || (trimmed[0] !== "{" && trimmed[0] !== "[")) return s;
+    try {
+      return JSON.stringify(JSON.parse(trimmed), null, 2);
+    } catch {
+      return s;
+    }
+  };
+
   const deriveStatus = (state, now) => {
     if (state.run_complete) return "done";
     const newest = Math.max(
@@ -61,12 +72,14 @@
     }[status] || status.toUpperCase();
   };
 
+  const subgoalText = (sg) =>
+    sg.label || sg.name.replace(/_/g, " ");
+
   const renderHeader = (state) => {
     if (state.active_subgoal && state.subgoals.length) {
       $("subgoal-index").textContent =
         `${state.active_subgoal.index} / ${state.subgoals.length}`;
-      $("subgoal-name").textContent =
-        state.active_subgoal.name.replace(/_/g, " ");
+      $("subgoal-name").textContent = subgoalText(state.active_subgoal);
     } else {
       $("subgoal-index").textContent = "--/--";
       $("subgoal-name").textContent = "preparing run...";
@@ -83,11 +96,11 @@
       const active = sg.index === activeIdx;
       const stateAttr = active ? "active" : completed ? "completed" : "future";
       const glyph = active ? "▸" : completed ? "◉" : "○";
-      const label = sg.name.replace(/_/g, " ");
-      const short = label.length > 24 ? label.slice(0, 22) + "…" : label;
+      const label = subgoalText(sg);
+      const display = active || label.length <= 24 ? label : label.slice(0, 22) + "…";
       return `<span class="crumb" data-state="${stateAttr}" title="${label}">`
            + `<span class="crumb-glyph">${glyph}</span>`
-           + `<span class="crumb-label">${sg.index}. ${short}</span>`
+           + `<span class="crumb-label">${sg.index}. ${display}</span>`
            + `</span>`;
     }).join("");
     if (nav.innerHTML !== wantHTML) {
@@ -141,7 +154,7 @@
     }
     panel.hidden = false;
     renderImage("convergence", state.convergence_image_mtime);
-    renderText("convergence", state.convergence_response,
+    renderText("convergence", prettyJsonIfPossible(state.convergence_response),
                state.convergence_image_mtime, state.convergence_label);
   };
 
@@ -169,7 +182,7 @@
     renderImage("local",  state.local_image_mtime);
     renderImage("global", state.global_image_mtime);
     renderText("diary",    state.diary_text,    state.diary_mtime,    state.checkpoint_label);
-    renderText("response", state.response_text, state.response_mtime, state.checkpoint_label);
+    renderText("response", prettyJsonIfPossible(state.response_text), state.response_mtime, state.checkpoint_label);
     renderConvergence(state);
     setStatus(deriveStatus(state, now));
   };
