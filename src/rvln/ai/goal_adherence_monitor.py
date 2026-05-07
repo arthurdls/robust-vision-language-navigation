@@ -212,6 +212,73 @@ class _GlobalStageResult:
     parsed: dict  # parsed JSON, with parse_failure_fallback if both retries failed
     system_prompt_global: str  # the actual system prompt used (varies by mode)
 
+class _ReorderBuffer:
+    """Releases (step, payload) tuples in strict dispatch order.
+
+    Workers may finish in any order; the buffer holds late arrivals until
+    earlier steps have been released. A per-step timeout skips a stuck step
+    so a single hung VLM call cannot stall the dashboard indefinitely.
+
+    Not thread-safe by itself; the caller (publisher) holds a lock around it.
+    """
+
+    def __init__(self) -> None:
+        self._dispatch_order: List[int] = []
+        self._dispatch_times: Dict[int, float] = {}
+        self._payloads: Dict[int, Any] = {}
+        self._skipped: List[int] = []
+
+    @property
+    def skipped_steps(self) -> List[int]:
+        return list(self._skipped)
+
+    def register(self, step: int, dispatch_time: float) -> None:
+        """Record that step ``step`` was dispatched at ``dispatch_time``.
+
+        Must be called before ``put(step, ...)`` so the buffer knows ordering.
+        """
+        self._dispatch_order.append(step)
+        self._dispatch_times[step] = dispatch_time
+
+    def put(self, step: int, payload: Any) -> bool:
+        """Insert a worker's result. Returns True if accepted, False if the
+        slot was already skipped (caller should drop the payload from live
+        state but may still finalize disk artifacts for replay).
+        """
+        if step in self._skipped:
+            return False
+        if step not in self._dispatch_times:
+            return False
+        self._payloads[step] = payload
+        return True
+
+    def release_ready(self, now: float, timeout_s: float) -> List[Tuple[int, Any]]:
+        """Return all steps that are ready to publish, in dispatch order.
+
+        Pops from the head of the queue while either:
+          (a) the head's payload has arrived, or
+          (b) the head's dispatch_time is older than ``now - timeout_s``
+              (skipped; not included in the returned list, but recorded in
+              ``skipped_steps``).
+        """
+        out: List[Tuple[int, Any]] = []
+        while self._dispatch_order:
+            head = self._dispatch_order[0]
+            if head in self._payloads:
+                self._dispatch_order.pop(0)
+                payload = self._payloads.pop(head)
+                self._dispatch_times.pop(head, None)
+                out.append((head, payload))
+                continue
+            if now - self._dispatch_times[head] >= timeout_s:
+                self._dispatch_order.pop(0)
+                self._dispatch_times.pop(head, None)
+                self._skipped.append(head)
+                continue
+            break
+        return out
+
+
 # ---------------------------------------------------------------------------
 # GoalAdherenceMonitor
 # ---------------------------------------------------------------------------

@@ -169,3 +169,55 @@ def test_run_global_stage_returns_parsed_json(tmp_path):
     assert gresult.step == 10
     assert gresult.parsed["completion_percentage"] == 0.42
     assert gresult.response_global == response
+
+
+import time as _time
+from rvln.ai.goal_adherence_monitor import _ReorderBuffer
+
+
+def test_reorder_buffer_releases_in_dispatch_order():
+    buf = _ReorderBuffer()
+    buf.register(10, dispatch_time=0.0)
+    buf.register(11, dispatch_time=0.1)
+    buf.register(12, dispatch_time=0.2)
+    # Arrive out of order
+    buf.put(12, "twelve")
+    buf.put(10, "ten")
+    # Release: only step 10 is at the head, so [10] is released first
+    released = buf.release_ready(now=0.3, timeout_s=10.0)
+    assert released == [(10, "ten")]
+    # Now 11 is at the head; not yet arrived
+    released = buf.release_ready(now=0.4, timeout_s=10.0)
+    assert released == []
+    # 11 arrives; both 11 and 12 (already buffered) release in order
+    buf.put(11, "eleven")
+    released = buf.release_ready(now=0.5, timeout_s=10.0)
+    assert released == [(11, "eleven"), (12, "twelve")]
+
+
+def test_reorder_buffer_timeout_skips_hung_step():
+    buf = _ReorderBuffer()
+    buf.register(10, dispatch_time=0.0)
+    buf.register(11, dispatch_time=1.0)
+    # 10 never arrives. 11 arrives.
+    buf.put(11, "eleven")
+    # Before timeout: nothing releases (head is 10).
+    assert buf.release_ready(now=5.0, timeout_s=10.0) == []
+    # After timeout (relative to step 10's dispatch_time=0.0): step 10 is
+    # skipped, then 11 is released.
+    released = buf.release_ready(now=11.0, timeout_s=10.0)
+    assert released == [(11, "eleven")]
+    # Skip is recorded
+    assert buf.skipped_steps == [10]
+
+
+def test_reorder_buffer_late_arrival_after_skip():
+    buf = _ReorderBuffer()
+    buf.register(10, dispatch_time=0.0)
+    buf.register(11, dispatch_time=1.0)
+    buf.put(11, "eleven")
+    buf.release_ready(now=11.0, timeout_s=10.0)  # skips 10, releases 11
+    # 10 finally arrives (very late). It should NOT be released to the
+    # publisher (its slot was skipped) but ALSO should not poison the buffer.
+    out = buf.put(10, "ten_late")
+    assert out is False  # signals "this step was already skipped"
