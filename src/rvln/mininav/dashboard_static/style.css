@@ -205,11 +205,13 @@ body {
 #panel-global      { grid-column: span 6; }
 #panel-diary       { grid-column: span 6; }
 #panel-response    { grid-column: span 6; }
+#panel-actions     { grid-column: span 12; }
 #panel-convergence { grid-column: span 12; }
 
 @media (max-width: 1100px) {
   #panel-local, #panel-global,
   #panel-diary, #panel-response,
+  #panel-actions,
   #panel-convergence { grid-column: span 12; }
 }
 
@@ -303,6 +305,112 @@ body {
 .text-empty {
   color: var(--text-faint);
   font-style: italic;
+}
+
+/* ---------------- Action chain panel ---------------- */
+
+.actions-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px 16px;
+  background: var(--bg-image);
+  border-radius: 8px;
+  max-height: 480px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+}
+
+.actions-body::-webkit-scrollbar { width: 8px; }
+.actions-body::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 4px; }
+
+.action-row {
+  display: grid;
+  grid-template-columns: 22px 60px 1fr;
+  gap: 12px;
+  align-items: start;
+  padding: 10px 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-family: var(--font-mono);
+}
+
+.action-row-initial {
+  border-color: var(--border-strong);
+}
+
+.action-row-active {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent) inset;
+  animation: pulse 1.6s ease-in-out infinite;
+}
+
+.action-glyph {
+  color: var(--accent);
+  font-weight: 700;
+  font-size: 16px;
+  line-height: 1.5;
+}
+
+.action-row:not(.action-row-active) .action-glyph { color: var(--text-faint); }
+
+.action-badge {
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  align-self: center;
+}
+
+.action-text { min-width: 0; }
+
+.action-instruction-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.action-instruction {
+  font-size: 16px;
+  color: var(--text);
+  font-weight: 500;
+}
+
+.action-row-active .action-instruction { color: var(--accent); }
+
+.action-now {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+  padding: 2px 8px;
+}
+
+.action-diag {
+  display: inline-block;
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--text-muted);
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  padding: 2px 10px;
+  letter-spacing: 0.04em;
+}
+
+.action-reasoning {
+  margin-top: 6px;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--text-muted);
+  white-space: pre-wrap;
+  font-family: var(--font-ui);
 }
 
 /* ---------------- Convergence ---------------- */

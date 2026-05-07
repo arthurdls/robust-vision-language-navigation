@@ -21,11 +21,25 @@
       : `${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
   };
 
-  const formatTs = (mtime) => {
+  const formatAge = (mtime, now) => {
     if (!mtime) return "waiting...";
-    const d = new Date(mtime * 1000);
-    return d.toTimeString().slice(0, 8);
+    const ref = (typeof now === "number" && now > 0) ? now : (Date.now() / 1000);
+    const ageS = Math.max(0, Math.floor(ref - mtime));
+    if (ageS < 1)    return "just now";
+    if (ageS < 60)   return `${ageS}s ago`;
+    if (ageS < 3600) {
+      const m = Math.floor(ageS / 60);
+      const s = ageS % 60;
+      return s ? `${m}m ${s}s ago` : `${m}m ago`;
+    }
+    const h = Math.floor(ageS / 3600);
+    const m = Math.floor((ageS % 3600) / 60);
+    return m ? `${h}h ${m}m ago` : `${h}h ago`;
   };
+
+  // Wall-clock "now" passed in from the tick so all panels share one reference.
+  let renderNow = Date.now() / 1000;
+  const formatTs = (mtime) => formatAge(mtime, renderNow);
 
   const prettyJsonIfPossible = (s) => {
     if (!s) return s;
@@ -146,6 +160,71 @@
       : formatTs(mtime);
   };
 
+  const escapeHTML = (s) =>
+    String(s).replace(/[&<>"']/g, (c) => ({
+      "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+    }[c]));
+
+  const lastChainKey = { value: null };
+
+  const renderInstructionChain = (state) => {
+    const body = $("actions-body");
+    const ts = $("actions-ts");
+    const chain = Array.isArray(state.instruction_chain)
+      ? state.instruction_chain : [];
+    const sg = state.active_subgoal;
+    if (chain.length === 0) {
+      body.innerHTML = '<span class="text-empty">no instruction yet</span>';
+      ts.textContent = sg ? `subgoal ${sg.index}` : "waiting...";
+      lastChainKey.value = "";
+      return;
+    }
+    const last = chain[chain.length - 1];
+    const lastAge = formatTs(last && last.mtime);
+    const subgoalLabel = sg ? `subgoal ${sg.index} • ` : "";
+    ts.textContent = `${subgoalLabel}${chain.length} step${chain.length === 1 ? "" : "s"} • last change ${lastAge}`;
+
+    // Structural cache: ignore mtime so the row body isn't rebuilt every
+    // tick just because the relative-age clock advanced. The header ts above
+    // already updates every tick.
+    const structural = chain.map((e) => ({
+      l: e.label, s: e.source, i: e.instruction,
+      d: e.diagnosis || "", r: e.reasoning || "",
+    }));
+    const key = JSON.stringify({ i: sg ? sg.index : null, c: structural });
+    if (key === lastChainKey.value) return;
+    lastChainKey.value = key;
+
+    const rows = chain.map((e, i) => {
+      const isActive = i === chain.length - 1;
+      const badge = e.source === "initial" ? "init" : (e.label || "?");
+      const glyph = isActive ? "▸" : (e.source === "initial" ? "•" : "·");
+      const diag = e.diagnosis
+        ? `<span class="action-diag">${escapeHTML(e.diagnosis)}</span>` : "";
+      const reasoning = e.reasoning
+        ? `<div class="action-reasoning">${escapeHTML(e.reasoning)}</div>` : "";
+      const nowChip = isActive
+        ? '<span class="action-now">now executing</span>' : "";
+      const cls = "action-row" + (isActive ? " action-row-active" : "")
+                + (e.source === "initial" ? " action-row-initial" : "");
+      return `<div class="${cls}">`
+           + `<span class="action-glyph">${glyph}</span>`
+           + `<span class="action-badge">${escapeHTML(badge)}</span>`
+           + `<div class="action-text">`
+           +   `<div class="action-instruction-row">`
+           +     `<span class="action-instruction">${escapeHTML(e.instruction)}</span>`
+           +     nowChip
+           +   `</div>`
+           +   diag
+           +   reasoning
+           + `</div>`
+           + `</div>`;
+    }).join("");
+    body.innerHTML = rows;
+    const active = body.querySelector(".action-row-active");
+    if (active) active.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  };
+
   const renderConvergence = (state) => {
     const panel = $("panel-convergence");
     if (!state.convergence_label) {
@@ -175,6 +254,7 @@
       runStartEpoch = state.server_time;
     }
     const now = state.server_time || (Date.now() / 1000);
+    renderNow = now;
     $("elapsed").textContent = formatElapsed(now - (runStartEpoch || now));
 
     renderHeader(state);
@@ -183,6 +263,7 @@
     renderImage("global", state.global_image_mtime);
     renderText("diary",    state.diary_text,    state.diary_mtime,    state.checkpoint_label);
     renderText("response", prettyJsonIfPossible(state.response_text), state.response_mtime, state.checkpoint_label);
+    renderInstructionChain(state);
     renderConvergence(state);
     setStatus(deriveStatus(state, now));
   };

@@ -91,6 +91,86 @@ class TestBuildRunState:
         assert state.convergence_image_mtime > 0
 
 
+class TestInstructionChain:
+    def _seed(self, tmp_path, *, initial="go forward", corrections=()):
+        sg = _make_artifacts(tmp_path, 1, "ascend", 10,
+                             diary="d", response="r")
+        (sg / "subgoal_meta.json").write_text(json.dumps({
+            "subgoal": "Ascend to 5 meters",
+            "converted_instruction": initial,
+        }))
+        for idx, payload in enumerate(corrections):
+            cv = sg / "diary_artifacts" / f"convergence_{idx:03d}"
+            cv.mkdir(parents=True, exist_ok=True)
+            (cv / "response_00.txt").write_text(json.dumps(payload))
+        return sg
+
+    def test_initial_only_when_no_convergences(self, tmp_path):
+        self._seed(tmp_path, initial="go forward")
+        state = build_run_state(tmp_path)
+        assert len(state.instruction_chain) == 1
+        e = state.instruction_chain[0]
+        assert e["label"] == "init"
+        assert e["source"] == "initial"
+        assert e["instruction"] == "go forward"
+        assert e["mtime"] > 0
+
+    def test_chain_appends_corrective_instructions(self, tmp_path):
+        self._seed(tmp_path, initial="go forward", corrections=[
+            {"diagnosis": "stopped_short",
+             "corrective_instruction": "Turn left 30 degrees",
+             "reasoning": "VLM saw target on the left."},
+            {"diagnosis": "constraint_violated",
+             "corrective_instruction": "Turn right 90 degrees"},
+        ])
+        state = build_run_state(tmp_path)
+        labels = [(e["source"], e["label"], e["instruction"]) for e in state.instruction_chain]
+        assert labels == [
+            ("initial", "init", "go forward"),
+            ("correction", "000", "Turn left 30 degrees"),
+            ("correction", "001", "Turn right 90 degrees"),
+        ]
+        assert state.instruction_chain[1].get("reasoning", "").startswith("VLM saw")
+        assert state.instruction_chain[1]["diagnosis"] == "stopped_short"
+
+    def test_consecutive_duplicates_collapse(self, tmp_path):
+        self._seed(tmp_path, initial="go forward", corrections=[
+            {"corrective_instruction": "Turn left"},
+            {"corrective_instruction": "Turn left"},
+            {"corrective_instruction": "Turn right"},
+            {"corrective_instruction": "Turn right"},
+            {"corrective_instruction": "Stop"},
+        ])
+        state = build_run_state(tmp_path)
+        assert [e["instruction"] for e in state.instruction_chain] == [
+            "go forward", "Turn left", "Turn right", "Stop",
+        ]
+
+    def test_blank_corrections_skipped(self, tmp_path):
+        self._seed(tmp_path, initial="go forward", corrections=[
+            {"corrective_instruction": ""},
+            {"diagnosis": "ok"},  # missing corrective_instruction
+            {"corrective_instruction": "Turn left"},
+        ])
+        state = build_run_state(tmp_path)
+        assert [e["instruction"] for e in state.instruction_chain] == [
+            "go forward", "Turn left",
+        ]
+
+    def test_falls_back_to_diary_summary(self, tmp_path):
+        sg = _make_artifacts(tmp_path, 1, "ascend", 10)
+        (sg / "diary_summary.json").write_text(json.dumps({
+            "subgoal": "Ascend",
+            "converted_instruction": "lift off",
+        }))
+        state = build_run_state(tmp_path)
+        e = state.instruction_chain[0]
+        assert e["label"] == "init"
+        assert e["source"] == "initial"
+        assert e["instruction"] == "lift off"
+        assert e["mtime"] > 0
+
+
 import http.client
 import threading
 from rvln.mininav.dashboard import (

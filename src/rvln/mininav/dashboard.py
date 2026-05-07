@@ -62,6 +62,7 @@ class RunState:
     convergence_label: Optional[str] = None
     convergence_response: str = ""
     convergence_image_mtime: float = 0.0
+    instruction_chain: list = field(default_factory=list)
     run_complete: bool = False
     server_time: float = 0.0
 
@@ -69,8 +70,10 @@ class RunState:
 def _parse_subgoal_dir(p: Path) -> Optional[dict]:
     """subgoal_03_descend_to_the_ground -> {"index": 3, "name": "descend_to_the_ground"}.
 
-    When diary_summary.json is present, also include the untruncated `label`
-    string from that file (the dirname suffix is capped at 40 chars upstream).
+    When subgoal_meta.json (live-write) or diary_summary.json (end-of-subgoal
+    write) is present, also include the untruncated `label` string from that
+    file. The dirname suffix is capped at 40 chars upstream, so this is the
+    only way to get the full subgoal text.
     """
     parts = p.name.split("_", 2)
     if len(parts) < 3 or parts[0] != "subgoal":
@@ -80,14 +83,85 @@ def _parse_subgoal_dir(p: Path) -> Optional[dict]:
     except ValueError:
         return None
     info: dict = {"index": idx, "name": parts[2]}
-    try:
-        data = json.loads((p / "diary_summary.json").read_text(errors="replace"))
-        label = data.get("subgoal")
-        if isinstance(label, str) and label.strip():
-            info["label"] = label.strip()
-    except (OSError, ValueError):
-        pass
+    for src in ("subgoal_meta.json", "diary_summary.json"):
+        try:
+            data = json.loads((p / src).read_text(errors="replace"))
+            label = data.get("subgoal")
+            if isinstance(label, str) and label.strip():
+                info["label"] = label.strip()
+                break
+        except (OSError, ValueError):
+            continue
     return info
+
+
+def _build_instruction_chain(subgoal_dir: Path) -> list:
+    """Return the per-subgoal chain of low-level OpenVLA instructions.
+
+    The chain starts with the initial converted instruction (read from
+    subgoal_meta.json if available, falling back to diary_summary.json) and
+    then appends one entry per goal-adherence convergence event whose response
+    JSON contains a non-empty corrective_instruction. Consecutive entries with
+    the same instruction are collapsed to one (we want to show *changes*).
+
+    Each entry: {"label": "init"|"NNN", "source": "initial"|"correction",
+    "instruction": str, optional "diagnosis", optional "reasoning"}.
+    """
+    chain: list = []
+    initial = None
+    initial_mtime = 0.0
+    for src in ("subgoal_meta.json", "diary_summary.json"):
+        try:
+            data = json.loads((subgoal_dir / src).read_text(errors="replace"))
+            cand = data.get("converted_instruction")
+            if isinstance(cand, str) and cand.strip():
+                initial = cand.strip()
+                initial_mtime = _mtime(subgoal_dir / src)
+                break
+        except (OSError, ValueError):
+            continue
+    if initial:
+        chain.append({
+            "label": "init", "source": "initial", "instruction": initial,
+            "mtime": initial_mtime,
+        })
+
+    cv_dirs = sorted(
+        (p for p in (subgoal_dir / "diary_artifacts").glob("convergence_*") if p.is_dir()),
+        key=lambda p: p.name,
+    )
+    for cv in cv_dirs:
+        responses = sorted(cv.glob("response_*.txt"))
+        if not responses:
+            continue
+        latest = responses[-1]
+        try:
+            data = json.loads(latest.read_text(errors="replace"))
+        except (OSError, ValueError):
+            continue
+        instr = (data.get("corrective_instruction") or "").strip()
+        if not instr:
+            continue
+        idx_str = cv.name.rsplit("_", 1)[-1]
+        entry = {
+            "label": idx_str, "source": "correction", "instruction": instr,
+            "mtime": _mtime(latest),
+        }
+        diag = data.get("diagnosis")
+        if isinstance(diag, str) and diag.strip():
+            entry["diagnosis"] = diag.strip()
+        reasoning = data.get("reasoning")
+        if isinstance(reasoning, str) and reasoning.strip():
+            entry["reasoning"] = reasoning.strip()
+        chain.append(entry)
+
+    deduped: list = []
+    last_instr = None
+    for e in chain:
+        if e["instruction"] != last_instr:
+            deduped.append(e)
+            last_instr = e["instruction"]
+    return deduped
 
 
 def _read_text(path: Path) -> str:
@@ -127,7 +201,8 @@ def build_run_state(run_dir: Path) -> RunState:
     if cp_glob:
         cp = max(cp_glob, key=lambda p: p.stat().st_mtime)
         state.checkpoint_label = cp.name
-        state.active_subgoal = _parse_subgoal_dir(cp.parent.parent)
+        active_subgoal_dir = cp.parent.parent
+        state.active_subgoal = _parse_subgoal_dir(active_subgoal_dir)
         state.checkpoint_count = sum(
             1 for _ in cp.parent.glob("checkpoint_*")
         )
@@ -137,6 +212,7 @@ def build_run_state(run_dir: Path) -> RunState:
         state.response_mtime = _mtime(cp / "response_global.txt")
         state.local_image_mtime = _mtime(cp / "grid_local.png")
         state.global_image_mtime = _mtime(cp / "grid_global.png")
+        state.instruction_chain = _build_instruction_chain(active_subgoal_dir)
 
     cv_glob = list(run_dir.glob("subgoal_*/diary_artifacts/convergence_*"))
     if cv_glob:

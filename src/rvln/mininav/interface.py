@@ -1206,6 +1206,16 @@ def run_subgoal(
     conversion = converter.convert(subgoal_nl)
     converted_instruction = conversion.instruction
     current_instruction = converted_instruction
+    # Persist the subgoal NL + initial low-level instruction immediately so the
+    # live dashboard can show them before diary_summary.json is written
+    # (diary_summary.json is only finalized at subgoal end).
+    try:
+        write_json(subgoal_dir / "subgoal_meta.json", {
+            "subgoal": subgoal_nl,
+            "converted_instruction": converted_instruction,
+        })
+    except OSError as exc:
+        logger.warning("Could not write subgoal_meta.json: %s", exc)
     monitor = GoalAdherenceMonitor(
         subgoal=subgoal_nl,
         check_interval=check_interval,
