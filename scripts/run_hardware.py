@@ -218,7 +218,92 @@ if _SRC.is_dir() and str(_SRC) not in sys.path:
 from rvln.mininav.interface import main
 
 
+# Appended to the goal-adherence monitor prompts at hardware startup so the
+# VLM stays patient with real-drone rotation latency. Sim eval imports the
+# unpatched templates from rvln.ai.prompts and is unaffected.
+_HARDWARE_PATIENCE_ADDENDUM = (
+    "\n\nHARDWARE PATIENCE -- this run is on real drone hardware: if the "
+    "active subgoal or most recent corrective requested a turn in a "
+    "specific direction (e.g., \"turn left until you see X\"), do NOT set "
+    "should_stop=true and do NOT issue a corrective that reverses the "
+    "requested turn direction merely because the rotation is slow or has "
+    "not yet produced visual change. Real hardware takes time to execute "
+    "a turn; be patient and let the drone finish the requested rotation. "
+    "If a different axis is needed, switch to altitude or a forward / "
+    "backward move, but never flip the requested turn direction. When no "
+    "direction has been requested, pick the side supported by the most "
+    "recent evidence (diary, displacement, last known bearing) and stay "
+    "with that side across corrections."
+)
+
+
+# Sim eval's convergence prompts tell the VLM to "default to turning RIGHT to
+# search" when no directional evidence is available. On hardware that bias
+# fights against operator-requested turn directions, so we strip the whole
+# "When the target cannot be located ... new ground each correction." chunk
+# out of the DIARY and TEXT_ONLY convergence templates. The substrings below
+# match the corresponding source text in rvln.ai.prompts verbatim; if those
+# templates are reworded the assertion in _apply_hardware_prompt_patches
+# will catch the drift.
+_DIARY_DEFAULT_RIGHT_BLOCK = """\
+toward it. When
+  the target cannot be located and there is no directional evidence (diary,
+  displacement, or last known bearing) pointing left, default to turning
+  RIGHT to search. Always sweeping the same direction prevents the drone
+  from oscillating left-right and re-covering the same arc, so it sweeps
+  new ground each correction."""
+
+_TEXT_ONLY_DEFAULT_RIGHT_BLOCK = """\
+toward it. When
+  the target cannot be located and the diary/displacement give no directional
+  evidence pointing left, default to turning RIGHT to search. Always sweeping
+  the same direction prevents the drone from oscillating left-right and
+  re-covering the same arc, so it sweeps new ground each correction."""
+
+
+def _apply_hardware_prompt_patches() -> None:
+    """Patch the goal-adherence monitor's prompt templates for hardware:
+
+    1. Append the HARDWARE PATIENCE addendum to the four global / convergence
+       templates actually used at runtime (DIARY_* and TEXT_ONLY_*).
+    2. Strip the "default to turning RIGHT to search" guidance out of the
+       two convergence templates so the VLM does not bias against an
+       operator-requested turn direction on real hardware.
+
+    GRID_ONLY_* / SINGLE_FRAME_* templates are sim-eval-only and untouched.
+    """
+    import rvln.ai.goal_adherence_monitor as gam
+
+    if _DIARY_DEFAULT_RIGHT_BLOCK not in gam.CONVERGENCE_PROMPT_TEMPLATE:
+        raise RuntimeError(
+            "DIARY_CONVERGENCE_PROMPT no longer contains the expected "
+            "'default to turning RIGHT' block; update "
+            "_DIARY_DEFAULT_RIGHT_BLOCK in run_hardware.py to match."
+        )
+    if _TEXT_ONLY_DEFAULT_RIGHT_BLOCK not in gam.TEXT_ONLY_CONVERGENCE_PROMPT_TEMPLATE:
+        raise RuntimeError(
+            "TEXT_ONLY_CONVERGENCE_PROMPT no longer contains the expected "
+            "'default to turning RIGHT' block; update "
+            "_TEXT_ONLY_DEFAULT_RIGHT_BLOCK in run_hardware.py to match."
+        )
+
+    gam.CONVERGENCE_PROMPT_TEMPLATE = gam.CONVERGENCE_PROMPT_TEMPLATE.replace(
+        _DIARY_DEFAULT_RIGHT_BLOCK, "toward it.",
+    )
+    gam.TEXT_ONLY_CONVERGENCE_PROMPT_TEMPLATE = (
+        gam.TEXT_ONLY_CONVERGENCE_PROMPT_TEMPLATE.replace(
+            _TEXT_ONLY_DEFAULT_RIGHT_BLOCK, "toward it.",
+        )
+    )
+
+    gam.GLOBAL_PROMPT_TEMPLATE += _HARDWARE_PATIENCE_ADDENDUM
+    gam.CONVERGENCE_PROMPT_TEMPLATE += _HARDWARE_PATIENCE_ADDENDUM
+    gam.TEXT_ONLY_GLOBAL_PROMPT_TEMPLATE += _HARDWARE_PATIENCE_ADDENDUM
+    gam.TEXT_ONLY_CONVERGENCE_PROMPT_TEMPLATE += _HARDWARE_PATIENCE_ADDENDUM
+
+
 if __name__ == "__main__":
+    _apply_hardware_prompt_patches()
     # CONFIG first so CLI overrides win (argparse takes the last value for
     # repeated options). --help still works because it's a CLI arg.
     sys.argv = [sys.argv[0]] + _build_argv(CONFIG) + sys.argv[1:]
