@@ -96,6 +96,7 @@ def _load_cached_formula(
 def _save_cached_formula(
     instruction: str, model: str, prompt_version: str,
     formula: Dict[str, Any], raw_response: str,
+    usage: Optional[Dict[str, Any]] = None,
 ) -> None:
     FORMULA_CACHE_DIR.mkdir(parents=True, exist_ok=True)
     path = _formula_cache_path(instruction, model, prompt_version)
@@ -106,6 +107,10 @@ def _save_cached_formula(
         "ltl_nl_formula": formula.get("ltl_nl_formula", ""),
         "pi_predicates": formula.get("pi_predicates", {}),
         "raw_response": raw_response,
+        # Persist token usage from the original call so M7 totals don't
+        # collapse to zero on cache hits. usage is the same dict shape
+        # llm_providers.last_usage emits.
+        "usage": dict(usage) if usage else {},
     }
     try:
         with open(path, "w") as f:
@@ -182,12 +187,17 @@ class LLMUserInterface():
                 "ltl_nl_formula": cached["ltl_nl_formula"],
                 "pi_predicates": cached["pi_predicates"],
             }
+            # Restore the original call's token usage from cache so M7
+            # cost totals stay comparable across uncached and cached runs.
+            cached_usage = cached.get("usage", {}) or {}
             self.llm_call_records.append({
                 "label": "ltl_nl_planning_cached",
                 "rtt_s": 0.0,
                 "model": cached.get("model", self._model),
-                "input_tokens": 0,
-                "output_tokens": 0,
+                "input_tokens": cached_usage.get("input_tokens", 0),
+                "output_tokens": cached_usage.get("output_tokens", 0),
+                "image_tokens": cached_usage.get("image_tokens", 0),
+                "cached_tokens": cached_usage.get("cached_tokens", 0),
             })
             response_text = cached.get("raw_response", "")
             self._history.append({"role": "user", "content": request})
@@ -208,6 +218,8 @@ class LLMUserInterface():
             "model": usage.get("model", self._model),
             "input_tokens": usage.get("input_tokens", 0),
             "output_tokens": usage.get("output_tokens", 0),
+            "image_tokens": usage.get("image_tokens", 0),
+            "cached_tokens": usage.get("cached_tokens", 0),
         })
 
         try:
@@ -225,6 +237,7 @@ class LLMUserInterface():
         if not ignore_cache and isinstance(ltl_nl, dict):
             _save_cached_formula(
                 request, self._model, self._prompt_version, ltl_nl, response_text,
+                usage=usage,
             )
 
         return self.ltl_nl_to_string()

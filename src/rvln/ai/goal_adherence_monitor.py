@@ -494,7 +494,9 @@ class GoalAdherenceMonitor:
                     ask_help_header="CONVERGENCE PARSE FAILURE",
                 )
 
-        pct = float(parsed.get("completion_percentage", self._last_completion_pct))
+        pct = self._coerce_pct(
+            parsed.get("completion_percentage"), self._last_completion_pct,
+        )
         pct = max(0.0, min(1.0, pct))
         self._last_completion_pct = pct
         self._peak_completion = max(self._peak_completion, pct)
@@ -502,7 +504,7 @@ class GoalAdherenceMonitor:
         corrective = (parsed.get("corrective_instruction") or "").strip()
         parsed_for_reasoning = parsed
 
-        if parsed.get("complete", False) and not corrective:
+        if self._coerce_bool(parsed.get("complete")):
             return DiaryCheckResult(
                 action="stop",
                 new_instruction="",
@@ -524,8 +526,8 @@ class GoalAdherenceMonitor:
             self._save_convergence_artifact(response, prompt, grid)
             parsed_retry = self._parse_json_response(response)
             corrective_retry = ((parsed_retry or {}).get("corrective_instruction") or "").strip()
-            if parsed_retry is not None and parsed_retry.get("complete", False) and not corrective_retry:
-                pct_r = float(parsed_retry.get("completion_percentage", pct))
+            if parsed_retry is not None and self._coerce_bool(parsed_retry.get("complete")):
+                pct_r = self._coerce_pct(parsed_retry.get("completion_percentage"), pct)
                 pct_r = max(0.0, min(1.0, pct_r))
                 self._last_completion_pct = pct_r
                 self._peak_completion = max(self._peak_completion, pct_r)
@@ -599,6 +601,10 @@ class GoalAdherenceMonitor:
             "input_tokens": usage.get("input_tokens", 0),
             "output_tokens": usage.get("output_tokens", 0),
         })
+        self._save_convergence_artifact(
+            response, prompt, grid=None,
+            system_prompt=TEXT_ONLY_GLOBAL_SYSTEM_PROMPT,
+        )
 
         parsed = self._parse_json_response(response)
         if parsed is None:
@@ -620,6 +626,10 @@ class GoalAdherenceMonitor:
                 "input_tokens": usage.get("input_tokens", 0),
                 "output_tokens": usage.get("output_tokens", 0),
             })
+            self._save_convergence_artifact(
+                response, prompt, grid=None,
+                system_prompt=TEXT_ONLY_GLOBAL_SYSTEM_PROMPT,
+            )
             parsed = self._parse_json_response(response)
             if parsed is None:
                 self._parse_failures += 1
@@ -639,7 +649,9 @@ class GoalAdherenceMonitor:
                     ask_help_header="CONVERGENCE PARSE FAILURE",
                 )
 
-        pct = float(parsed.get("completion_percentage", self._last_completion_pct))
+        pct = self._coerce_pct(
+            parsed.get("completion_percentage"), self._last_completion_pct,
+        )
         pct = max(0.0, min(1.0, pct))
         self._last_completion_pct = pct
         self._peak_completion = max(self._peak_completion, pct)
@@ -647,7 +659,7 @@ class GoalAdherenceMonitor:
         corrective = (parsed.get("corrective_instruction") or "").strip()
         parsed_for_reasoning = parsed
 
-        if parsed.get("complete", False) and not corrective:
+        if self._coerce_bool(parsed.get("complete")):
             return DiaryCheckResult(
                 action="stop",
                 new_instruction="",
@@ -672,10 +684,14 @@ class GoalAdherenceMonitor:
                 "input_tokens": usage.get("input_tokens", 0),
                 "output_tokens": usage.get("output_tokens", 0),
             })
+            self._save_convergence_artifact(
+                response, prompt, grid=None,
+                system_prompt=TEXT_ONLY_GLOBAL_SYSTEM_PROMPT,
+            )
             parsed_retry = self._parse_json_response(response)
             corrective_retry = ((parsed_retry or {}).get("corrective_instruction") or "").strip()
-            if parsed_retry is not None and parsed_retry.get("complete", False) and not corrective_retry:
-                pct_r = float(parsed_retry.get("completion_percentage", pct))
+            if parsed_retry is not None and self._coerce_bool(parsed_retry.get("complete")):
+                pct_r = self._coerce_pct(parsed_retry.get("completion_percentage"), pct)
                 pct_r = max(0.0, min(1.0, pct_r))
                 self._last_completion_pct = pct_r
                 self._peak_completion = max(self._peak_completion, pct_r)
@@ -973,7 +989,7 @@ class GoalAdherenceMonitor:
         diary_blob = "\n".join(self._diary)
 
         if self._global_backend == "text_llm":
-            response_global = self._run_text_only_global(diary_blob, disp_str, step)
+            response_global, prompt_global = self._run_text_only_global(diary_blob, disp_str, step)
             grid_global = None
         elif self._single_frame_mode:
             # Single-frame ablation: send ONLY the current frame, not a
@@ -1066,7 +1082,9 @@ class GoalAdherenceMonitor:
                     "Text-only checkpoint %d JSON parse failed, retrying. Raw: %s",
                     step, response_global[:200],
                 )
-                response_global = self._run_text_only_global(diary_blob, disp_str, step, label_suffix="_retry")
+                response_global, prompt_global = self._run_text_only_global(
+                    diary_blob, disp_str, step, label_suffix="_retry",
+                )
                 parsed = self._parse_json_response(response_global)
                 if parsed is None:
                     self._parse_failures += 1
@@ -1082,12 +1100,21 @@ class GoalAdherenceMonitor:
                         "reasoning": "parse_failure_fallback",
                     }
 
-        if grid_global is not None:
-            self._save_checkpoint_artifact(
-                step, grid_two, grid_global,
-                prompt_local, change_text,
-                self._format_global_prompt(diary_blob, disp_str), response_global,
-            )
+        # Save checkpoint artifacts in EVERY mode, including text-only
+        # (grid_global is None there). The saver gates image writes on grid
+        # presence, so passing None is safe and ensures M5 has a decision
+        # trail for C6 too.
+        sysp_global = (
+            TEXT_ONLY_GLOBAL_SYSTEM_PROMPT
+            if self._global_backend == "text_llm"
+            else GENERAL_SYSTEM_PROMPT
+        )
+        self._save_checkpoint_artifact(
+            step, grid_two, grid_global,
+            prompt_local, change_text,
+            prompt_global, response_global,
+            system_prompt_global=sysp_global,
+        )
 
         result = self._parse_global_response(
             response_global, diary_entry, parsed=parsed,
@@ -1111,8 +1138,12 @@ class GoalAdherenceMonitor:
 
         return result
 
-    def _run_text_only_global(self, diary_blob: str, disp_str: str, step: int, label_suffix: str = "") -> str:
-        """Run text-only global assessment (no image grid)."""
+    def _run_text_only_global(self, diary_blob: str, disp_str: str, step: int, label_suffix: str = "") -> Tuple[str, str]:
+        """Run text-only global assessment (no image grid).
+
+        Returns (response, prompt) so callers can persist the actual
+        prompt that was sent (artifact logging for C6).
+        """
         prompt = TEXT_ONLY_GLOBAL_PROMPT_TEMPLATE.format(
             subgoal=self._subgoal,
             diary=diary_blob,
@@ -1138,7 +1169,7 @@ class GoalAdherenceMonitor:
             "input_tokens": usage.get("input_tokens", 0),
             "output_tokens": usage.get("output_tokens", 0),
         })
-        return response
+        return response, prompt
 
     def _run_checkpoint_async(self) -> DiaryCheckResult:
         """Run a checkpoint from the background thread (time-based mode).
@@ -1193,7 +1224,7 @@ class GoalAdherenceMonitor:
         diary_blob = "\n".join(self._diary)
 
         if self._global_backend == "text_llm":
-            response_global = self._run_text_only_global(diary_blob, disp_str, step)
+            response_global, prompt_global = self._run_text_only_global(diary_blob, disp_str, step)
             grid_global = None
         elif self._single_frame_mode:
             grid_global = build_frame_grid([curr_path])
@@ -1230,7 +1261,9 @@ class GoalAdherenceMonitor:
                     "Async text-only checkpoint ~%d JSON parse failed, retrying. Raw: %s",
                     step, response_global[:200],
                 )
-                response_global = self._run_text_only_global(diary_blob, disp_str, step, label_suffix="_async_retry")
+                response_global, prompt_global = self._run_text_only_global(
+                    diary_blob, disp_str, step, label_suffix="_async_retry",
+                )
                 parsed = self._parse_json_response(response_global)
                 if parsed is None:
                     self._parse_failures += 1
@@ -1272,12 +1305,18 @@ class GoalAdherenceMonitor:
                         "reasoning": "parse_failure_fallback",
                     }
 
-        if grid_global is not None:
-            self._save_checkpoint_artifact(
-                step, grid_two, grid_global,
-                prompt_local, change_text,
-                self._format_global_prompt(diary_blob, disp_str), response_global,
-            )
+        # Save artifacts in every mode, including text-only (grid_global=None).
+        sysp_global = (
+            TEXT_ONLY_GLOBAL_SYSTEM_PROMPT
+            if self._global_backend == "text_llm"
+            else GENERAL_SYSTEM_PROMPT
+        )
+        self._save_checkpoint_artifact(
+            step, grid_two, grid_global,
+            prompt_local, change_text,
+            prompt_global, response_global,
+            system_prompt_global=sysp_global,
+        )
 
         result = self._parse_global_response(
             response_global, diary_entry, parsed=parsed,
@@ -1378,7 +1417,9 @@ class GoalAdherenceMonitor:
                     ask_help_header="CONVERGENCE PARSE FAILURE",
                 )
 
-        pct = float(parsed.get("completion_percentage", self._last_completion_pct))
+        pct = self._coerce_pct(
+            parsed.get("completion_percentage"), self._last_completion_pct,
+        )
         pct = max(0.0, min(1.0, pct))
         self._last_completion_pct = pct
         self._peak_completion = max(self._peak_completion, pct)
@@ -1386,7 +1427,7 @@ class GoalAdherenceMonitor:
         corrective = (parsed.get("corrective_instruction") or "").strip()
         parsed_for_reasoning = parsed
 
-        if parsed.get("complete", False) and not corrective:
+        if self._coerce_bool(parsed.get("complete")):
             return DiaryCheckResult(
                 action="stop",
                 new_instruction="",
@@ -1408,8 +1449,8 @@ class GoalAdherenceMonitor:
             self._save_convergence_artifact(response, prompt, grid)
             parsed_retry = self._parse_json_response(response)
             corrective_retry = ((parsed_retry or {}).get("corrective_instruction") or "").strip()
-            if parsed_retry is not None and parsed_retry.get("complete", False) and not corrective_retry:
-                pct_r = float(parsed_retry.get("completion_percentage", pct))
+            if parsed_retry is not None and self._coerce_bool(parsed_retry.get("complete")):
+                pct_r = self._coerce_pct(parsed_retry.get("completion_percentage"), pct)
                 pct_r = max(0.0, min(1.0, pct_r))
                 self._last_completion_pct = pct_r
                 self._peak_completion = max(self._peak_completion, pct_r)
@@ -1524,11 +1565,13 @@ class GoalAdherenceMonitor:
                     "should_stop": False,
                     "reasoning": "parse_failure_fallback",
                 }
-        pct = float(parsed.get("completion_percentage", self._last_completion_pct))
+        pct = self._coerce_pct(
+            parsed.get("completion_percentage"), self._last_completion_pct,
+        )
         pct = max(0.0, min(1.0, pct))
         model_reasoning = str(parsed.get("reasoning", "") or "").strip()
 
-        if parsed.get("complete", False):
+        if self._coerce_bool(parsed.get("complete")):
             self._last_should_stop_reasoning = (
                 model_reasoning or "checkpoint thinks subgoal complete; verifying at convergence"
             )
@@ -1540,7 +1583,7 @@ class GoalAdherenceMonitor:
                 completion_pct=pct,
             )
 
-        if parsed.get("should_stop", False):
+        if self._coerce_bool(parsed.get("should_stop")):
             self._last_should_stop_reasoning = (
                 model_reasoning or "monitor flagged off-track or hazard"
             )
@@ -1581,6 +1624,38 @@ class GoalAdherenceMonitor:
         logger.warning("Could not parse JSON from LLM response: %s", text[:200])
         return None
 
+    @staticmethod
+    def _coerce_bool(value: Any) -> bool:
+        """Strict bool coercion. Native bools pass through. Numbers coerce
+        through Python truthiness. Strings are accepted as True only via an
+        explicit allow-list ("true", "yes", "1"); everything else is False.
+
+        This guards against LLMs returning the string "false" (truthy under
+        bool() in Python) as a value for boolean fields like "complete".
+        """
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, (int, float)):
+            return bool(value)
+        if isinstance(value, str):
+            return value.strip().lower() in {"true", "yes", "1"}
+        return False
+
+    @staticmethod
+    def _coerce_pct(value: Any, fallback: float) -> float:
+        """Coerce a JSON value to a float in [0, 1], with a fallback.
+
+        Returns the fallback when value is None, missing, or non-numeric.
+        Guards against TypeError when the LLM returns null for the
+        completion_percentage field.
+        """
+        if value is None:
+            return fallback
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return fallback
+
     # ------------------------------------------------------------------
     # Cleanup
     # ------------------------------------------------------------------
@@ -1616,6 +1691,7 @@ class GoalAdherenceMonitor:
         response_local: str,
         prompt_global: str,
         response_global: str,
+        system_prompt_global: Optional[str] = None,
     ) -> None:
         if self._artifacts_dir is None:
             return
@@ -1629,13 +1705,23 @@ class GoalAdherenceMonitor:
             (cp_dir / "prompt_local.txt").write_text(prompt_local)
         if response_local:
             (cp_dir / "response_local.txt").write_text(response_local)
+        # Record the actual system prompt for the global call (matters for
+        # text-only / single-frame / grid-only ablations where it differs
+        # from the default DIARY_SYSTEM_PROMPT). Falls back to the patched
+        # module-level GENERAL_SYSTEM_PROMPT if the caller doesn't pass it.
+        sysp = system_prompt_global if system_prompt_global is not None else GENERAL_SYSTEM_PROMPT
+        (cp_dir / "system_prompt_global.txt").write_text(sysp)
         (cp_dir / "prompt_global.txt").write_text(prompt_global)
         (cp_dir / "response_global.txt").write_text(response_global)
         diary_blob = "\n".join(self._diary)
         (cp_dir / "diary.txt").write_text(diary_blob)
 
     def _save_convergence_artifact(
-        self, response: str, prompt: str, grid: Optional[Any] = None
+        self,
+        response: str,
+        prompt: str,
+        grid: Optional[Any] = None,
+        system_prompt: Optional[str] = None,
     ) -> None:
         if self._artifacts_dir is None:
             return
@@ -1647,8 +1733,13 @@ class GoalAdherenceMonitor:
         retry_idx = 0
         while (conv_dir / f"prompt_{retry_idx:02d}.txt").exists():
             retry_idx += 1
+        # Use the actual system prompt if provided (e.g. text-only path uses
+        # TEXT_ONLY_GLOBAL_SYSTEM_PROMPT, not GENERAL_SYSTEM_PROMPT). Falling
+        # back to GENERAL_SYSTEM_PROMPT preserves legacy behavior for callers
+        # that don't pass it explicitly.
+        sysp = system_prompt if system_prompt is not None else GENERAL_SYSTEM_PROMPT
         (conv_dir / f"prompt_{retry_idx:02d}.txt").write_text(
-            f"{GENERAL_SYSTEM_PROMPT}\n\n{prompt}"
+            f"{sysp}\n\n{prompt}"
         )
         (conv_dir / f"response_{retry_idx:02d}.txt").write_text(response)
         diary_blob = "\n".join(self._diary)

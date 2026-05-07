@@ -30,9 +30,24 @@ Use the full 0.0-0.99 range to express partial progress: report what you
 actually estimate (e.g., 0.62 if a bit past halfway) rather than parking on
 a single value across checkpoints.
 
+APPROACH-AND-PASS PATTERN -- the target may exit the frame on arrival:
+- For "go to X" or "approach X" subgoals, the target typically grows
+  progressively larger in the frame as the drone gets closer. When the
+  drone arrives at or moves just past the target, the target may leave
+  the field of view entirely (off the top, sides, or bottom of the frame).
+- The sequence [target small -> target large -> target no longer visible]
+  is strong evidence of successful arrival, NOT a tracking failure. Treat
+  this pattern as completion.
+- Worked example. Subgoal: "go to the kiosk". Earlier frame: kiosk in
+  mid-frame, small. Mid-flight frame: kiosk filling the lower half of the
+  frame, much closer. Latest frame: kiosk no longer visible. Conclusion:
+  the drone is now at or just past the kiosk -- mark complete.
+
 DISPLACEMENT: [x, y, z, yaw] relative to subtask start. x/y are fixed to the
 initial heading (x = forward, y = lateral at start). z = altitude. Meters.
-yaw = heading change in degrees.
+yaw = heading change in degrees, signed and unwrapped within the subtask
+(e.g., +270 means the drone has turned 270 degrees to the left within
+this subtask; resets to 0 at each new subgoal).
 
 DURING NORMAL FLIGHT -- your primary job is to detect completion and problems:
 - If the subgoal is complete, set "complete" to true.
@@ -89,6 +104,19 @@ Use the full 0.0-0.99 range to express partial progress: report what you
 actually estimate (e.g., 0.62 if a bit past halfway) rather than parking on
 a single value across checkpoints.
 
+APPROACH-AND-PASS PATTERN -- the target may exit the frame on arrival:
+- For "go to X" or "approach X" subgoals, the target typically grows
+  progressively larger in the frame as the drone gets closer. When the
+  drone arrives at or moves just past the target, the target may leave
+  the field of view entirely (off the top, sides, or bottom of the frame).
+- The sequence [target small -> target large -> target no longer visible]
+  is strong evidence of successful arrival, NOT a tracking failure. Treat
+  this pattern as completion.
+- Worked example. Subgoal: "go to the kiosk". A frame from earlier shows
+  the kiosk small in mid-frame; a later frame shows the kiosk filling the
+  lower half of the frame; the most recent frame shows no kiosk at all.
+  Conclusion: the drone is at or just past the kiosk -- mark complete.
+
 DURING NORMAL FLIGHT -- your primary job is to detect completion and problems:
 - If the subgoal is complete, set "complete" to true.
 - If the drone is actively making things worse (e.g., moving away from the target,
@@ -141,6 +169,20 @@ Reserve completion_percentage = 1.0 for high-confidence completion only.
 Use the full 0.0-0.99 range to express partial progress: report what you
 actually estimate (e.g., 0.62 if a bit past halfway) rather than parking on
 a single value across checkpoints.
+
+APPROACH-AND-PASS PATTERN -- the target may exit the frame on arrival:
+- For "go to X" or "approach X" subgoals, the target typically grows
+  progressively larger from earlier frames in the grid to later ones as
+  the drone gets closer. When the drone arrives at or moves just past
+  the target, the target may leave the field of view entirely (off the
+  top, sides, or bottom of the most recent frames).
+- The sequence [target small -> target large -> target no longer visible]
+  across the grid is strong evidence of successful arrival, NOT a tracking
+  failure. Treat this pattern as completion.
+- Worked example. Subgoal: "go to the kiosk". Earlier grid cells show the
+  kiosk small in mid-frame; later cells show the kiosk filling the lower
+  half of the frame; the most recent cells show no kiosk at all.
+  Conclusion: the drone is at or just past the kiosk -- mark complete.
 
 DURING NORMAL FLIGHT -- your primary job is to detect completion and problems:
 - If the subgoal is complete, set "complete" to true.
@@ -702,9 +744,24 @@ Use the full 0.0-0.99 range to express partial progress: report what you
 actually estimate (e.g., 0.62 if a bit past halfway) rather than parking on
 a single value across checkpoints.
 
+APPROACH-AND-PASS PATTERN -- the diary may stop mentioning the target on arrival:
+- For "go to X" or "approach X" subgoals, the diary should describe the
+  target growing closer/larger over consecutive checkpoints, and may
+  eventually report that the target is no longer visible because the
+  drone is at or just past it.
+- The diary sequence [target visible, small -> target large, very close
+  -> target no longer visible] is strong evidence of successful arrival,
+  NOT a tracking failure. Treat this pattern as completion.
+- Worked example. Subgoal: "go to the kiosk". Diary t-2: "kiosk visible
+  in mid-frame, small." Diary t-1: "kiosk filling lower half of frame,
+  much closer." Diary t-0: "kiosk no longer visible." Conclusion: the
+  drone is at or just past the kiosk -- mark complete.
+
 DISPLACEMENT: [x, y, z, yaw] relative to subtask start. x/y are fixed to the
 initial heading (x = forward, y = lateral at start). z = altitude. Meters.
-yaw = heading change in degrees.
+yaw = heading change in degrees, signed and unwrapped within the subtask
+(e.g., +270 means the drone has turned 270 degrees to the left within
+this subtask; resets to 0 at each new subgoal).
 
 DURING NORMAL FLIGHT -- your primary job is to detect completion and problems:
 - If the subgoal is complete, set "complete" to true.

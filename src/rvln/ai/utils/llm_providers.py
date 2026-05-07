@@ -1,5 +1,6 @@
 import os
 import json
+import random
 import time
 import logging
 import base64
@@ -25,7 +26,7 @@ class BaseLLM(ABC):
     """
 
     def __init__(self, model: str, api_key_env: str = None, rate_limit_seconds: float = 0.0,
-                 max_retries: int = 3):
+                 max_retries: int = 5):
         self.model = model
         self.rate_limit_seconds = rate_limit_seconds
         self.max_retries = max_retries
@@ -197,7 +198,7 @@ class OpenAIProvider(BaseLLM):
     """
 
     def __init__(self, model: str = "gpt-4o-mini", api_key_env: Optional[str] = "OPENAI_API_KEY",
-                 rate_limit_seconds: float = 0.0, max_retries: int = 3, **openai_client_kwargs):
+                 rate_limit_seconds: float = 0.0, max_retries: int = 5, **openai_client_kwargs):
         super().__init__(model=model, api_key_env=api_key_env,
                          rate_limit_seconds=rate_limit_seconds, max_retries=max_retries)
         try:
@@ -238,6 +239,14 @@ class OpenAIProvider(BaseLLM):
             content = [{"type": "text", "text": text}]
         return [{"role": "user", "content": content}]
 
+    # Exponential backoff schedule for transient failures (network blip, 429,
+    # 5xx). Each entry is the base sleep in seconds for that retry attempt;
+    # actual sleep adds 0..1s of jitter to avoid thundering-herd retries
+    # across concurrent calls. Capped at 32s. Total worst-case wait across
+    # 5 retries: ~32s (1+2+4+8+16). 429 responses with a Retry-After header
+    # override the schedule for that attempt.
+    _BACKOFF_SCHEDULE_S = (1, 2, 4, 8, 16, 32)
+
     def make_request(self, messages: List[Dict[str, Any]], temperature: float = 0.0,
                      json_mode: bool = False) -> str:
         """
@@ -262,10 +271,16 @@ class OpenAIProvider(BaseLLM):
                 data = _normalize_sdk_response(resp)
 
                 usage = data.get("usage") or {}
+                # Newer OpenAI usage objects expose finer breakdowns under
+                # prompt_tokens_details (image_tokens, cached_tokens). Pull
+                # them out so M7 can validate the per-image-token estimate.
+                prompt_details = (usage.get("prompt_tokens_details") or {})
                 self.last_usage = {
                     "model": data.get("model", self.model),
                     "input_tokens": usage.get("prompt_tokens", 0),
                     "output_tokens": usage.get("completion_tokens", 0),
+                    "image_tokens": prompt_details.get("image_tokens", 0),
+                    "cached_tokens": prompt_details.get("cached_tokens", 0),
                 }
 
                 # canonical OpenAI chat response path
@@ -290,7 +305,7 @@ class OpenAIProvider(BaseLLM):
                 # final fallback: return JSON string of the normalized dict
                 return json.dumps(data)
             except Exception as e:
-                # quick heuristic: if it's a BadRequestError from openai give up immediately
+                # 4xx (non-429) is a permanent client error: don't retry.
                 status_code = getattr(getattr(e, "response", None), "status_code", None)
                 if status_code and 400 <= status_code < 500 and status_code != 429:
                     logger.error("Client error (won't retry): %s", e)
@@ -298,10 +313,45 @@ class OpenAIProvider(BaseLLM):
 
                 last_exc = e
 
-                logger.warning("OpenAIProvider attempt %d failed: %s", attempt, e, exc_info=True)
-                time.sleep(0.5 * attempt)
+                # Transient failure (rate limit, 5xx, network). Use the
+                # server-supplied Retry-After when present (capped at 60s),
+                # otherwise back off exponentially with jitter.
+                sleep_s = self._compute_backoff(e, attempt)
+                if attempt >= self.max_retries:
+                    break
+                logger.warning(
+                    "OpenAIProvider attempt %d failed (%s); sleeping %.1fs before retry.",
+                    attempt, e, sleep_s,
+                )
+                time.sleep(sleep_s)
                 continue
         raise RuntimeError(f"OpenAIProvider failed after {self.max_retries} attempts") from last_exc
+
+    @classmethod
+    def _compute_backoff(cls, exc: Exception, attempt: int) -> float:
+        """Pick a sleep duration for the next retry.
+
+        Prefers the server's Retry-After header on 429, capped at 60s.
+        Otherwise uses _BACKOFF_SCHEDULE_S[attempt-1] + uniform jitter [0, 1).
+        """
+        # 1) Retry-After header on 429
+        retry_after = None
+        response = getattr(exc, "response", None)
+        headers = getattr(response, "headers", None) if response is not None else None
+        if headers:
+            ra = headers.get("Retry-After") if hasattr(headers, "get") else None
+            if ra:
+                try:
+                    retry_after = float(ra)
+                except (TypeError, ValueError):
+                    retry_after = None
+        if retry_after is not None:
+            return min(max(retry_after, 0.0), 60.0)
+
+        # 2) Exponential backoff with jitter
+        idx = min(attempt - 1, len(cls._BACKOFF_SCHEDULE_S) - 1)
+        base = cls._BACKOFF_SCHEDULE_S[idx]
+        return float(base) + random.random()
 
 
 

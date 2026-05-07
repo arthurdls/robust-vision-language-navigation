@@ -69,6 +69,11 @@ class LTLSymbolicPlanner:
         """
         1. Query LLM for LTL formula.
         2. Convert LTL string to Spot Automaton.
+
+        If Spot rejects the LLM-generated formula (invalid syntax,
+        unsupported operators), retry the LLM call once with the Spot
+        error included in the prompt and the on-disk cache disabled, so
+        the model can self-correct. Raises only if both attempts fail.
         """
         if not instruction or not isinstance(instruction, str):
             raise ValueError("Instruction must be a non-empty string.")
@@ -77,41 +82,62 @@ class LTLSymbolicPlanner:
             raise ValueError("Instruction must be a non-empty string.")
 
         print(f"[LTL Planner] Processing instruction: '{instruction}'")
-        _ = self.llm_interface.make_natural_language_request(instruction)
-        data = self.llm_interface.ltl_nl_formula
-
-        if not data or not isinstance(data, dict):
-            raise ValueError("LLM could not generate a valid LTL formula (empty or non-dict response).")
-        if "ltl_nl_formula" not in data or "pi_predicates" not in data:
-            raise ValueError(
-                "LLM response must contain 'ltl_nl_formula' and 'pi_predicates'. "
-                f"Keys received: {list(data.keys()) if isinstance(data, dict) else 'N/A'}."
+        last_error: Optional[Exception] = None
+        for attempt in (1, 2):
+            request_text = instruction
+            if attempt == 2 and last_error is not None:
+                request_text = (
+                    f"{instruction}\n\n"
+                    f"Previous attempt produced a formula that Spot could not "
+                    f"translate: {last_error}. Regenerate the formula using "
+                    "only valid LTL syntax (operators F, G, U, &, |, !, X)."
+                )
+            _ = self.llm_interface.make_natural_language_request(
+                request_text, ignore_cache=(attempt > 1),
             )
+            data = self.llm_interface.ltl_nl_formula
 
-        raw_formula = data["ltl_nl_formula"]
-        if not isinstance(raw_formula, str) or not raw_formula.strip():
-            raise ValueError("'ltl_nl_formula' must be a non-empty string.")
+            if not data or not isinstance(data, dict):
+                raise ValueError("LLM could not generate a valid LTL formula (empty or non-dict response).")
+            if "ltl_nl_formula" not in data or "pi_predicates" not in data:
+                raise ValueError(
+                    "LLM response must contain 'ltl_nl_formula' and 'pi_predicates'. "
+                    f"Keys received: {list(data.keys()) if isinstance(data, dict) else 'N/A'}."
+                )
 
-        self.pi_map = _normalize_pi_predicates(data["pi_predicates"])
-        if not self.pi_map:
-            raise ValueError(
-                "LLM returned no valid predicates (pi_predicates empty or not parseable). "
-                "Use valid robot instructions."
-            )
-        self._last_returned_predicate_key = None
-        self._returned_keys = set()
+            raw_formula = data["ltl_nl_formula"]
+            if not isinstance(raw_formula, str) or not raw_formula.strip():
+                raise ValueError("'ltl_nl_formula' must be a non-empty string.")
 
-        print(f"[LTL Planner] Generated Formula: {raw_formula}")
-        print(f"[LTL Planner] Predicates: {self.pi_map}")
+            self.pi_map = _normalize_pi_predicates(data["pi_predicates"])
+            if not self.pi_map:
+                raise ValueError(
+                    "LLM returned no valid predicates (pi_predicates empty or not parseable). "
+                    "Use valid robot instructions."
+                )
+            self._last_returned_predicate_key = None
+            self._returned_keys = set()
 
-        spot_formula = raw_formula.replace("pi_", "p")
-        try:
-            self.automaton = spot.translate(spot_formula, "monitor", "det")
-        except Exception as e:
-            raise ValueError(
-                f"Spot could not translate LTL formula '{spot_formula}': {e}. "
-                "Formula may be invalid or use unsupported operators."
-            ) from e
+            print(f"[LTL Planner] Generated Formula: {raw_formula}")
+            print(f"[LTL Planner] Predicates: {self.pi_map}")
+
+            spot_formula = raw_formula.replace("pi_", "p")
+            try:
+                self.automaton = spot.translate(spot_formula, "monitor", "det")
+                break
+            except Exception as e:
+                last_error = e
+                print(
+                    f"[LTL Planner] Spot translate failed on attempt {attempt}: "
+                    f"{e}. Formula was: '{spot_formula}'."
+                )
+                if attempt >= 2:
+                    raise ValueError(
+                        f"Spot could not translate LTL formula '{spot_formula}' "
+                        f"after retry: {e}. Formula may be invalid or use "
+                        "unsupported operators."
+                    ) from e
+
         self._add_sink_state()
         self.current_automaton_state = self.automaton.get_init_state_number()
         self.finished = False
@@ -252,6 +278,25 @@ class LTLSymbolicPlanner:
         if pi_key is None:
             print("[LTL Planner] Warning: no current predicate key (get_next_predicate not called or returned None).")
             return
+
+        # Validate the caller is reporting completion of the predicate we
+        # actually expect. If a monitor hallucinates completion of the wrong
+        # subgoal (e.g. claims pi_3 done while the automaton state expects
+        # pi_1), the formal-method advantage of LTL is bypassed silently.
+        # Log it loudly so post-hoc analysis can flag the run.
+        expected_text = self.pi_map.get(pi_key, "")
+        if (
+            isinstance(finished_task_nl, str)
+            and expected_text
+            and finished_task_nl.strip() != expected_text.strip()
+        ):
+            print(
+                f"[LTL Planner] WARNING: advance_state called with "
+                f"finished_task_nl='{finished_task_nl}' but the current "
+                f"predicate is {pi_key}='{expected_text}'. Trusting the "
+                "predicate key (advance_state's NL argument is informational)."
+            )
+
         self._returned_keys.add(pi_key)
         p_idx = _predicate_key_to_index(pi_key)
         try:
