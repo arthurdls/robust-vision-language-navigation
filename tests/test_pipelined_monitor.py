@@ -372,3 +372,84 @@ def test_monitor_defaults_when_buffer_kwargs_omitted(tmp_path):
         assert m._dispatch_timeout_s == 30.0
     finally:
         m.cleanup()
+
+
+import random
+
+
+def test_publish_order_matches_dispatch_order_under_random_latencies(tmp_path):
+    m = _make_time_monitor(tmp_path)
+    publish_log: list[str] = []
+    log_lock = threading.Lock()
+
+    real_local = m._save_checkpoint_local_artifact
+    real_global = m._save_checkpoint_global_artifact
+
+    def logged_local(step, *a, **kw):
+        with log_lock:
+            publish_log.append(f"L{step}")
+        return real_local(step, *a, **kw)
+
+    def logged_global(step, *a, **kw):
+        with log_lock:
+            publish_log.append(f"G{step}")
+        return real_global(step, *a, **kw)
+
+    m._save_checkpoint_local_artifact = logged_local
+    m._save_checkpoint_global_artifact = logged_global
+
+    # Random latency per call in [0.05, 0.5] s.
+    rng = random.Random(42)
+
+    def random_query(grid, prompt, label, **kwargs):
+        _time.sleep(rng.uniform(0.05, 0.5))
+        return '{"complete": false, "completion_percentage": 0.5, "on_track": true, "should_stop": false}'
+
+    try:
+        with patch.object(m, "_timed_query_vlm", side_effect=random_query):
+            _seed_frames(m, 12, dt=0.05)
+            _time.sleep(3.0)  # wait for the pipeline to drain
+
+            local_steps = [int(x[1:]) for x in publish_log if x.startswith("L")]
+            global_steps = [int(x[1:]) for x in publish_log if x.startswith("G")]
+            assert local_steps == sorted(local_steps), \
+                f"local publish order not monotonic: {local_steps}"
+            assert global_steps == sorted(global_steps), \
+                f"global publish order not monotonic: {global_steps}"
+            assert len(local_steps) >= 5, \
+                f"expected >=5 publishes, got {len(local_steps)}"
+    finally:
+        m.cleanup()
+
+
+def test_hung_call_is_skipped_after_timeout(tmp_path):
+    m = _make_time_monitor(tmp_path)
+    m._dispatch_timeout_s = 0.5  # short for the test
+
+    call_count = [0]
+    count_lock = threading.Lock()
+
+    def maybe_hung_query(grid, prompt, label, **kwargs):
+        with count_lock:
+            call_count[0] += 1
+            n = call_count[0]
+        if n == 1:
+            # First call hangs (long enough to exceed timeout, short enough
+            # that test cleanup completes promptly).
+            _time.sleep(2.0)
+        _time.sleep(0.05)
+        return '{"complete": false, "completion_percentage": 0.5, "on_track": true, "should_stop": false}'
+
+    try:
+        with patch.object(m, "_timed_query_vlm", side_effect=maybe_hung_query):
+            _seed_frames(m, 5, dt=0.05)
+            _time.sleep(2.5)  # exceeds 0.5s timeout
+            checkpoints = sorted((tmp_path / "diary_artifacts").glob("checkpoint_*"))
+            # The first checkpoint dir may not exist (its calls hung). Later
+            # checkpoints DO exist (their dirs were published past the skip).
+            assert len(checkpoints) >= 1, "later checkpoints must publish despite the hang"
+            # Skipped step is recorded in the buffer
+            assert m._local_buf.skipped_steps or m._global_buf.skipped_steps, \
+                "expected at least one skipped step"
+    finally:
+        m.cleanup()
