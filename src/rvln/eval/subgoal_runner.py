@@ -382,7 +382,6 @@ def run_subgoal(
     # mission and is counted as an ask-for-help event.
     stop_reason = "ask_help"
     total_steps = 0
-    replan_instruction = ""
 
     batch.reset_model(server_url)
 
@@ -395,118 +394,29 @@ def run_subgoal(
     _step_timer = StepTimer(frames_dir.parent / "step_timings.jsonl")
     _frame_writer = AsyncFrameWriter(frames_dir, enabled=config.save_frames)
 
-    def _process_help(completion_pct: float, reasoning: str, trigger: str) -> str:
-        nonlocal current_instruction, subgoal_nl, converted_instruction
-        nonlocal openvla_pose_origin, small_count, last_pose
-        nonlocal in_correction, last_correction_step, last_correction_time
-        nonlocal monitor, converter
-        nonlocal stop_reason, total_steps, replan_instruction
+    def _process_help(completion_pct: float, reasoning: str, trigger: str) -> None:
+        """Record an ask-help event and end the subgoal under stop_reason='ask_help'.
+
+        Sim runs are batch-only: there is no interactive operator to issue
+        a correction, override, replan, or skip. Every ask-help condition
+        (stall, max-corrections exhaustion, monitor error, parse failure)
+        therefore terminates the subgoal here. Hardware runs use their own
+        ask-help logic in mininav/interface.py and do not go through this
+        path.
+        """
+        nonlocal stop_reason, total_steps
 
         logger.warning(
             "Ask-help triggered at step %d by %s (completion: %.0f%%): %s",
             step, trigger, completion_pct * 100, reasoning,
         )
-
-        # Max corrections exhausted is a hard ceiling, just like max_steps:
-        # the agent has used its full correction budget without converging.
-        # Abort the mission directly (counted as ask_help) instead of asking
-        # the callback, which could otherwise issue a correction we can't honor.
         if monitor is not None and monitor.corrections_exhausted:
             logger.warning(
-                "Max corrections (%d) exhausted for subgoal '%s'; "
-                "treating as ask_help and aborting mission.",
+                "Max corrections (%d) exhausted for subgoal '%s'.",
                 monitor.max_corrections, subgoal_nl,
             )
-            stop_reason = "ask_help"
-            total_steps = step
-            return "break"
-
-        if ask_help_callback is None:
-            stop_reason = "ask_help_no_handler"
-            total_steps = step
-            return "break"
-
-        choice, value = ask_help_callback(
-            subgoal_nl, completion_pct, current_instruction, reasoning,
-        )
-
-        logger.info("User chose '%s' at step %d", choice, step)
-
-        if choice == "correction":
-            old_instruction = current_instruction
-            current_instruction = value
-            openvla_pose_origin = list(current_pose)
-            small_count = 0
-            last_pose = None
-            in_correction = True
-            last_correction_step = step
-            if use_async:
-                last_correction_time = time.time()
-            batch.reset_model(server_url)
-            override_history.append({
-                "step": step,
-                "type": "user_correction",
-                "trigger": trigger,
-                "old_instruction": old_instruction,
-                "new_instruction": value,
-            })
-            return "retry"
-
-        if choice == "override_subgoal":
-            if monitor:
-                monitor.cleanup()
-            old_subgoal = subgoal_nl
-            subgoal_nl = value
-            converter = SubgoalConverter(model=llm_model)
-            conversion = converter.convert(subgoal_nl)
-            converted_instruction = conversion.instruction
-            current_instruction = converted_instruction
-            if use_monitor:
-                monitor = GoalAdherenceMonitor(
-                    subgoal=subgoal_nl,
-                    check_interval=config.check_interval,
-                    model=monitor_model,
-                    artifacts_dir=diary_artifacts,
-                    max_corrections=config.max_corrections,
-                    check_interval_s=config.check_interval_s,
-                    **extra_kwargs,
-                )
-            openvla_pose_origin = list(current_pose)
-            small_count = 0
-            last_pose = None
-            in_correction = False
-            last_correction_step = step
-            if use_async:
-                last_correction_time = time.time()
-            batch.reset_model(server_url)
-            override_history.append({
-                "step": step,
-                "type": "user_override_subgoal",
-                "trigger": trigger,
-                "old_subgoal": old_subgoal,
-                "new_subgoal": value,
-                "new_instruction": converted_instruction,
-            })
-            return "retry"
-
-        if choice == "replan":
-            stop_reason = "replan"
-            replan_instruction = value
-            total_steps = step
-            return "break"
-
-        if choice == "abort":
-            # Counted as an ask-for-help event (the trigger that led to this
-            # abort was an ask_help). Episode-level runners treat "ask_help"
-            # the same as "abort": they end the mission immediately.
-            stop_reason = "ask_help"
-            total_steps = step
-            return "break"
-
-        # skip
-        stop_reason = "skipped"
+        stop_reason = "ask_help"
         total_steps = step
-        return "break"
 
     # Loop-carried frame: first iteration fetches via /get_frame, subsequent
     # iterations reuse the image returned by /step.
@@ -530,8 +440,11 @@ def run_subgoal(
                         total_steps = step
                         break
                     if async_result.action == "ask_help":
-                        if _process_help(async_result.completion_pct, async_result.reasoning, "async_monitor") == "retry":
-                            continue
+                        _process_help(
+                            async_result.completion_pct,
+                            async_result.reasoning,
+                            "async_monitor",
+                        )
                         break
                     if async_result.action == "force_converge":
                         override_history.append({
@@ -589,8 +502,9 @@ def run_subgoal(
                     total_steps = step
                     break
                 if result.action == "ask_help":
-                    if _process_help(result.completion_pct, result.reasoning, "sync_monitor") == "retry":
-                        continue
+                    _process_help(
+                        result.completion_pct, result.reasoning, "sync_monitor",
+                    )
                     break
                 if result.action == "force_converge":
                     override_history.append({
@@ -751,11 +665,10 @@ def run_subgoal(
 
                 elif conv_result.action == "ask_help":
                     in_correction = False
-                    help_decision = _process_help(
+                    _process_help(
                         conv_result.completion_pct, conv_result.reasoning, "convergence",
                     )
-                    if help_decision == "break":
-                        break
+                    break
 
                 elif conv_result.new_instruction:
                     override_history.append({
@@ -840,6 +753,5 @@ def run_subgoal(
         "vlm_call_records": all_vlm_call_records,
         "next_origin": [next_origin_x, next_origin_y, next_origin_z, next_origin_yaw],
         "parse_failures": monitor.parse_failures if monitor else 0,
-        "replan_instruction": replan_instruction,
         "override_history": override_history,
     }

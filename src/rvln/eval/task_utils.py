@@ -231,27 +231,18 @@ def sanitize_run_label(text: str, max_len: int = 40, fallback: str = "task") -> 
 
 # Stop reasons that mean the subgoal/episode terminated WITHOUT successful
 # completion. The complement set ("monitor_complete", "convergence") are
-# the success-class terminations. In batch mode every member here implies
-# the episode aborts and is recorded under a single failure class so
-# M1/M3 stay comparable across conditions (per Section 8c, with C3 being
-# the explicit exception that processes every subgoal regardless).
+# the success-class terminations. Every member here implies the episode
+# aborts and is recorded under a single failure class so M1/M3 stay
+# comparable across conditions (per Section 8c, with C3 being the
+# explicit exception that processes every subgoal regardless).
 ABORT_STOP_REASONS = frozenset({
     "ask_help",
-    "ask_help_no_handler",
-    "abort",
-    "skipped",
     "max_seconds",
     "no_image",
     "no_response",
     "empty_action",
     "action_error",
     "convergence_no_command",
-    # NOTE: "replan" is intentionally NOT here. It's a control signal
-    # used by interactive runners (C0/C2) to restart planning with a new
-    # instruction; the episode should NOT abort when the user picks
-    # replan. In non-interactive batch mode the ask_help callback returns
-    # "abort" rather than "replan", so this distinction only matters in
-    # interactive runs.
 })
 
 
@@ -260,32 +251,23 @@ def is_abort_stop_reason(stop_reason: str) -> bool:
     return stop_reason in ABORT_STOP_REASONS
 
 
-def make_ask_help_callback(interactive_handler=None):
-    """Build an ask_help callback with uniform abort-on-stall semantics.
+def make_ask_help_callback():
+    """Build the sim-mode ask_help callback.
 
-    Behaviour: when stdin is not a TTY (the default during batch evaluation),
-    every ask_help triggers a hard abort. Episodes therefore terminate at the
-    first stalled subgoal, which makes M1/M3 directly comparable across all
-    seven conditions (no condition gets to skip past a stall and continue).
-
-    When stdin is a TTY, the optional ``interactive_handler`` is used so a
-    human operator can still choose correction / skip / abort. Pass None for
-    a fully non-interactive abort callback.
+    Sim runs are batch-only: every ask_help condition (stall, max-corrections
+    exhaustion, monitor error, parse failure) terminates the subgoal with
+    stop_reason='ask_help'. The callback keeps a uniform return shape
+    (choice, value) for forward compatibility but always returns ('abort', '').
+    Hardware runs use their own ask-help logic in mininav/interface.py and
+    do not go through this code path.
     """
-    import sys
 
     def _callback(subgoal_nl, completion_pct, current_instruction, reasoning=""):
-        if not sys.stdin.isatty():
-            logger.warning(
-                "ask_help triggered (non-interactive), aborting subgoal '%s' "
-                "(completion: %.0f%%, reason: %s)",
-                subgoal_nl, completion_pct * 100, reasoning,
-            )
-            return ("abort", "")
-        if interactive_handler is None:
-            return ("abort", "")
-        return interactive_handler(
-            subgoal_nl, completion_pct, current_instruction, reasoning,
+        logger.warning(
+            "ask_help triggered, aborting subgoal '%s' "
+            "(completion: %.0f%%, reason: %s)",
+            subgoal_nl, completion_pct * 100, reasoning,
         )
+        return ("abort", "")
 
     return _callback

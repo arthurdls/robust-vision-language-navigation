@@ -171,119 +171,85 @@ def run_llm_planner_control_loop(
 
     start_ts = datetime.now().isoformat()
 
-    # --- Decomposition and execution (with replan support) ---
+    # --- Decomposition and execution ---
     subgoal_summaries = []
     trajectory_log = []
-    decomposition_records = []
     total_frame_count = 0
     subgoal_index = 0
-    replan_count = 0
     aborted = False
 
     origin_x, origin_y, origin_z = initial_pos[0], initial_pos[1], initial_pos[2]
     origin_yaw = initial_pos[3]
 
-    while True:
+    logger.info("LLM decomposition for: '%s'", instruction)
+    subgoals, decomposition_call_record = _llm_decompose(instruction, llm_model)
+    decomposition_record = {
+        "instruction": instruction,
+        "subgoals": subgoals,
+        "call_record": decomposition_call_record,
+    }
+    logger.info("LLM subgoals: %s", subgoals)
+
+    if not subgoals:
+        raise ValueError("LLM decomposition produced no subgoals.")
+
+    for sg_i, subgoal_nl in enumerate(subgoals, 1):
+        subgoal_index += 1
+        safe_name = sanitize_run_label(subgoal_nl, fallback="subgoal")
+        subgoal_dir = run_dir / f"subgoal_{subgoal_index:02d}_{safe_name}"
+
         logger.info(
-            "%sLLM decomposition for: '%s'",
-            f"[REPLAN #{replan_count}] " if replan_count > 0 else "",
-            instruction,
+            "--- Subgoal %d (plan step %d/%d): '%s' ---",
+            subgoal_index, sg_i, len(subgoals), subgoal_nl,
         )
-        subgoals, decomposition_call_record = _llm_decompose(instruction, llm_model)
-        decomposition_records.append({
-            "replan_index": replan_count,
-            "instruction": instruction,
-            "subgoals": subgoals,
-            "call_record": decomposition_call_record,
-        })
-        logger.info("LLM subgoals: %s", subgoals)
 
-        if not subgoals:
-            logger.error("LLM decomposition produced no subgoals for: '%s'", instruction)
-            if replan_count > 0:
-                logger.warning("Replan produced no subgoals, ending run.")
-                break
-            raise ValueError("LLM decomposition produced no subgoals.")
+        sg_config = SubgoalConfig(
+            monitor_mode="full",
+            check_interval=check_interval,
+            max_steps=max_steps_per_subgoal,
+            max_corrections=max_corrections,
+            check_interval_s=check_interval_s,
+            max_seconds=max_seconds,
+        )
+        subgoal_result = run_subgoal(
+            env=env, batch=batch, server_url=server_url,
+            subgoal_nl=subgoal_nl, monitor_model=monitor_model, llm_model=llm_model,
+            config=sg_config,
+            origin_x=origin_x, origin_y=origin_y,
+            origin_z=origin_z, origin_yaw=origin_yaw,
+            drone_cam_id=drone_cam_id, frames_dir=frames_dir,
+            subgoal_dir=subgoal_dir, frame_offset=total_frame_count,
+            trajectory_log=trajectory_log,
+            ask_help_callback=make_ask_help_callback(),
+        )
 
-        replan_requested = False
+        total_frame_count += subgoal_result["total_steps"]
+        subgoal_summaries.append(subgoal_result)
 
-        for sg_i, subgoal_nl in enumerate(subgoals, 1):
-            subgoal_index += 1
-            safe_name = sanitize_run_label(subgoal_nl, fallback="subgoal")
-            subgoal_dir = run_dir / f"subgoal_{subgoal_index:02d}_{safe_name}"
+        sr = subgoal_result["stop_reason"]
+        logger.info(
+            "Subgoal %d finished: stop_reason=%s, steps=%d, completion=%.2f",
+            subgoal_index, sr,
+            subgoal_result["total_steps"],
+            subgoal_result.get("last_completion_pct", 0.0),
+        )
 
+        next_origin = subgoal_result["next_origin"]
+        origin_x, origin_y, origin_z, origin_yaw = (
+            next_origin[0], next_origin[1], next_origin[2], next_origin[3],
+        )
+
+        if is_abort_stop_reason(sr):
             logger.info(
-                "--- Subgoal %d (plan step %d/%d): '%s' ---",
-                subgoal_index, sg_i, len(subgoals), subgoal_nl,
+                "Mission aborted (stop_reason=%s) at subgoal '%s'.",
+                sr, subgoal_nl,
             )
-
-            sg_config = SubgoalConfig(
-                monitor_mode="full",
-                check_interval=check_interval,
-                max_steps=max_steps_per_subgoal,
-                max_corrections=max_corrections,
-                check_interval_s=check_interval_s,
-                max_seconds=max_seconds,
-            )
-            subgoal_result = run_subgoal(
-                env=env, batch=batch, server_url=server_url,
-                subgoal_nl=subgoal_nl, monitor_model=monitor_model, llm_model=llm_model,
-                config=sg_config,
-                origin_x=origin_x, origin_y=origin_y,
-                origin_z=origin_z, origin_yaw=origin_yaw,
-                drone_cam_id=drone_cam_id, frames_dir=frames_dir,
-                subgoal_dir=subgoal_dir, frame_offset=total_frame_count,
-                trajectory_log=trajectory_log,
-                ask_help_callback=make_ask_help_callback(),
-            )
-
-            total_frame_count += subgoal_result["total_steps"]
-            subgoal_summaries.append(subgoal_result)
-
-            sr = subgoal_result["stop_reason"]
-            logger.info(
-                "Subgoal %d finished: stop_reason=%s, steps=%d, completion=%.2f",
-                subgoal_index, sr,
-                subgoal_result["total_steps"],
-                subgoal_result.get("last_completion_pct", 0.0),
-            )
-
-            next_origin = subgoal_result["next_origin"]
-            origin_x, origin_y, origin_z, origin_yaw = (
-                next_origin[0], next_origin[1], next_origin[2], next_origin[3],
-            )
-
-            if is_abort_stop_reason(sr):
-                logger.info(
-                    "Mission aborted (stop_reason=%s) at subgoal '%s'.",
-                    sr, subgoal_nl,
-                )
-                aborted = True
-                break
-
-            if sr == "replan":
-                new_instr = subgoal_result["replan_instruction"]
-                replan_count += 1
-                logger.info(
-                    "Full replan requested (replan #%d). "
-                    "Old instruction: '%s'. New instruction: '%s'. "
-                    "Drone origin for replan: [%.1f, %.1f, %.1f, %.1f]",
-                    replan_count, instruction, new_instr,
-                    origin_x, origin_y, origin_z, origin_yaw,
-                )
-                instruction = new_instr
-                replan_requested = True
-                break
-
-            if sr == "skipped":
-                logger.info("Subgoal '%s' skipped by user.", subgoal_nl)
-
-        if aborted or not replan_requested:
+            aborted = True
             break
 
     logger.info(
-        "Run finished: %d subgoals processed, %d replan(s), aborted=%s.",
-        subgoal_index, replan_count, aborted,
+        "Run finished: %d subgoals processed, aborted=%s.",
+        subgoal_index, aborted,
     )
 
     end_ts = datetime.now().isoformat()
@@ -302,7 +268,7 @@ def run_llm_planner_control_loop(
     total_steps_all = sum(s["total_steps"] for s in subgoal_summaries)
     total_vlm_calls = sum(s.get("vlm_call_count", 0) for s in subgoal_summaries)
     total_corrections = sum(s.get("corrections_used", 0) for s in subgoal_summaries)
-    all_vlm_records = [r["call_record"] for r in decomposition_records]
+    all_vlm_records = [decomposition_record["call_record"]]
     for s in subgoal_summaries:
         all_vlm_records.extend(s.get("vlm_call_records", []))
     total_input_tokens = sum(r.get("input_tokens", 0) for r in all_vlm_records)
@@ -338,10 +304,8 @@ def run_llm_planner_control_loop(
                 "consecutive_steps": batch.ACTION_SMALL_STEPS,
             },
         },
-        "llm_subgoals": decomposition_records[0]["subgoals"] if decomposition_records else [],
-        "decomposition_call_record": decomposition_records[0]["call_record"] if decomposition_records else {},
-        "decomposition_records": decomposition_records,
-        "replan_count": replan_count,
+        "llm_subgoals": decomposition_record["subgoals"],
+        "decomposition_call_record": decomposition_record["call_record"],
         "aborted": aborted,
         "completed": not aborted,
         "subgoal_count": subgoal_index,

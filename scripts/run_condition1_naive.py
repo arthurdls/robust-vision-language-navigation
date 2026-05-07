@@ -38,7 +38,6 @@ if _SRC.is_dir() and str(_SRC) not in sys.path:
 from rvln.config import (
     ACTION_SMALL_DELTA_POS,
     ACTION_SMALL_DELTA_YAW,
-    DEFAULT_MAX_STEPS_PER_SUBGOAL,
     DEFAULT_SEED,
     DEFAULT_SERVER_HOST,
     DEFAULT_SERVER_PORT,
@@ -278,7 +277,6 @@ def main():
     parser.add_argument("--sim_host", type=str, default=DEFAULT_SIM_HOST)
     parser.add_argument("--sim_port", type=int, default=DEFAULT_SIM_PORT)
     parser.add_argument("--sim_api_port", type=int, default=DEFAULT_SIM_API_PORT)
-    parser.add_argument("--max_steps", type=int, default=DEFAULT_MAX_STEPS_PER_SUBGOAL)
     parser.add_argument("-o", "--results_dir", default=str(CONDITION1_RESULTS_DIR))
     parser.add_argument("--save-mp4", action="store_true")
     parser.add_argument("--mp4-fps", type=float, default=10.0)
