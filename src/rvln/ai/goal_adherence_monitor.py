@@ -177,6 +177,22 @@ class DiaryCheckResult:
     # to "MAX CORRECTIONS REACHED" if empty for back-compat.
     ask_help_header: str = ""
 
+
+@dataclass(frozen=True)
+class _CheckpointSnapshot:
+    """Immutable inputs a pipelined checkpoint worker operates on.
+
+    Captured under the monitor lock at dispatch time so each in-flight worker
+    has a stable view of frame data and the diary, regardless of what later
+    dispatches mutate. Frozen so workers cannot accidentally write through
+    the snapshot back to monitor state.
+    """
+    step: int
+    displacement: List[float]
+    frame_paths: List[Path]
+    frame_timestamps: List[float]
+    diary_at_dispatch: List[str]
+
 # ---------------------------------------------------------------------------
 # GoalAdherenceMonitor
 # ---------------------------------------------------------------------------
@@ -1185,6 +1201,23 @@ class GoalAdherenceMonitor:
             raise RuntimeError("PIL is required to save numpy frames")
         PILImage.fromarray(frame.astype("uint8")).save(str(path))
         return path
+
+    def _snapshot_for_checkpoint(self) -> Optional["_CheckpointSnapshot"]:
+        """Capture the inputs a pipelined worker needs, under the lock.
+
+        Returns None when there are not yet enough frames to form a 2-frame
+        local grid. The caller (dispatcher) skips submission in that case.
+        """
+        with self._lock:
+            if len(self._frame_paths) < 2:
+                return None
+            return _CheckpointSnapshot(
+                step=self._step,
+                displacement=list(self._last_displacement),
+                frame_paths=list(self._frame_paths),
+                frame_timestamps=list(self._frame_timestamps),
+                diary_at_dispatch=list(self._diary),
+            )
 
     def _run_checkpoint(self) -> DiaryCheckResult:
         step = self._step

@@ -56,3 +56,54 @@ def test_atomic_write_text_no_partial_visible(tmp_path):
     for s in seen:
         assert s == "old" or (s.startswith("new-") and 0 <= int(s.split("-")[1]) < 50), \
             f"saw partial write: {s!r}"
+
+
+from unittest.mock import patch, MagicMock
+from rvln.ai.goal_adherence_monitor import GoalAdherenceMonitor, _CheckpointSnapshot
+
+
+def _make_monitor(tmp_path, **kwargs):
+    """Build a time-based monitor with the background thread NOT started.
+
+    Patches _make_llm so no OpenAI API key is needed. check_interval_s is
+    None so no background thread starts.
+    """
+    defaults = dict(
+        subgoal="Approach the tree",
+        check_interval=2,
+        model="gpt-4o",
+        artifacts_dir=tmp_path / "artifacts",
+        check_interval_s=None,  # avoid starting the background thread
+    )
+    defaults.update(kwargs)
+    with patch.object(GoalAdherenceMonitor, "_make_llm", return_value=MagicMock()):
+        return GoalAdherenceMonitor(**defaults)
+
+
+def test_snapshot_captures_step_and_displacement(tmp_path):
+    m = _make_monitor(tmp_path)
+    m._step = 5
+    m._last_displacement = [10.0, 20.0, 30.0, 45.0]
+    m._frame_paths = [tmp_path / f"f{i}.png" for i in range(5)]
+    for p in m._frame_paths:
+        p.write_bytes(b"img")
+    m._frame_timestamps = [float(i) for i in range(5)]
+    m._diary = ["entry 0", "entry 1"]
+
+    snap = m._snapshot_for_checkpoint()
+    assert snap is not None
+    assert snap.step == 5
+    assert snap.displacement == [10.0, 20.0, 30.0, 45.0]
+    assert snap.frame_paths == list(m._frame_paths)
+    assert snap.frame_timestamps == [0.0, 1.0, 2.0, 3.0, 4.0]
+    assert snap.diary_at_dispatch == ["entry 0", "entry 1"]
+
+
+def test_snapshot_returns_none_when_too_few_frames(tmp_path):
+    m = _make_monitor(tmp_path)
+    m._step = 1
+    m._frame_paths = [tmp_path / "f0.png"]
+    m._frame_paths[0].write_bytes(b"img")
+    m._frame_timestamps = [0.0]
+    snap = m._snapshot_for_checkpoint()
+    assert snap is None
