@@ -163,7 +163,11 @@ Respond with EXACTLY ONE JSON object (no markdown fences):
     * "Ascend <N> meters" -- rise above an obstacle blocking the path.
     * "Move back from <obstacle>" -- retreat from an obstruction.
   Prefer a turn command when the target is not visible in the latest frame;
-  the underlying policy needs to see the target to navigate toward it.
+  the underlying policy needs to see the target to navigate toward it. When
+  the target cannot be located and the frames give no directional evidence
+  pointing left, default to turning RIGHT to search. Always sweeping the
+  same direction prevents the drone from oscillating left-right and
+  re-covering the same arc, so it sweeps new ground each correction.
   When an obstacle blocks the direct path, prefer ascending or routing
   around over retreating, unless the drone is already very close.
 
@@ -247,7 +251,11 @@ Respond with EXACTLY ONE JSON object (no markdown fences):
     * "Ascend <N> meters" -- rise above an obstacle blocking the path.
     * "Move back from <obstacle>" -- retreat from an obstruction.
   Prefer a turn command when the target is not visible in the latest frame;
-  the underlying policy needs to see the target to navigate toward it.
+  the underlying policy needs to see the target to navigate toward it. When
+  the target cannot be located and the frame gives no directional evidence
+  pointing left, default to turning RIGHT to search. Always sweeping the
+  same direction prevents the drone from oscillating left-right and
+  re-covering the same arc, so it sweeps new ground each correction.
   When an obstacle blocks the direct path, prefer ascending or routing
   around over retreating, unless the drone is already very close.
 
