@@ -321,7 +321,12 @@ Respond with EXACTLY ONE JSON object (no markdown fences):
     * "Move back from <obstacle>" -- retreat from an obstruction that is too
       close to maneuver around safely.
   Prefer a turn command when the target is not visible in the latest frame;
-  the underlying policy needs to see the target to navigate toward it.
+  the underlying policy needs to see the target to navigate toward it. When
+  the target cannot be located and there is no directional evidence (diary,
+  displacement, or last known bearing) pointing left, default to turning
+  RIGHT to search. Always sweeping the same direction prevents the drone
+  from oscillating left-right and re-covering the same arc, so it sweeps
+  new ground each correction.
   When an obstacle blocks the direct path to the subgoal, prefer ascending
   or routing around over retreating, unless the drone is already very close.
   After clearing the obstacle, subsequent corrections will resume progress
@@ -827,7 +832,11 @@ Respond with EXACTLY ONE JSON object (no markdown fences):
     * "Ascend <N> meters" -- rise above an obstacle blocking the path.
     * "Move back from <obstacle>" -- retreat from an obstruction.
   Prefer a turn command when the diary suggests the target is not visible;
-  the underlying policy needs to see the target to navigate toward it.
+  the underlying policy needs to see the target to navigate toward it. When
+  the target cannot be located and the diary/displacement give no directional
+  evidence pointing left, default to turning RIGHT to search. Always sweeping
+  the same direction prevents the drone from oscillating left-right and
+  re-covering the same arc, so it sweeps new ground each correction.
   When the diary suggests an obstacle blocks the path, prefer ascending or
   routing around over retreating, unless the drone is already very close.
 
