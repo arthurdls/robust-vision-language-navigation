@@ -1,6 +1,7 @@
 """Manual (terminal-driven) stand-ins for the OpenAI-backed components.
 
-Used by ``run_hardware.py --no-ai``. Each class mirrors the public surface of
+Used by the hardware runners with ``--no-ai`` (e.g. ``run_hardware_openvla.py
+--no-ai``). Each class mirrors the public surface of
 its real counterpart (``LLMUserInterface``, ``LTLSymbolicPlanner``,
 ``SubgoalConverter``, ``GoalAdherenceMonitor``) but reads decisions from stdin
 instead of calling an LLM/VLM. Intended for hardware bring-up, debugging the
@@ -135,7 +136,7 @@ class ManualLTLSymbolicPlanner:
     """Stand-in for ``rvln.ai.ltl_planner.LTLSymbolicPlanner``.
 
     Walks through the manually entered predicates in order. Mirrors the public
-    surface used by ``run_hardware``: ``plan_from_natural_language``,
+    surface used by the hardware runners: ``plan_from_natural_language``,
     ``pi_map``, ``get_next_predicate``, ``advance_state``, ``finished``.
     """
 

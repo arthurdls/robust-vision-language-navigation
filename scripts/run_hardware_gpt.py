@@ -2,7 +2,7 @@
 """
 Run the MiniNav real-drone integration pipeline with GPT-5.4 driving.
 
-Same as ``run_hardware.py`` but the OpenVLA model is surgically removed.
+Same as ``run_hardware_openvla.py`` but the OpenVLA model is surgically removed.
 Instead, the goal-adherence monitor (gpt-5.4) emits a discrete
 ``drive_action`` on every checkpoint -- one of
 ``{"turn_left", "turn_right", "move_forward", "stop"}`` -- and the run
@@ -55,8 +55,8 @@ GPT_DRIVE_FORWARD_M_S = 0.6   # forward velocity for the "move_forward" action
 GPT_DRIVE_TURN_DEG_S  = 20.0  # yaw rate for "turn_left" / "turn_right"
 
 # ============================================================================
-# CONFIG -- edit these for your run, then `python scripts/run_gpt_hardware.py`.
-# Same shape as run_hardware.py's CONFIG. OpenVLA-specific knobs are still
+# CONFIG -- edit these for your run, then `python scripts/run_hardware_gpt.py`.
+# Same shape as run_hardware_openvla.py's CONFIG. OpenVLA-specific knobs are still
 # present (the runner threads them through), but the OpenVLA HTTP client is
 # stubbed out at startup so ``openvla_predict_url`` never gets hit and the
 # OpenVLA server does NOT need to be running.
@@ -101,7 +101,7 @@ CONFIG = {
 
     # ---- Small-motion auto-converge (effectively disabled) ---------------
     # GPT issues "stop" directly when it wants the drone to hold; we leave
-    # the auto-converge thresholds as in run_hardware (steps=1000) so the
+    # the auto-converge thresholds as in run_hardware_openvla (steps=1000) so the
     # heuristic effectively never triggers.
     "action_small_delta_pos": 3.0,
     "action_small_delta_yaw": 1.0,
@@ -176,7 +176,7 @@ def _build_argv(cfg: dict) -> list[str]:
     return argv
 
 
-# src/ layout: allow `python scripts/run_gpt_hardware.py` without `pip install -e .`
+# src/ layout: allow `python scripts/run_hardware_gpt.py` without `pip install -e .`
 _SRC = _REPO_ROOT / "src"
 if _SRC.is_dir() and str(_SRC) not in sys.path:
     sys.path.insert(0, str(_SRC))
@@ -354,7 +354,7 @@ def _install_gpt_drive_overrides() -> None:
 
 
 # ============================================================================
-# Hardware patience prompt patches -- copied verbatim from run_hardware.py
+# Hardware patience prompt patches -- copied verbatim from run_hardware_openvla.py
 # so the existing hardware-only addenda still apply on top of the
 # drive_action directive.
 # ============================================================================
@@ -392,7 +392,7 @@ toward it. When
 
 
 def _apply_hardware_prompt_patches() -> None:
-    """Same patches run_hardware.py applies. Idempotent w.r.t. drive_action
+    """Same patches run_hardware_openvla.py applies. Idempotent w.r.t. drive_action
     addendum because this runs first."""
     import rvln.ai.goal_adherence_monitor as gam
 
@@ -400,13 +400,13 @@ def _apply_hardware_prompt_patches() -> None:
         raise RuntimeError(
             "DIARY_CONVERGENCE_PROMPT no longer contains the expected "
             "'default to turning RIGHT' block; update "
-            "_DIARY_DEFAULT_RIGHT_BLOCK in run_gpt_hardware.py to match."
+            "_DIARY_DEFAULT_RIGHT_BLOCK in run_hardware_gpt.py to match."
         )
     if _TEXT_ONLY_DEFAULT_RIGHT_BLOCK not in gam.TEXT_ONLY_CONVERGENCE_PROMPT_TEMPLATE:
         raise RuntimeError(
             "TEXT_ONLY_CONVERGENCE_PROMPT no longer contains the expected "
             "'default to turning RIGHT' block; update "
-            "_TEXT_ONLY_DEFAULT_RIGHT_BLOCK in run_gpt_hardware.py to match."
+            "_TEXT_ONLY_DEFAULT_RIGHT_BLOCK in run_hardware_gpt.py to match."
         )
 
     gam.CONVERGENCE_PROMPT_TEMPLATE = gam.CONVERGENCE_PROMPT_TEMPLATE.replace(

@@ -219,7 +219,8 @@ robust-vision-language-navigation/
     run_condition{2-6}_*.py Ablation conditions
     run_simulator.py        Launches Unreal binary + sim API server
     start_server.py         OpenVLA server
-    run_hardware.py         Real-drone pipeline
+    run_hardware_openvla.py Real-drone pipeline (OpenVLA driver)
+    run_hardware_gpt.py     Real-drone pipeline (GPT-5.4 driver)
     run_repl.py             Interactive drone REPL
     playback.py             FPV viewer and MP4 encoder
   tasks/                    Task JSON definitions
@@ -236,7 +237,7 @@ The same pipeline runs on real drones via the MiniNav interface. The drone-facin
 python scripts/start_mock_hardware.py --host 127.0.0.1 --port 8080 --frame_port 8081
 
 # Live flight
-python scripts/run_hardware.py \
+python scripts/run_hardware_openvla.py \
   --preferred_server_host 192.168.0.101 \
   --control_port 8080 \
   --camera 0 \
@@ -257,7 +258,7 @@ Out-of-order returns from OpenAI are reordered before publish so the
 dashboard never visually regresses; hung calls are skipped after 30 s. The
 pool size and per-step timeout are configurable via
 `--monitor_max_inflight` and `--monitor_dispatch_timeout_s` (or the
-matching keys in `scripts/run_hardware.py`'s CONFIG).
+matching keys in `scripts/run_hardware_openvla.py`'s CONFIG).
 
 ## Citation
 

@@ -16,7 +16,7 @@ At startup, this script probes:
 Each working source becomes a slot you can flip through with ``n`` / ``p``
 in a single cv2 preview window, with the source label, resolution, and
 live FPS overlaid. Use this to figure out which ``--camera N`` (or which
-GStreamer pipeline) to pass to ``scripts/run_hardware.py`` when the host
+GStreamer pipeline) to pass to ``scripts/run_hardware_openvla.py`` when the host
 has multiple cameras attached.
 
 Usage (from repo root):
@@ -59,12 +59,12 @@ class Source:
     kind: str   # "v4l2" | "csi" | "pipeline"
     open_fn: Callable[[], "cv2.VideoCapture"]
     # The cv2 integer index that maps to this source, when it exists. Only
-    # set for V4L2 sources, since run_hardware.py's --camera flag is typed
+    # set for V4L2 sources, since run_hardware_openvla.py's --camera flag is typed
     # as int and goes straight into cv2.VideoCapture(N).
     index: Optional[int] = None
     # The exact GStreamer pipeline string, when this source was opened via
     # cv2.CAP_GSTREAMER. Used to recommend a copy-pasteable
-    # --camera_pipeline value for run_hardware.py.
+    # --camera_pipeline value for run_hardware_openvla.py.
     pipeline: Optional[str] = None
 
 
@@ -270,22 +270,22 @@ def label_slug(label: str) -> str:
 
 
 def report_run_hardware_flag(source: Source) -> None:
-    """Print the run_hardware.py invocation that selects this source.
+    """Print the run_hardware_openvla.py invocation that selects this source.
 
     V4L2 sources map to ``--camera N``. CSI and custom pipelines map to
-    ``--camera_pipeline "<pipeline>"`` (added to run_hardware specifically
+    ``--camera_pipeline "<pipeline>"`` (added to the hardware runner specifically
     so this script's recommendations work end-to-end).
     """
     print()
     print("=" * 60)
     print(f"Selected source: {source.label}")
     if source.kind == "v4l2" and source.index is not None:
-        print(f"  python scripts/run_hardware.py --camera {source.index} ...")
+        print(f"  python scripts/run_hardware_openvla.py --camera {source.index} ...")
     elif source.pipeline is not None:
         # Single quotes around the pipeline so commas / parens in
         # nvarguscamerasrc caps don't get mangled by the shell.
         print(
-            "  python scripts/run_hardware.py "
+            "  python scripts/run_hardware_openvla.py "
             f"--camera_pipeline '{source.pipeline}' ..."
         )
     else:

@@ -32,7 +32,7 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent
 _DEFAULT_RESULTS_DIR = str(_REPO_ROOT / "results" / "hardware")
 
 # ============================================================================
-# CONFIG -- edit these for your run, then `python scripts/run_hardware.py`.
+# CONFIG -- edit these for your run, then `python scripts/run_hardware_openvla.py`.
 # Every key is a literal value (no None, no DEFAULT_X references). Empty
 # strings ("") mark genuinely-optional alternatives -- they're translated
 # to "not passed" so argparse's None default takes effect; e.g. an empty
@@ -218,7 +218,7 @@ def _build_argv(cfg: dict) -> list[str]:
     return argv
 
 
-# src/ layout: allow `python scripts/run_hardware.py` without `pip install -e .`
+# src/ layout: allow `python scripts/run_hardware_openvla.py` without `pip install -e .`
 _SRC = _REPO_ROOT / "src"
 if _SRC.is_dir() and str(_SRC) not in sys.path:
     sys.path.insert(0, str(_SRC))
@@ -286,13 +286,13 @@ def _apply_hardware_prompt_patches() -> None:
         raise RuntimeError(
             "DIARY_CONVERGENCE_PROMPT no longer contains the expected "
             "'default to turning RIGHT' block; update "
-            "_DIARY_DEFAULT_RIGHT_BLOCK in run_hardware.py to match."
+            "_DIARY_DEFAULT_RIGHT_BLOCK in run_hardware_openvla.py to match."
         )
     if _TEXT_ONLY_DEFAULT_RIGHT_BLOCK not in gam.TEXT_ONLY_CONVERGENCE_PROMPT_TEMPLATE:
         raise RuntimeError(
             "TEXT_ONLY_CONVERGENCE_PROMPT no longer contains the expected "
             "'default to turning RIGHT' block; update "
-            "_TEXT_ONLY_DEFAULT_RIGHT_BLOCK in run_hardware.py to match."
+            "_TEXT_ONLY_DEFAULT_RIGHT_BLOCK in run_hardware_openvla.py to match."
         )
 
     gam.CONVERGENCE_PROMPT_TEMPLATE = gam.CONVERGENCE_PROMPT_TEMPLATE.replace(

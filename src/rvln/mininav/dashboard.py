@@ -1,4 +1,4 @@
-"""Live operator web dashboard for run_hardware.
+"""Live operator web dashboard for the hardware runs.
 
 Pops up a chromeless Chrome / Edge window during a run that shows:
   - a header strip (subgoal index/name, elapsed time, checkpoint

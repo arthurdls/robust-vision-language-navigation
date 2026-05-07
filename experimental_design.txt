@@ -102,7 +102,7 @@ Default parameters (from project configuration):
   - Convergence: position delta < 3.0 cm AND yaw delta < 1.0 deg
     for 10 consecutive steps
   - Diary mode: frame-based for simulation eval (10-frame interval);
-    run_hardware forces time-based (3 s interval)
+    hardware runs force time-based (3 s interval)
 
 Simulation: Unreal Engine via UnrealCV gym. Single map:
 DowntownWest (urban). See Section 4a for details.

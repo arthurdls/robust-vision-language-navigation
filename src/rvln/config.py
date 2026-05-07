@@ -15,7 +15,7 @@ DEFAULT_VLM_MODEL = "gpt-5.4"  # Goal-adherence monitor (local / global / conver
 # ---------------------------------------------------------------------------
 # Diary monitoring
 # ---------------------------------------------------------------------------
-DEFAULT_DIARY_MODE = "frame"  # "frame" for sim eval; run_hardware forces "time"
+DEFAULT_DIARY_MODE = "frame"  # "frame" for sim eval; hardware runs force "time"
 DEFAULT_HARDWARE_DIARY_MODE = "time"  # hardware default: time-based (async) cadence
 
 # Frame-mode budget / checkpoint interval

@@ -620,7 +620,7 @@ def _print_connection_info(
     print("=" * 60)
     print("Mock drone ready. On the client machine run:")
     print()
-    print(f"  python scripts/run_hardware.py \\")
+    print(f"  python scripts/run_hardware_openvla.py \\")
     print(f"      --control_host {local_ip} \\")
     print(f"      --control_port {tcp_port} \\")
     print(f"      --camera_url http://{local_ip}:{frame_port}/frame \\")

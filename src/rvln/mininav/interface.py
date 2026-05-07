@@ -791,7 +791,7 @@ def _clip_velocity(
       original vyaw is preserved, only its magnitude is capped.
 
     Caps are passed in instead of using module-level constants so an
-    operator can tune them via the run_hardware CONFIG without monkey-
+    operator can tune them via the hardware-run CONFIG without monkey-
     patching the module.
     """
     mag = math.sqrt(vx * vx + vy * vy + vz * vz)
@@ -1843,30 +1843,31 @@ def parse_args() -> argparse.Namespace:
 
     epilog = (
         "Configuration:\n"
-        "  Most operators edit the CONFIG block at the top of\n"
-        "  scripts/run_hardware.py and run with no flags. Every CLI flag\n"
-        "  below has a literal default copied into that CONFIG block;\n"
-        "  flags passed on the command line still win (argparse takes the\n"
-        "  last value for repeated options).\n"
+        "  Most operators edit the CONFIG block at the top of the runner\n"
+        "  script (scripts/run_hardware_openvla.py or run_hardware_gpt.py)\n"
+        "  and run with no flags. Every CLI flag below has a literal\n"
+        "  default copied into that CONFIG block; flags passed on the\n"
+        "  command line still win (argparse takes the last value for\n"
+        "  repeated options).\n"
         "\n"
-        "Examples:\n"
+        "Examples (substitute run_hardware_gpt.py for the GPT-driven runner):\n"
         "  # Live flight (default Jetson USB camera, drone at 192.168.0.101,\n"
         "  # dead-reckoning pose) -- edit CONFIG['instruction'] or pass it:\n"
-        "  python scripts/run_hardware.py --instruction \"circle the red cone\"\n"
+        "  python scripts/run_hardware_openvla.py --instruction \"circle the red cone\"\n"
         "\n"
         "  # Fully simulated (start_mock_hardware.py + start_server.py running):\n"
-        "  python scripts/run_hardware.py \\\n"
+        "  python scripts/run_hardware_openvla.py \\\n"
         "      --control_host 127.0.0.1 \\\n"
         "      --camera_url http://127.0.0.1:8081/frame \\\n"
         "      --instruction \"move forward 10m, then turn toward the red car\"\n"
         "\n"
         "  # Live flight on Jetson with the onboard CSI camera + real odometry:\n"
-        "  python scripts/run_hardware.py \\\n"
+        "  python scripts/run_hardware_openvla.py \\\n"
         "      --camera_pipeline 'nvarguscamerasrc sensor-id=0 ! ... ! appsink' \\\n"
         "      --odom_http_url http://192.168.0.101:8090/pose --no-dead-reckoning\n"
         "\n"
         "  # Verbose monitoring -- one human-readable status line per second:\n"
-        "  python scripts/run_hardware.py -v --instruction \"...\"\n"
+        "  python scripts/run_hardware_openvla.py -v --instruction \"...\"\n"
         "\n"
         "Wire format (matches boieng_mininav.py):\n"
         "  Each packet is 5 float32 values: [frame_count, vx, vy, vz, yaw_rate].\n"
@@ -1900,7 +1901,6 @@ def parse_args() -> argparse.Namespace:
     )
 
     parser = argparse.ArgumentParser(
-        prog="run_hardware.py",
         description=description,
         epilog=epilog,
         formatter_class=argparse.RawDescriptionHelpFormatter,
