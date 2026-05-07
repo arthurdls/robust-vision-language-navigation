@@ -38,6 +38,12 @@ _drone_name: Optional[str] = None
 _drone_cam_id: int = 0
 _initialized = False
 _map_info: Optional[dict] = None
+# Snapshot of every non-drone NPC/object spawned during init_env, captured
+# at the end of init so we can restore positions on every /teleport and
+# /reset. Without this, NPCs and cars drift across the 7 conditions and
+# violate the "no drift or carryover between episodes" claim in
+# experimental_design.txt Section 6c.
+_npc_initial_state: list = []
 
 
 def set_map_info(info: dict) -> None:
@@ -77,6 +83,54 @@ def _get_pose() -> tuple:
     pos = list(_env.unwrapped.unrealcv.get_obj_location(_drone_name))
     rot = list(_env.unwrapped.unrealcv.get_obj_rotation(_drone_name))
     return [float(v) for v in pos], [float(v) for v in rot]
+
+
+def _snapshot_npc_state() -> None:
+    """Capture position and rotation of every non-drone player in player_list.
+
+    Called once at the end of init_env. The snapshot is the canonical
+    initial scene state used by _reset_npcs to restore landmarks between
+    episodes.
+    """
+    global _npc_initial_state
+    _npc_initial_state = []
+    if _env is None:
+        return
+    try:
+        names = list(_env.unwrapped.player_list)
+    except Exception:
+        return
+    for name in names:
+        if name == _drone_name:
+            continue
+        try:
+            pos = list(_env.unwrapped.unrealcv.get_obj_location(name))
+            rot = list(_env.unwrapped.unrealcv.get_obj_rotation(name))
+            _npc_initial_state.append({
+                "name": name,
+                "position": [float(v) for v in pos],
+                "rotation": [float(v) for v in rot],
+            })
+        except Exception as exc:
+            logger.warning("Could not snapshot NPC %s: %s", name, exc)
+
+
+def _reset_npcs() -> None:
+    """Restore every snapshotted NPC to its initial position and rotation.
+
+    Also re-asserts physics=0 on each so they don't drift between teleports.
+    No-op if the snapshot is empty (unit tests, mocks, etc.).
+    """
+    if _env is None or not _npc_initial_state:
+        return
+    for entry in _npc_initial_state:
+        name = entry["name"]
+        try:
+            _env.unwrapped.unrealcv.set_obj_location(name, entry["position"])
+            _env.unwrapped.unrealcv.set_obj_rotation(name, entry["rotation"])
+            _env.unwrapped.unrealcv.set_phy(name, 0)
+        except Exception as exc:
+            logger.warning("Could not reset NPC %s: %s", name, exc)
 
 
 @app.route("/health", methods=["GET"])
@@ -147,9 +201,15 @@ def init_env(env_id: str, time_dilation: int = 10, seed: int = 0) -> dict:
     _drone_cam_id = drone_cam_id
     _initialized = True
 
+    # Snapshot the scene's NPC/landmark state once, immediately after spawn.
+    # /teleport and /reset will restore from this snapshot.
+    _snapshot_npc_state()
+
     cam_count = _env.unwrapped.unrealcv.get_camera_num()
-    logger.info("Sim env initialized: drone=%s, drone_cam=%d, cameras=%d",
-                _drone_name, _drone_cam_id, cam_count)
+    logger.info(
+        "Sim env initialized: drone=%s, drone_cam=%d, cameras=%d, npc_snapshot=%d",
+        _drone_name, _drone_cam_id, cam_count, len(_npc_initial_state),
+    )
 
     return {"status": "ready", "drone_name": _drone_name,
             "drone_cam_id": _drone_cam_id, "cam_count": cam_count}
@@ -178,6 +238,10 @@ def handle_teleport():
     position = data["position"]
     yaw = float(data["yaw"])
 
+    # Restore NPCs/landmarks to their initial poses BEFORE moving the drone,
+    # so the scene is identical across the 7 conditions.
+    _reset_npcs()
+
     _env.unwrapped.unrealcv.set_obj_location(_drone_name, position[:3])
     _env.unwrapped.unrealcv.set_rotation(_drone_name, yaw - 180)
     _sync_cam()
@@ -194,6 +258,9 @@ def handle_reset():
     data = request.get_json(force=True)
     position = data["position"]
     yaw = float(data["yaw"])
+
+    # Restore NPCs/landmarks to their initial poses BEFORE moving the drone.
+    _reset_npcs()
 
     _env.unwrapped.unrealcv.set_obj_location(_drone_name, position[:3])
     _env.unwrapped.unrealcv.set_rotation(_drone_name, yaw - 180)

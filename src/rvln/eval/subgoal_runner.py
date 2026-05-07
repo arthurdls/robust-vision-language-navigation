@@ -336,7 +336,11 @@ def run_subgoal(
     extra_kwargs: Dict[str, Any] = {}
     if config.monitor_mode == "text_only":
         extra_kwargs["global_backend"] = "text_llm"
-        extra_kwargs["global_model"] = llm_model
+        # The text-only global assessor is part of the monitor pipeline
+        # (it replaces only the image-grid input; the role is still
+        # completion-monitoring). Use the monitor model, not the planner
+        # model, to keep model choice consistent with C0/C2/C4/C5.
+        extra_kwargs["global_model"] = monitor_model
     if config.monitor_mode == "single_frame":
         extra_kwargs["single_frame_mode"] = True
     if config.monitor_mode == "grid_only":
@@ -358,6 +362,15 @@ def run_subgoal(
     openvla_pose_origin: List[float] = [0.0, 0.0, 0.0, 0.0]
     last_pose: Optional[List[float]] = None
     small_count = 0
+    # Signed, unwrapped cumulative yaw within this subtask in degrees.
+    # current_pose[3] is the wrapped (-180, 180] heading relative to subtask
+    # start; cumulative_yaw_deg sums shortest-arc deltas across steps so the
+    # monitor sees how far the drone has actually turned (e.g., +270 for a
+    # 3/4 spin to the left). Reset to 0 each new subgoal because run_subgoal
+    # is invoked fresh per subgoal. Survives correction events (corrections
+    # don't change the physical heading reference).
+    cumulative_yaw_deg = 0.0
+    prev_yaw_deg = 0.0
     override_history: List[Dict[str, Any]] = []
     in_correction = False
     last_correction_step = -config.check_interval
@@ -541,15 +554,33 @@ def run_subgoal(
             with _step_timer.phase("frame_write"):
                 _frame_writer.write(f"frame_{global_frame_idx:06d}.png", image)
 
+            # Build the displacement tuple shown to the monitor with the
+            # signed cumulative yaw (not the wrapped current_pose[3]) so a
+            # 270-degree turn reads as +270/-270, not as the wrapped value.
+            disp_for_monitor = [
+                current_pose[0], current_pose[1], current_pose[2],
+                cumulative_yaw_deg,
+            ]
             with _step_timer.phase("monitor_on_frame"):
                 if monitor:
                     try:
-                        result = monitor.on_frame(image, displacement=list(current_pose))
+                        result = monitor.on_frame(image, displacement=disp_for_monitor)
                     except Exception as e:
-                        logger.error("monitor.on_frame failed at step %d: %s", step, e)
+                        # Surface monitor failures as ask_help with a clear
+                        # header rather than silently treating them as
+                        # "continue". The llm_providers layer already retries
+                        # transient errors; an exception escaping the
+                        # monitor means something is genuinely wrong.
+                        logger.exception(
+                            "monitor.on_frame failed at step %d: %s", step, e,
+                        )
                         result = DiaryCheckResult(
-                            action="continue", new_instruction="", reasoning="",
-                            diary_entry="", completion_pct=monitor.last_completion_pct,
+                            action="ask_help",
+                            new_instruction="",
+                            reasoning=f"monitor_on_frame_error: {e}",
+                            diary_entry="",
+                            completion_pct=monitor.last_completion_pct,
+                            ask_help_header="MONITOR ERROR",
                         )
 
             if monitor and not use_async:
@@ -627,6 +658,14 @@ def run_subgoal(
 
             image = new_image  # None triggers /get_frame fallback on next iteration.
 
+            # --- Update cumulative yaw tracker (signed, unwrapped). ---
+            # current_pose[3] is in degrees, normalized to (-180, 180]. Use a
+            # shortest-arc delta so a small turn near the +/-180 wrap doesn't
+            # look like a 358-degree jump.
+            yaw_step = ((current_pose[3] - prev_yaw_deg + 180) % 360) - 180
+            cumulative_yaw_deg += yaw_step
+            prev_yaw_deg = current_pose[3]
+
             # --- Convergence detection ---
             # Note: checkpoints (monitor.on_frame above) still fire during
             # corrective instruction execution, but they evaluate the *subgoal*,
@@ -642,8 +681,9 @@ def run_subgoal(
                     converged = True
                 steps_since_correction = step - last_correction_step
                 if last_pose is not None and steps_since_correction >= config.check_interval:
-                    diffs = [abs(a - b) for a, b in zip(current_pose, last_pose)]
-                    if all(d < ACTION_SMALL_DELTA_POS for d in diffs[:3]) and diffs[3] < ACTION_SMALL_DELTA_YAW:
+                    pos_diffs = [abs(current_pose[i] - last_pose[i]) for i in range(3)]
+                    yaw_diff = abs(((current_pose[3] - last_pose[3] + 180) % 360) - 180)
+                    if all(d < ACTION_SMALL_DELTA_POS for d in pos_diffs) and yaw_diff < ACTION_SMALL_DELTA_YAW:
                         small_count += 1
                     else:
                         small_count = 0
@@ -654,8 +694,9 @@ def run_subgoal(
                     converged = True
                 elapsed_since_correction = time.time() - last_correction_time
                 if last_pose is not None and elapsed_since_correction >= config.check_interval_s:
-                    diffs = [abs(a - b) for a, b in zip(current_pose, last_pose)]
-                    if all(d < ACTION_SMALL_DELTA_POS for d in diffs[:3]) and diffs[3] < ACTION_SMALL_DELTA_YAW:
+                    pos_diffs = [abs(current_pose[i] - last_pose[i]) for i in range(3)]
+                    yaw_diff = abs(((current_pose[3] - last_pose[3] + 180) % 360) - 180)
+                    if all(d < ACTION_SMALL_DELTA_POS for d in pos_diffs) and yaw_diff < ACTION_SMALL_DELTA_YAW:
                         small_count += 1
                     else:
                         small_count = 0
@@ -678,16 +719,29 @@ def run_subgoal(
                     monitor_input = image  # fall back to last loop frame
 
                 try:
+                    conv_disp = [
+                        current_pose[0], current_pose[1], current_pose[2],
+                        cumulative_yaw_deg,
+                    ]
                     conv_result = monitor.on_convergence(
-                        monitor_input, displacement=list(current_pose),
+                        monitor_input, displacement=conv_disp,
                     )
                 except Exception as e:
-                    logger.error("monitor.on_convergence failed at step %d: %s", step, e)
+                    # Do NOT silently fall through to action="stop" on
+                    # exception: that would record monitor errors as
+                    # successful completions and corrupt M5. Surface as
+                    # ask_help with a clear header instead so the runner
+                    # aborts the episode in batch mode.
+                    logger.exception(
+                        "monitor.on_convergence failed at step %d: %s", step, e,
+                    )
                     conv_result = DiaryCheckResult(
-                        action="stop", new_instruction="",
-                        reasoning="LLM error on convergence",
+                        action="ask_help",
+                        new_instruction="",
+                        reasoning=f"monitor_on_convergence_error: {e}",
                         diary_entry="",
                         completion_pct=monitor.last_completion_pct,
+                        ask_help_header="CONVERGENCE MONITOR ERROR",
                     )
 
                 if conv_result.action == "stop":

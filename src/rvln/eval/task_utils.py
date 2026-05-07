@@ -229,6 +229,32 @@ def sanitize_run_label(text: str, max_len: int = 40, fallback: str = "task") -> 
     return safe[:max_len] or fallback
 
 
+# Stop reasons that mean the subgoal/episode terminated WITHOUT successful
+# completion. The complement set ("monitor_complete", "convergence") are
+# the success-class terminations. In batch mode every member here implies
+# the episode aborts and is recorded under a single failure class so
+# M1/M3 stay comparable across conditions (per Section 8c, with C3 being
+# the explicit exception that processes every subgoal regardless).
+ABORT_STOP_REASONS = frozenset({
+    "ask_help",
+    "ask_help_no_handler",
+    "abort",
+    "skipped",
+    "replan",
+    "max_seconds",
+    "no_image",
+    "no_response",
+    "empty_action",
+    "action_error",
+    "convergence_no_command",
+})
+
+
+def is_abort_stop_reason(stop_reason: str) -> bool:
+    """True if a subgoal stop_reason should be treated as an episode abort."""
+    return stop_reason in ABORT_STOP_REASONS
+
+
 def make_ask_help_callback(interactive_handler=None):
     """Build an ask_help callback with uniform abort-on-stall semantics.
 
