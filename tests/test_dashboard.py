@@ -89,3 +89,80 @@ class TestBuildRunState:
         assert state.convergence_label == "convergence_002"
         assert state.convergence_response == "converged: yes"
         assert state.convergence_image_mtime > 0
+
+
+import http.client
+import threading
+from rvln.mininav.dashboard import (
+    DashboardHTTPServer, DashboardRequestHandler, build_run_state,
+)
+
+
+@pytest.fixture
+def running_server(tmp_path):
+    """Boot a real DashboardHTTPServer on an OS-assigned port."""
+    server = DashboardHTTPServer(
+        ("127.0.0.1", 0),
+        DashboardRequestHandler,
+        run_dir=tmp_path,
+        snapshot_provider=lambda: build_run_state(tmp_path),
+    )
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    yield server, server.server_address[1], tmp_path
+    server.shutdown()
+    thread.join(timeout=2.0)
+
+
+class TestRoutes:
+    def _get(self, port, path):
+        conn = http.client.HTTPConnection("127.0.0.1", port, timeout=2.0)
+        conn.request("GET", path)
+        resp = conn.getresponse()
+        body = resp.read()
+        conn.close()
+        return resp.status, dict(resp.getheaders()), body
+
+    def test_root_serves_html(self, running_server):
+        _, port, _ = running_server
+        status, headers, body = self._get(port, "/")
+        assert status == 200
+        assert headers["Content-Type"].startswith("text/html")
+        assert b"<html" in body.lower() or b"<!doctype" in body.lower()
+
+    def test_state_endpoint_returns_json(self, running_server):
+        _, port, _ = running_server
+        status, headers, body = self._get(port, "/api/state")
+        assert status == 200
+        assert headers["Content-Type"] == "application/json"
+        payload = json.loads(body)
+        assert "subgoals" in payload
+        assert "server_time" in payload
+
+    def test_state_endpoint_reflects_disk(self, running_server):
+        _, port, run_dir = running_server
+        _make_artifacts(run_dir, 1, "ascend", 10, diary="hello")
+        status, _, body = self._get(port, "/api/state")
+        assert status == 200
+        payload = json.loads(body)
+        assert payload["diary_text"] == "hello"
+        assert payload["active_subgoal"]["name"] == "ascend"
+
+    def test_image_route_returns_png(self, running_server):
+        _, port, run_dir = running_server
+        png_bytes = b"\x89PNG\r\n\x1a\n" + b"\x00" * 100
+        _make_artifacts(run_dir, 1, "ascend", 10, local_png=png_bytes)
+        status, headers, body = self._get(port, "/img/local")
+        assert status == 200
+        assert headers["Content-Type"] == "image/png"
+        assert body == png_bytes
+
+    def test_image_route_404_when_missing(self, running_server):
+        _, port, _ = running_server
+        status, _, _ = self._get(port, "/img/local")
+        assert status == 404
+
+    def test_image_route_rejects_unknown_slot(self, running_server):
+        _, port, _ = running_server
+        status, _, _ = self._get(port, "/img/banana")
+        assert status == 404

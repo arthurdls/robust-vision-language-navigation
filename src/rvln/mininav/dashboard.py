@@ -141,3 +141,138 @@ def build_run_state(run_dir: Path) -> RunState:
 
 def state_to_json(state: RunState) -> bytes:
     return json.dumps(asdict(state)).encode("utf-8")
+
+
+# ----------------------------------------------------------------------
+# Section 2: HTTP server
+# ----------------------------------------------------------------------
+
+import http.server
+import socketserver
+from typing import Callable
+
+_STATIC_DIR = Path(__file__).resolve().parent / "dashboard_static"
+_IMG_FILES = {
+    "local":       lambda cp: cp / "grid_local.png",
+    "global":      lambda cp: cp / "grid_global.png",
+    "convergence": lambda cv: cv,
+}
+
+
+class DashboardHTTPServer(socketserver.ThreadingMixIn, http.server.HTTPServer):
+    """ThreadingHTTPServer that carries the run_dir + snapshot provider."""
+    daemon_threads = True
+    allow_reuse_address = True
+
+    def __init__(self, addr, handler_cls, *,
+                 run_dir: Path, snapshot_provider: Callable[[], RunState]):
+        super().__init__(addr, handler_cls)
+        self.run_dir = Path(run_dir)
+        self.snapshot_provider = snapshot_provider
+
+
+class DashboardRequestHandler(http.server.BaseHTTPRequestHandler):
+    """Routes: / , /static/*, /api/state, /img/{local,global,convergence}."""
+
+    def log_message(self, format, *args):
+        # Silence the default per-request stderr log; it spams during 4 Hz polling.
+        pass
+
+    def do_GET(self):
+        try:
+            if self.path == "/" or self.path == "/index.html":
+                self._serve_static("index.html", "text/html; charset=utf-8")
+            elif self.path.startswith("/static/"):
+                name = self.path[len("/static/"):].split("?", 1)[0]
+                self._serve_static(name, self._mime_for(name))
+            elif self.path.split("?", 1)[0] == "/api/state":
+                self._serve_state()
+            elif self.path.startswith("/img/"):
+                slot = self.path[len("/img/"):].split("?", 1)[0]
+                self._serve_image(slot)
+            else:
+                self._send_simple(404, b"not found")
+        except Exception as exc:
+            logger.debug("dashboard handler error on %s: %s", self.path, exc)
+            self._send_simple(500, b"server error")
+
+    # -- helpers --------------------------------------------------------
+
+    @staticmethod
+    def _mime_for(name: str) -> str:
+        if name.endswith(".css"):
+            return "text/css; charset=utf-8"
+        if name.endswith(".js"):
+            return "application/javascript; charset=utf-8"
+        if name.endswith(".html"):
+            return "text/html; charset=utf-8"
+        return "application/octet-stream"
+
+    def _serve_static(self, name: str, mime: str) -> None:
+        path = _STATIC_DIR / name
+        if ".." in name or not path.is_file():
+            self._send_simple(404, b"not found")
+            return
+        body = path.read_bytes()
+        self.send_response(200)
+        self.send_header("Content-Type", mime)
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _serve_state(self) -> None:
+        state = self.server.snapshot_provider()
+        body = state_to_json(state)
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _serve_image(self, slot: str) -> None:
+        if slot not in _IMG_FILES:
+            self._send_simple(404, b"unknown slot")
+            return
+        path = _resolve_image_path(self.server.run_dir, slot)
+        if path is None or not path.is_file():
+            self._send_simple(404, b"no image yet")
+            return
+        try:
+            body = path.read_bytes()
+        except Exception:
+            self._send_simple(500, b"image read failed")
+            return
+        self.send_response(200)
+        self.send_header("Content-Type", "image/png")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _send_simple(self, status: int, body: bytes) -> None:
+        try:
+            self.send_response(status)
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+        except Exception:
+            pass
+
+
+def _resolve_image_path(run_dir: Path, slot: str) -> Optional[Path]:
+    """Look up the latest checkpoint or convergence dir, then the right PNG."""
+    if slot == "convergence":
+        cv_glob = list(run_dir.glob("subgoal_*/diary_artifacts/convergence_*"))
+        if not cv_glob:
+            return None
+        cv = max(cv_glob, key=lambda p: p.stat().st_mtime)
+        images = sorted(cv.glob("grid_convergence_*.png"))
+        return images[-1] if images else None
+    cp_glob = list(run_dir.glob("subgoal_*/diary_artifacts/checkpoint_*"))
+    if not cp_glob:
+        return None
+    cp = max(cp_glob, key=lambda p: p.stat().st_mtime)
+    name = "grid_local.png" if slot == "local" else "grid_global.png"
+    return cp / name
