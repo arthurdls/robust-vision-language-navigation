@@ -9,10 +9,8 @@ import os
 # ---------------------------------------------------------------------------
 # LLM / VLM model defaults
 # ---------------------------------------------------------------------------
-DEFAULT_LLM_MODEL = "gpt-5.4"
-DEFAULT_VLM_MODEL = "gpt-5.4"
-DEFAULT_LLM_FALLBACK_MODEL = "gpt-4o-mini"
-DEFAULT_VLM_FALLBACK_MODEL = "gpt-4o"
+DEFAULT_LLM_MODEL = "gpt-4o"  # LTL planner, SubgoalConverter, C2 decomposer
+DEFAULT_VLM_MODEL = "gpt-5.4"  # Goal-adherence monitor (local / global / convergence)
 
 # ---------------------------------------------------------------------------
 # Diary monitoring
