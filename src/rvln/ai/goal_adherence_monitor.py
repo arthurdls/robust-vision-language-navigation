@@ -18,6 +18,21 @@ stall_window checkpoints), returns ask_help instead of continue.
 Stall detection is suppressed when completion is already high
 (above stall_completion_floor).
 
+Peak-dropoff override: tracks the per-subgoal peak completion estimate
+``self._peak_completion``. If the peak has reached
+``PEAK_DROPOFF_PEAK_FLOOR`` (0.9) at any point and the most recent
+completion estimate has dropped at least ``PEAK_DROPOFF_DROP_THRESHOLD``
+(0.25) below that peak, the monitor returns ``action="stop"`` and the
+runner advances to the next subgoal, regardless of what the VLM
+returned. Rationale: a peak >= 0.9 means the goal was at some point
+near-complete, so the goal has probably been achieved; a >= 0.25 retreat
+means the agent has clearly moved away, and continuing to issue
+corrective instructions in that situation rarely recovers the goal.
+The override fires in every place stall detection runs (sync/async
+periodic checkpoints) plus the three convergence paths (sync image-grid,
+async image-grid, text-only). It is a no-op for C1 and C3 because
+neither has a monitor.
+
 Key behaviours:
   - Completion percentage is reported as-is from the LLM (no clamping).
     A separate peak_completion value tracks the maximum reached.
@@ -103,6 +118,8 @@ from ..config import (
     DEFAULT_STALL_THRESHOLD,
     DEFAULT_STALL_WINDOW,
     DEFAULT_VLM_MODEL,
+    PEAK_DROPOFF_DROP_THRESHOLD,
+    PEAK_DROPOFF_PEAK_FLOOR,
 )
 from .prompts import (
     DIARY_SYSTEM_PROMPT as GENERAL_SYSTEM_PROMPT,
@@ -570,6 +587,12 @@ class GoalAdherenceMonitor:
                 completion_pct=pct,
             )
 
+        # Peak-dropoff override (sync convergence, image-grid backend).
+        # See _peak_dropoff_override.
+        override = self._peak_dropoff_override(pct)
+        if override is not None:
+            return override
+
         if not corrective:
             logger.warning(
                 "Convergence response missing corrective_instruction, retrying."
@@ -730,6 +753,12 @@ class GoalAdherenceMonitor:
                 diary_entry="",
                 completion_pct=pct,
             )
+
+        # Peak-dropoff override (text-only convergence backend).
+        # See _peak_dropoff_override.
+        override = self._peak_dropoff_override(pct)
+        if override is not None:
+            return override
 
         if not corrective:
             t0 = time.time()
@@ -1075,6 +1104,53 @@ class GoalAdherenceMonitor:
         # means progress was made, so don't fire.
         return (max(recent) - min(recent)) < self._stall_threshold
 
+    def _peak_dropoff_override(self, pct: float) -> Optional[DiaryCheckResult]:
+        """Return a stop-action result if the peak-dropoff rule fires, else None.
+
+        Rule: if the highest completion estimate seen so far for this
+        subgoal is at least ``PEAK_DROPOFF_PEAK_FLOOR`` (0.9), and the
+        freshly observed completion estimate ``pct`` has dropped at
+        least ``PEAK_DROPOFF_DROP_THRESHOLD`` (0.25) below that peak,
+        treat the subgoal as achieved and return action="stop".
+
+        Why: a peak >= 0.9 means the goal was at some point
+        near-complete, so the goal has probably been achieved. A drop
+        >= 0.25 means the agent has clearly moved away from the
+        achieved state. Continuing to issue corrective instructions in
+        that situation rarely recovers the goal and burns correction
+        budget; advancing to the next subgoal is the better call.
+
+        The helper appends a diary entry recording the override so the
+        decision is visible in saved checkpoint and convergence
+        artifacts. Callers are responsible for not invoking this helper
+        when the VLM has already proposed an "stop" action -- in that
+        case there is nothing to override and re-attributing the stop
+        to peak-dropoff would corrupt the reasoning string.
+        """
+        if self._peak_completion < PEAK_DROPOFF_PEAK_FLOOR:
+            return None
+        if (self._peak_completion - pct) < PEAK_DROPOFF_DROP_THRESHOLD:
+            return None
+        diary_entry = (
+            f"Peak dropoff override (step {self._step}): "
+            f"peak={self._peak_completion:.2f}, current={pct:.2f}, "
+            "treating subgoal as achieved"
+        )
+        self._diary.append(diary_entry)
+        reasoning = (
+            f"peak_dropoff_override: peak={self._peak_completion:.2f}, "
+            f"current={pct:.2f}, treating subgoal as achieved "
+            f"(peak >= {PEAK_DROPOFF_PEAK_FLOOR}, "
+            f"drop >= {PEAK_DROPOFF_DROP_THRESHOLD})"
+        )
+        return DiaryCheckResult(
+            action="stop",
+            new_instruction="",
+            reasoning=reasoning,
+            diary_entry=diary_entry,
+            completion_pct=pct,
+        )
+
     def _save_frame(self, frame: Any) -> Path:
         if isinstance(frame, (str, Path)):
             return Path(frame)
@@ -1267,6 +1343,17 @@ class GoalAdherenceMonitor:
                 diary_entry=diary_entry,
                 completion_pct=result.completion_pct,
             )
+
+        # Peak-dropoff override: if completion previously hit
+        # PEAK_DROPOFF_PEAK_FLOOR and has dropped >= PEAK_DROPOFF_DROP_THRESHOLD,
+        # the goal was probably achieved and the agent has drifted; advance
+        # to the next subgoal instead of issuing more corrections. Gated on
+        # action == "continue" to mirror stall detection: only intervene when
+        # the VLM is not already taking action. See _peak_dropoff_override.
+        if result.action == "continue":
+            override = self._peak_dropoff_override(result.completion_pct)
+            if override is not None:
+                return override
 
         return result
 
@@ -1470,6 +1557,12 @@ class GoalAdherenceMonitor:
                 completion_pct=result.completion_pct,
             )
 
+        # Peak-dropoff override (async checkpoint). See _peak_dropoff_override.
+        if result.action == "continue":
+            override = self._peak_dropoff_override(result.completion_pct)
+            if override is not None:
+                return override
+
         return result
 
     def _run_convergence_async(
@@ -1569,6 +1662,12 @@ class GoalAdherenceMonitor:
                 diary_entry="",
                 completion_pct=pct,
             )
+
+        # Peak-dropoff override (async convergence, image-grid backend).
+        # See _peak_dropoff_override.
+        override = self._peak_dropoff_override(pct)
+        if override is not None:
+            return override
 
         if not corrective:
             logger.warning(

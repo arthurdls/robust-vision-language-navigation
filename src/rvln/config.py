@@ -47,6 +47,23 @@ DEFAULT_STALL_WINDOW = 10
 DEFAULT_STALL_THRESHOLD = 0.05
 DEFAULT_STALL_COMPLETION_FLOOR = 0.5
 
+# Peak-dropoff convergence override.
+#
+# Rule: during a convergence check, if the per-subgoal peak completion
+# estimate has previously reached PEAK_DROPOFF_PEAK_FLOOR, and the freshly
+# parsed convergence completion estimate has dropped at least
+# PEAK_DROPOFF_DROP_THRESHOLD below that peak, the monitor returns
+# action="stop" regardless of what the convergence VLM proposed.
+#
+# Why: a peak >= 0.9 means the goal was at some point near-complete, so
+# the goal has probably been achieved. A drop >= 0.25 means the agent
+# has clearly moved away from the achieved state. Continuing to issue
+# corrective instructions in that situation rarely recovers the goal
+# and burns correction budget; advancing to the next subgoal is the
+# better call.
+PEAK_DROPOFF_PEAK_FLOOR = 0.9
+PEAK_DROPOFF_DROP_THRESHOLD = 0.25
+
 # ---------------------------------------------------------------------------
 # Movement convergence thresholds
 # ---------------------------------------------------------------------------

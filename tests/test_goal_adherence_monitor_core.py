@@ -330,6 +330,142 @@ class TestOnConvergence:
 
 
 # -------------------------------------------------------------------------
+# Peak-dropoff override
+# -------------------------------------------------------------------------
+
+class TestPeakDropoffOverride:
+    """Override fires when peak completion >= 0.9 and current pct has
+    dropped >= 0.25 below that peak. Should fire in every place
+    _is_stalled is used (sync/async checkpoints) plus all three
+    convergence paths (sync image-grid, async image-grid, text-only).
+    Rationale: peak >= 0.9 means the goal was at some point near-complete,
+    so it has probably been achieved; a 0.25+ retreat means the agent
+    has moved away.
+    """
+
+    def _setup_monitor(self):
+        m = _make_monitor()
+        m._frame_paths = [Path(f"/tmp/f{i}.png") for i in range(4)]
+        m._frame_timestamps = [float(i) for i in range(4)]
+        m._step = 4
+        m._diary = ["Steps 0-2: moved forward"]
+        m._last_displacement = [100.0, 0.0, 0.0, 0.0]
+        return m
+
+    @patch("rvln.ai.goal_adherence_monitor.query_vlm")
+    @patch("rvln.ai.goal_adherence_monitor.build_frame_grid")
+    @patch("rvln.ai.goal_adherence_monitor.sample_frames_every_n")
+    def test_override_fires_on_convergence(self, mock_sample, mock_grid, mock_vlm):
+        m = self._setup_monitor()
+        m._peak_completion = 0.93
+        mock_sample.return_value = m._frame_paths[-4:]
+        mock_grid.return_value = MagicMock()
+        mock_vlm.return_value = json.dumps({
+            "complete": False,
+            "completion_percentage": 0.55,
+            "diagnosis": "stopped_short",
+            "corrective_instruction": "go forward",
+        })
+
+        result = m.on_convergence(Path("/tmp/f3.png"))
+        assert result.action == "stop"
+        assert result.reasoning.startswith("peak_dropoff_override:")
+        assert result.completion_pct == 0.55
+        # Must NOT consume correction budget (we are not issuing a corrective).
+        assert m._corrections_used == 0
+
+    @patch("rvln.ai.goal_adherence_monitor.query_vlm")
+    @patch("rvln.ai.goal_adherence_monitor.build_frame_grid")
+    @patch("rvln.ai.goal_adherence_monitor.sample_frames_every_n")
+    def test_drop_too_small_no_override(self, mock_sample, mock_grid, mock_vlm):
+        """Drop of 0.18 < 0.25 threshold; rule must NOT fire."""
+        m = self._setup_monitor()
+        m._peak_completion = 0.93
+        mock_sample.return_value = m._frame_paths[-4:]
+        mock_grid.return_value = MagicMock()
+        mock_vlm.return_value = json.dumps({
+            "complete": False,
+            "completion_percentage": 0.75,
+            "diagnosis": "stopped_short",
+            "corrective_instruction": "go forward",
+        })
+
+        result = m.on_convergence(Path("/tmp/f3.png"))
+        assert result.action == "command"
+        assert "forward" in result.new_instruction
+        assert m._corrections_used == 1
+
+    @patch("rvln.ai.goal_adherence_monitor.query_vlm")
+    @patch("rvln.ai.goal_adherence_monitor.build_frame_grid")
+    @patch("rvln.ai.goal_adherence_monitor.sample_frames_every_n")
+    def test_peak_too_low_no_override(self, mock_sample, mock_grid, mock_vlm):
+        """Peak of 0.85 < 0.9 floor; rule must NOT fire even with a large drop."""
+        m = self._setup_monitor()
+        m._peak_completion = 0.85
+        mock_sample.return_value = m._frame_paths[-4:]
+        mock_grid.return_value = MagicMock()
+        mock_vlm.return_value = json.dumps({
+            "complete": False,
+            "completion_percentage": 0.55,
+            "diagnosis": "stopped_short",
+            "corrective_instruction": "go forward",
+        })
+
+        result = m.on_convergence(Path("/tmp/f3.png"))
+        assert result.action == "command"
+        assert m._corrections_used == 1
+
+    @patch("rvln.ai.goal_adherence_monitor.query_vlm")
+    @patch("rvln.ai.goal_adherence_monitor.build_frame_grid")
+    @patch("rvln.ai.goal_adherence_monitor.sample_frames_every_n")
+    def test_vlm_complete_keeps_native_reasoning(self, mock_sample, mock_grid, mock_vlm):
+        """If the VLM itself says complete, the existing stop path runs --
+        the override does NOT re-attribute the stop to peak-dropoff."""
+        m = self._setup_monitor()
+        m._peak_completion = 0.93
+        mock_sample.return_value = m._frame_paths[-4:]
+        mock_grid.return_value = MagicMock()
+        mock_vlm.return_value = json.dumps({
+            "complete": True,
+            "completion_percentage": 0.55,
+            "diagnosis": "complete",
+            "corrective_instruction": None,
+        })
+
+        result = m.on_convergence(Path("/tmp/f3.png"))
+        assert result.action == "stop"
+        assert "peak_dropoff_override" not in result.reasoning
+
+    @patch("rvln.ai.goal_adherence_monitor.query_vlm")
+    @patch("rvln.ai.goal_adherence_monitor.build_frame_grid")
+    @patch("rvln.ai.goal_adherence_monitor.sample_frames_every_n")
+    def test_override_also_fires_on_checkpoint(self, mock_sample, mock_grid, mock_vlm):
+        """Mirrors stall detection: override must fire in periodic checkpoints
+        too, not just at convergence."""
+        m = _make_monitor(check_interval=2)
+        m._peak_completion = 0.93
+        mock_sample.return_value = [Path(f"/tmp/f{i}.png") for i in range(2)]
+        mock_grid.return_value = MagicMock()
+        mock_vlm.side_effect = [
+            "Drone drifted away from the tree.",
+            json.dumps({
+                "complete": False,
+                "completion_percentage": 0.55,
+                "on_track": True,
+                "should_stop": False,
+            }),
+        ]
+
+        # First frame: pre-checkpoint, returns continue.
+        m.on_frame(Path("/tmp/f0.png"))
+        # Second frame: triggers checkpoint, peak=0.93 with current=0.55
+        # should override to stop.
+        result = m.on_frame(Path("/tmp/f1.png"))
+        assert result.action == "stop"
+        assert result.reasoning.startswith("peak_dropoff_override:")
+
+
+# -------------------------------------------------------------------------
 # on_frame checkpoint triggering
 # -------------------------------------------------------------------------
 

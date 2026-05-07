@@ -57,6 +57,20 @@ Key components:
     (e.g., altitude or a different turn direction) instead of
     reissuing the same command. C1 and C3 have no monitor and no
     convergence cycle and are therefore unaffected.
+  - Peak-dropoff override: in every monitor-bearing condition (C0, C2,
+    C4, C5, C6), the periodic checkpoints and convergence checks both
+    short-circuit to "stop" (advance to the next subgoal) when the
+    monitor's per-subgoal peak completion estimate previously reached
+    PEAK_DROPOFF_PEAK_FLOOR (0.9) and the most recent estimate has
+    dropped at least PEAK_DROPOFF_DROP_THRESHOLD (0.25) below that
+    peak. Rationale: a peak >= 0.9 means the goal was at some point
+    near-complete, so it has probably been achieved; a 0.25+ retreat
+    means the agent has clearly moved away, and continuing to issue
+    corrective instructions in that situation rarely recovers the
+    goal. The override fires in the same set of code paths as stall
+    detection (sync and async checkpoints, plus the three convergence
+    paths: sync image-grid, async image-grid, text-only). C1 and C3
+    have no monitor and are therefore unaffected.
   - OpenVLA frame: the proprioceptive state sent to OpenVLA is
     rebased to [0, 0, 0, 0] at the start of every new low-level
     instruction (initial converted instruction or any monitor-issued
@@ -83,6 +97,8 @@ Default parameters (from project configuration):
   - Max corrections per subgoal: 20
   - Stall window: 10 checkpoints (hardware override: 5)
   - Stall threshold: 0.05 (completion spread)
+  - Peak-dropoff peak floor: 0.9 (override gate on prior peak)
+  - Peak-dropoff drop threshold: 0.25 (override gate on retreat from peak)
   - Convergence: position delta < 3.0 cm AND yaw delta < 1.0 deg
     for 10 consecutive steps
   - Diary mode: frame-based for simulation eval (10-frame interval);
