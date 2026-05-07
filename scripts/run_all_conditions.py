@@ -47,8 +47,10 @@ if str(_SCRIPTS) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS))
 
 from rvln.config import (
+    DEFAULT_DIARY_CHECK_INTERVAL_S,
     DEFAULT_DIARY_MODE,
     DEFAULT_LLM_MODEL,
+    DEFAULT_MAX_SECONDS_PER_SUBGOAL,
     DEFAULT_SEED,
     DEFAULT_SERVER_HOST,
     DEFAULT_SERVER_PORT,
@@ -304,12 +306,23 @@ def _run_single_task(
         env_id=map_info.env_id,
     )
 
+    # Time-mode plumbing for monitor-based conditions (C0/C2/C4/C5/C6).
+    # In frame mode (the sim-eval default) both stay None and the inner
+    # SubgoalConfig stays in frame mode; in time mode they carry the
+    # CLI-supplied values through to the runner.
+    use_time_mode = args.diary_mode == "time"
+    monitor_time_kwargs = dict(
+        diary_mode=args.diary_mode,
+        check_interval_s=args.diary_check_interval_s if use_time_mode else None,
+        max_seconds=args.max_seconds_per_subgoal if use_time_mode else None,
+    )
+
     if condition == 0:
         run_info = control_loop(
             **common_kwargs,
             llm_model=args.llm_model,
             monitor_model=args.monitor_model,
-            diary_mode=args.diary_mode,
+            **monitor_time_kwargs,
         )
     elif condition == 1:
         run_info = control_loop(**common_kwargs)
@@ -318,7 +331,7 @@ def _run_single_task(
             **common_kwargs,
             llm_model=args.llm_model,
             monitor_model=args.monitor_model,
-            diary_mode=args.diary_mode,
+            **monitor_time_kwargs,
         )
     elif condition == 3:
         run_info = control_loop(
@@ -330,20 +343,21 @@ def _run_single_task(
             **common_kwargs,
             llm_model=args.llm_model,
             monitor_model=args.monitor_model,
+            **monitor_time_kwargs,
         )
     elif condition == 5:
         run_info = control_loop(
             **common_kwargs,
             llm_model=args.llm_model,
             monitor_model=args.monitor_model,
-            diary_mode=args.diary_mode,
+            **monitor_time_kwargs,
         )
     elif condition == 6:
         run_info = control_loop(
             **common_kwargs,
             llm_model=args.llm_model,
             monitor_model=args.monitor_model,
-            diary_mode=args.diary_mode,
+            **monitor_time_kwargs,
         )
     else:
         raise ValueError(f"Unknown condition: {condition}")
@@ -587,6 +601,16 @@ def main():
         help=f"Diary scheduling mode (default: {DEFAULT_DIARY_MODE}). "
              "Frame mode is the sim-eval default; time mode is for "
              "hardware-style runs.",
+    )
+    parser.add_argument(
+        "--diary-check-interval-s", type=float,
+        default=DEFAULT_DIARY_CHECK_INTERVAL_S,
+        help="Time-mode checkpoint interval in seconds. Ignored in frame mode.",
+    )
+    parser.add_argument(
+        "--max-seconds-per-subgoal", type=float,
+        default=DEFAULT_MAX_SECONDS_PER_SUBGOAL,
+        help="Time-mode subgoal budget in seconds. Ignored in frame mode.",
     )
     parser.add_argument("--results_dir", default=str(REPO_ROOT / "results"))
     parser.add_argument("--save-mp4", action="store_true")

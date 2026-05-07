@@ -170,7 +170,6 @@ def run_open_loop_control_loop(
                         break
 
                 global_frame_idx = total_frame_count + step
-                frame_path = frames_dir / f"frame_{global_frame_idx:06d}.png"
                 with _step_timer.phase("frame_write"):
                     _frame_writer.write(f"frame_{global_frame_idx:06d}.png", image)
 
@@ -195,7 +194,7 @@ def run_open_loop_control_loop(
 
                 with _step_timer.phase("apply_action"):
                     try:
-                        new_image, current_pose, steps_added = apply_action_poses(
+                        new_image, current_pose, _ = apply_action_poses(
                             env, action_poses, origin_x, origin_y, origin_z, origin_yaw,
                             trajectory_log=trajectory_log, drone_cam_id=drone_cam_id,
                         )
@@ -291,6 +290,10 @@ def run_open_loop_control_loop(
         "completed": True,
         "stop_reason": "",
         "condition": "condition3_open_loop",
+        # Always frame mode: C3 runs the open-loop control loop with
+        # frame-based convergence detection. Recorded for schema parity
+        # with C0/C2/C4/C5/C6.
+        "diary_mode": "frame",
         "task": task,
         "seed": seed,
         "time_dilation": time_dilation,

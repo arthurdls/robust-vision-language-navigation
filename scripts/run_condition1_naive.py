@@ -129,7 +129,6 @@ def run_naive_control_loop(
                     total_steps = step
                     break
 
-            frame_path = frames_dir / f"frame_{step:06d}.png"
             with _step_timer.phase("frame_write"):
                 _frame_writer.write(f"frame_{step:06d}.png", image)
 
@@ -156,7 +155,7 @@ def run_naive_control_loop(
 
             with _step_timer.phase("apply_action"):
                 try:
-                    new_image, current_pose, steps_added = apply_action_poses(
+                    new_image, current_pose, _ = apply_action_poses(
                         env,
                         action_poses,
                         origin_x,
@@ -226,6 +225,10 @@ def run_naive_control_loop(
         "aborted": False,
         "completed": True,
         "condition": "condition1_naive",
+        # Always frame mode: C1 runs OpenVLA on the full instruction with
+        # no monitor and no time-mode scheduling. Recorded for schema
+        # parity with C0/C2/C4/C5/C6.
+        "diary_mode": "frame",
         "task": task,
         "seed": seed,
         "time_dilation": time_dilation,

@@ -550,7 +550,6 @@ def run_subgoal(
                     break
 
             global_frame_idx = frame_offset + step
-            frame_path = frames_dir / f"frame_{global_frame_idx:06d}.png"
             with _step_timer.phase("frame_write"):
                 _frame_writer.write(f"frame_{global_frame_idx:06d}.png", image)
 
@@ -640,7 +639,7 @@ def run_subgoal(
 
             with _step_timer.phase("apply_action"):
                 try:
-                    new_image, current_pose, steps_added = apply_action_poses(
+                    new_image, current_pose, _ = apply_action_poses(
                         env,
                         action_poses,
                         origin_x,

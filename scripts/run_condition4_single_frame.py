@@ -38,7 +38,10 @@ if _SRC.is_dir() and str(_SRC) not in sys.path:
 from rvln.config import (
     ACTION_SMALL_DELTA_POS,
     ACTION_SMALL_DELTA_YAW,
+    DEFAULT_DIARY_CHECK_INTERVAL_S,
+    DEFAULT_DIARY_MODE,
     DEFAULT_LLM_MODEL,
+    DEFAULT_MAX_SECONDS_PER_SUBGOAL,
     DEFAULT_SEED,
     DEFAULT_SERVER_HOST,
     DEFAULT_SERVER_PORT,
@@ -84,7 +87,9 @@ def run_single_frame_control_loop(
     env, batch, task, server_url, run_dir,
     llm_model, monitor_model, drone_cam_id,
     save_mp4=False, mp4_fps=10.0,
-    seed=DEFAULT_SEED, time_dilation=DEFAULT_TIME_DILATION, env_id="",
+    check_interval_s=None, max_seconds=None,
+    seed=DEFAULT_SEED, time_dilation=DEFAULT_TIME_DILATION,
+    env_id="", diary_mode=DEFAULT_DIARY_MODE,
 ):
     from rvln.ai.llm_interface import LLMUserInterface
     from rvln.ai.ltl_planner import LTLSymbolicPlanner
@@ -143,6 +148,8 @@ def run_single_frame_control_loop(
             check_interval=check_interval,
             max_steps=max_steps_per_subgoal,
             max_corrections=max_corrections,
+            check_interval_s=check_interval_s,
+            max_seconds=max_seconds,
         )
         subgoal_result = run_subgoal(
             env=env, batch=batch, server_url=server_url,
@@ -213,6 +220,7 @@ def run_single_frame_control_loop(
         "env_id": env_id,
         "server_url": server_url,
         "drone_cam_id": drone_cam_id,
+        "diary_mode": diary_mode,
         "llm_model": llm_model,
         "monitor_model": monitor_model,
         "models": {
@@ -278,8 +286,11 @@ def main():
     parser.add_argument("--sim_api_port", type=int, default=DEFAULT_SIM_API_PORT)
     parser.add_argument("--llm_model", default=DEFAULT_LLM_MODEL)
     parser.add_argument("--monitor_model", default=DEFAULT_VLM_MODEL)
+    parser.add_argument("--diary-mode", choices=("frame", "time"), default=DEFAULT_DIARY_MODE)
     parser.add_argument("--diary-check-interval", type=int, default=None)
+    parser.add_argument("--diary-check-interval-s", type=float, default=DEFAULT_DIARY_CHECK_INTERVAL_S)
     parser.add_argument("--max-steps-per-subgoal", type=int, default=None)
+    parser.add_argument("--max-seconds-per-subgoal", type=float, default=DEFAULT_MAX_SECONDS_PER_SUBGOAL)
     parser.add_argument("--max-corrections", type=int, default=None)
     parser.add_argument("-o", "--results_dir", default=str(CONDITION4_RESULTS_DIR))
     parser.add_argument("--save-mp4", action="store_true")
@@ -338,13 +349,16 @@ def main():
             run_name = f"c4_single_frame__{task_label}__{ts}"
             try:
                 run_dir = results_base / run_name
+                use_time_mode = args.diary_mode == "time"
                 run_info = run_single_frame_control_loop(
                     env=env, batch=batch, task=task, server_url=server_url,
                     run_dir=run_dir, llm_model=args.llm_model,
                     monitor_model=args.monitor_model,
                     drone_cam_id=drone_cam_id, save_mp4=args.save_mp4, mp4_fps=args.mp4_fps,
+                    check_interval_s=args.diary_check_interval_s if use_time_mode else None,
+                    max_seconds=args.max_seconds_per_subgoal if use_time_mode else None,
                     seed=args.seed, time_dilation=args.time_dilation,
-                    env_id=map_info.env_id,
+                    env_id=map_info.env_id, diary_mode=args.diary_mode,
                 )
                 logger.info("Run saved to %s (%d subgoals, %d total steps)",
                             run_dir, run_info["subgoal_count"], run_info["total_steps"])
