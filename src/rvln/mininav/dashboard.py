@@ -276,3 +276,102 @@ def _resolve_image_path(run_dir: Path, slot: str) -> Optional[Path]:
     cp = max(cp_glob, key=lambda p: p.stat().st_mtime)
     name = "grid_local.png" if slot == "local" else "grid_global.png"
     return cp / name
+
+
+# ----------------------------------------------------------------------
+# Section 3: Browser launcher
+# ----------------------------------------------------------------------
+
+import platform
+import subprocess
+import webbrowser
+
+WINDOW_SIZE = "1400,900"
+
+
+def _wsl_chromium_candidates() -> list[Path]:
+    return [
+        Path("/mnt/c/Program Files/Google/Chrome/Application/chrome.exe"),
+        Path("/mnt/c/Program Files (x86)/Google/Chrome/Application/chrome.exe"),
+        Path("/mnt/c/Program Files (x86)/Microsoft/Edge/Application/msedge.exe"),
+    ]
+
+
+def _linux_chromium_candidates() -> list[Path]:
+    return [
+        Path("/usr/bin/google-chrome"),
+        Path("/usr/bin/chromium"),
+        Path("/usr/bin/chromium-browser"),
+        Path("/usr/bin/microsoft-edge"),
+    ]
+
+
+def _macos_chromium_candidates() -> list[Path]:
+    return [
+        Path("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"),
+        Path("/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge"),
+    ]
+
+
+def _is_wsl() -> bool:
+    try:
+        return "microsoft" in Path("/proc/version").read_text().lower()
+    except OSError:
+        return False
+
+
+def _platform_candidates() -> list[Path]:
+    if _is_wsl():
+        return _wsl_chromium_candidates()
+    if platform.system() == "Darwin":
+        return _macos_chromium_candidates()
+    return _linux_chromium_candidates()
+
+
+def find_chromium_executable(candidates: Optional[list[Path]] = None) -> Optional[Path]:
+    """Return the first candidate path that exists, or None."""
+    for c in candidates if candidates is not None else _platform_candidates():
+        try:
+            if c.is_file():
+                return c
+        except OSError:
+            continue
+    return None
+
+
+def launch_browser(url: str, browser: Optional[Path] = None) -> Optional[subprocess.Popen]:
+    """Launch the URL in a chromeless --app window.
+
+    Returns the Popen handle on success so the caller can terminate
+    the browser when the run ends. If no Chromium-family browser is
+    found, falls back to webbrowser.open and returns None (auto-close
+    not available in that case).
+    """
+    chrome = browser if browser is not None else find_chromium_executable()
+    if chrome is None:
+        logger.warning(
+            "Dashboard: no Chrome / Edge found; opening default browser. "
+            "Auto-close on run end will not work; close the tab manually.",
+        )
+        try:
+            webbrowser.open(url)
+        except Exception as exc:
+            logger.warning("Dashboard: webbrowser.open failed: %s", exc)
+        return None
+    cmd = [
+        str(chrome),
+        f"--app={url}",
+        f"--window-size={WINDOW_SIZE}",
+        "--new-window",
+    ]
+    try:
+        return subprocess.Popen(
+            cmd,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            stdin=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+    except Exception as exc:
+        logger.warning("Dashboard: failed to launch %s: %s", chrome, exc)
+        return None

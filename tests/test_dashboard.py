@@ -166,3 +166,39 @@ class TestRoutes:
         _, port, _ = running_server
         status, _, _ = self._get(port, "/img/banana")
         assert status == 404
+
+
+from unittest.mock import patch
+from rvln.mininav.dashboard import find_chromium_executable, launch_browser
+
+
+class TestBrowserLauncher:
+    def test_returns_first_existing(self, tmp_path, monkeypatch):
+        existing = tmp_path / "chrome.exe"
+        existing.write_text("")
+        candidates = [tmp_path / "missing.exe", existing, tmp_path / "other.exe"]
+        result = find_chromium_executable(candidates)
+        assert result == existing
+
+    def test_returns_none_when_no_candidate_exists(self, tmp_path):
+        candidates = [tmp_path / "a", tmp_path / "b"]
+        assert find_chromium_executable(candidates) is None
+
+    def test_launch_uses_app_flag(self, tmp_path):
+        fake_chrome = tmp_path / "chrome.exe"
+        fake_chrome.write_text("")
+        with patch("subprocess.Popen") as mock_popen:
+            mock_popen.return_value = "popen-handle"
+            handle = launch_browser("http://127.0.0.1:8765", browser=fake_chrome)
+            assert handle == "popen-handle"
+            args, _ = mock_popen.call_args
+            cmd = args[0]
+            assert str(fake_chrome) in cmd
+            assert any("--app=http://127.0.0.1:8765" in a for a in cmd)
+
+    def test_launch_returns_none_when_no_browser(self):
+        with patch("rvln.mininav.dashboard.find_chromium_executable", return_value=None), \
+             patch("webbrowser.open") as wo:
+            handle = launch_browser("http://127.0.0.1:8765")
+            assert handle is None
+            wo.assert_called_once_with("http://127.0.0.1:8765")
