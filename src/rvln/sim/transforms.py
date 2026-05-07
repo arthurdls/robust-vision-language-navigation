@@ -4,7 +4,8 @@ Coordinate transform and pose utilities shared across simulation and hardware.
 Functions here were previously duplicated in env_setup.py and mininav/interface.py.
 """
 
-from typing import List, Tuple
+import math
+from typing import Any, List, Tuple
 
 import numpy as np
 
@@ -70,6 +71,63 @@ def relative_pose(current_world: List[float], origin_world: List[float]) -> List
         float(current_world[2] - origin_world[2]),
         float(normalize_angle(current_world[3] - origin_world[3])),
     ]
+
+
+def reframe_openvla_action_to_subgoal(
+    action_poses: List[Any],
+    current_pose: List[float],
+    openvla_pose_origin: List[float],
+) -> List[Any]:
+    """Reframe OpenVLA-server action poses into the subgoal-relative frame.
+
+    Once a correction has rebased ``openvla_pose_origin`` off zero, the proprio
+    sent to the OpenVLA server is ``current_pose - openvla_pose_origin``
+    (translated, with origin yaw subtracted). The server then rotates the
+    egocentric raw action by the proprio yaw,
+    ``current_pose[3] - openvla_pose_origin[3]``, which under-rotates by
+    ``openvla_pose_origin[3]`` -- the yaw the drone was holding when the
+    corrective was issued. The returned ``(x, y)`` therefore lives in a frame
+    rotated by ``-openvla_pose_origin[3]`` relative to the subgoal frame.
+
+    This helper applies the missing rotation and translation so dx/dy align
+    with the drone's heading at the start of the low-level instruction
+    (not the subgoal start).
+
+    Conventions:
+      - ``current_pose`` and ``openvla_pose_origin`` are
+        ``[x, y, z, yaw_deg]`` in subgoal-relative coordinates.
+      - Each ``action_pose`` is ``[x, y, z, yaw_rad]`` (server output convention,
+        yaw in radians) in proprio-relative coordinates.
+      - Returned poses use the same shape; yaw stays in radians.
+      - When ``openvla_pose_origin`` is all-zero (no correction yet), the
+        returned list is the same object as ``action_poses`` unchanged.
+      - Non-pose entries (anything that is not a length>=4 list/tuple) are
+        passed through verbatim.
+    """
+    if not any(o != 0.0 for o in openvla_pose_origin):
+        return action_poses
+    yaw_origin_deg = float(openvla_pose_origin[3])
+    yaw_origin_rad = math.radians(yaw_origin_deg)
+    proprio_x = current_pose[0] - openvla_pose_origin[0]
+    proprio_y = current_pose[1] - openvla_pose_origin[1]
+    cos_o = math.cos(yaw_origin_rad)
+    sin_o = math.sin(yaw_origin_rad)
+    out: List[Any] = []
+    for pose in action_poses:
+        if isinstance(pose, (list, tuple)) and len(pose) >= 4:
+            delta_x = float(pose[0]) - proprio_x
+            delta_y = float(pose[1]) - proprio_y
+            rotated_dx = cos_o * delta_x - sin_o * delta_y
+            rotated_dy = sin_o * delta_x + cos_o * delta_y
+            out.append([
+                current_pose[0] + rotated_dx,
+                current_pose[1] + rotated_dy,
+                float(pose[2]) + openvla_pose_origin[2],
+                float(pose[3]) + yaw_origin_rad,
+            ])
+        else:
+            out.append(pose)
+    return out
 
 
 def parse_position(s: str) -> List[float]:

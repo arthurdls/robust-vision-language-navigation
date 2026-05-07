@@ -91,7 +91,12 @@ from rvln.config import (
 )
 from rvln.paths import REPO_ROOT, load_env_vars
 from rvln.sim.env_setup import state_for_openvla
-from rvln.sim.transforms import normalize_angle, parse_position, relative_pose
+from rvln.sim.transforms import (
+    normalize_angle,
+    parse_position,
+    reframe_openvla_action_to_subgoal,
+    relative_pose,
+)
 logger = logging.getLogger(__name__)
 
 DEFAULT_RESULTS_DIR = REPO_ROOT / "results" / "hardware"
@@ -1480,41 +1485,13 @@ def run_subgoal(
                     total_steps = step
                     break
 
-                # The OpenVLA server returns action in the proprio-relative
-                # frame (origin = openvla_pose_origin). Once a correction has
-                # rebased that origin off zero, action_poses are not in the
-                # subgoal-relative frame the wire/converter expect. The server
-                # rotates its egocentric output by `proprio_yaw = subgoal_rel
-                # _pose[3] - openvla_pose_origin[3]`, which under-rotates by
-                # `openvla_pose_origin[3]` -- the yaw the drone was holding
-                # when the corrective was issued. Rotate the position delta by
-                # that missing yaw before translating, so dx/dy align with the
-                # drone's heading at the start of the low-level instruction
-                # (not the subgoal start).
-                # Mirrors src/rvln/eval/subgoal_runner.py.
-                if any(o != 0.0 for o in openvla_pose_origin):
-                    yaw_origin_deg = float(openvla_pose_origin[3])
-                    yaw_origin_rad = math.radians(yaw_origin_deg)
-                    proprio_x = subgoal_rel_pose[0] - openvla_pose_origin[0]
-                    proprio_y = subgoal_rel_pose[1] - openvla_pose_origin[1]
-                    cos_o = math.cos(yaw_origin_rad)
-                    sin_o = math.sin(yaw_origin_rad)
-                    reframed = []
-                    for pose in action_poses:
-                        if isinstance(pose, (list, tuple)) and len(pose) >= 4:
-                            delta_x = float(pose[0]) - proprio_x
-                            delta_y = float(pose[1]) - proprio_y
-                            rotated_dx = cos_o * delta_x - sin_o * delta_y
-                            rotated_dy = sin_o * delta_x + cos_o * delta_y
-                            reframed.append([
-                                subgoal_rel_pose[0] + rotated_dx,
-                                subgoal_rel_pose[1] + rotated_dy,
-                                float(pose[2]) + openvla_pose_origin[2],
-                                float(pose[3]) + yaw_origin_rad,
-                            ])
-                        else:
-                            reframed.append(pose)
-                    action_poses = reframed
+                # After a correction has rebased openvla_pose_origin off
+                # zero, rotate dx/dy by the origin yaw so action_poses align
+                # with the drone's heading at the start of the low-level
+                # instruction. See reframe_openvla_action_to_subgoal docstring.
+                action_poses = reframe_openvla_action_to_subgoal(
+                    action_poses, list(subgoal_rel_pose), openvla_pose_origin,
+                )
 
                 if recorder is not None and recorder.enabled:
                     recorder.maybe_log(
