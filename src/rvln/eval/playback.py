@@ -35,6 +35,11 @@ def load_frame_labels(run_dir: Path) -> Dict[int, FrameLabel]:
       * Naive (Condition 1): ``instruction_sent`` plus optional
         ``instruction_overrides`` (step-indexed across the whole run).
 
+    The returned dict is then extended (carry-forward) so every primary-
+    timeline frame on disk has a label, even when ``total_steps``
+    undercounts (e.g., the monitor returns stop/ask_help at the start of a
+    step after the frame for that step was already written to disk).
+
     Returns an empty dict when no usable metadata is found.
     """
     run_dir = Path(run_dir)
@@ -81,6 +86,7 @@ def load_frame_labels(run_dir: Path) -> Dict[int, FrameLabel]:
                     override_idx += 1
                 labels[offset + i] = (current_subgoal, current_command)
             offset += steps
+        _extend_labels_to_disk(labels, run_dir)
         return labels
 
     # --- Naive: single instruction with optional overrides ---
@@ -101,9 +107,34 @@ def load_frame_labels(run_dir: Path) -> Dict[int, FrameLabel]:
                 # No subgoal decomposition in naive runs: top and bottom are
                 # the same instruction.
                 labels[i] = (current, current)
+            _extend_labels_to_disk(labels, run_dir)
             return labels
 
     return labels
+
+
+def _extend_labels_to_disk(labels: Dict[int, FrameLabel], run_dir: Path) -> None:
+    """Carry the most recent label forward to cover every frame on disk.
+
+    The runner can write a frame for step ``S`` and then set
+    ``total_steps = S`` when the monitor returns stop/ask_help at the start
+    of the step (no action applied). For the final subgoal this leaves a
+    trailing frame on disk with no entry in *labels*; for non-final
+    subgoals the trailing frame is overwritten by the next subgoal's first
+    frame and is not visible here. Filling forward ensures every
+    primary-timeline frame still has a (subgoal, command) overlay.
+    """
+    if not labels:
+        return
+    paths = iter_run_frame_paths(run_dir)
+    if not paths:
+        return
+    last = labels[max(labels)]
+    for i in range(len(paths)):
+        if i in labels:
+            last = labels[i]
+        else:
+            labels[i] = last
 
 
 
