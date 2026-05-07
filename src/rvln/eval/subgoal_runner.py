@@ -787,4 +787,5 @@ def run_subgoal(
         "next_origin": [next_origin_x, next_origin_y, next_origin_z, next_origin_yaw],
         "parse_failures": monitor.parse_failures if monitor else 0,
         "replan_instruction": replan_instruction,
+        "override_history": override_history,
     }
