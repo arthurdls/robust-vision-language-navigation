@@ -91,22 +91,18 @@ CONFIG = {
     # Per-step magnitude clip applied BEFORE wire scaling. With GPT driving,
     # these caps double as the constant rates -- GPT_DRIVE_FORWARD_M_S /
     # GPT_DRIVE_TURN_DEG_S below default to these values so the wire sees
-    # exactly 0.6 m/s forward and 20 deg/s turn.
-    "max_translation_m_s": 0.6,
-    "max_rotation_deg_s": 20.0,
+    # exactly 0.1 m/s forward and 0.25 deg/s turn.
+    "max_translation_m_s": 0.2,
+    "max_rotation_deg_s": 0.75,
 
     # ---- OpenVLA (stubbed out -- URL is never hit) -----------------------
     "openvla_predict_url": "http://127.0.0.1:5007/predict",
     "openvla_dead_zone": True,
 
-    # ---- Small-motion auto-converge (effectively disabled) --------------
-    # The auto-converge detector watches OpenVLA's output for gradual
-    # slowdown. With constant-rate drive actions there is no gradual
-    # slowdown -- motion is either full speed or exactly zero -- so the
-    # detector adds no signal beyond what should_stop=true already
-    # provides. Convergence is driven entirely by the global prompt
-    # setting should_stop=true (which routes to force_converge), and
-    # we leave the threshold high so the auto-converge path is dormant.
+    # ---- Small-motion auto-converge (effectively disabled) ---------------
+    # GPT issues "stop" directly when it wants the drone to hold; we leave
+    # the auto-converge thresholds as in run_hardware (steps=1000) so the
+    # heuristic effectively never triggers.
     "action_small_delta_pos": 3.0,
     "action_small_delta_yaw": 1.0,
     "action_small_steps": 1000,
@@ -122,7 +118,7 @@ CONFIG = {
     "max_steps_per_subgoal": 500,
     "max_seconds_per_subgoal": 120.0,
     "max_corrections": 20,
-    "stall_window": 5,
+    "stall_window": 25,
     "stall_threshold": 0.05,
     "stall_completion_floor": 0.5,
 
@@ -255,7 +251,7 @@ def _drive_action_to_velocity(action: str) -> np.ndarray:
 # ============================================================================
 
 
-_DRIVE_ACTION_BASE = (
+_DRIVE_ACTION_ADDENDUM = (
     "\n\nDRIVE ACTION REQUIRED -- this run has the OpenVLA model removed; "
     "you (the monitor) are the sole controller. In addition to every field "
     "in the JSON object above, your output JSON MUST include a "
@@ -266,37 +262,9 @@ _DRIVE_ACTION_BASE = (
     f"{GPT_DRIVE_TURN_DEG_S:.1f} deg/s turn) continuously until your next "
     "checkpoint (~3 seconds later). Pick the single action that, applied "
     "for the next ~3 seconds, would best advance the active subgoal given "
-    "the most recent visual evidence. Never omit drive_action."
-)
-
-# Global checkpoint addendum: route completion through should_stop so the
-# convergence stage gets to verify with the drone halted. complete=true here
-# would skip convergence entirely and advance to the next subgoal.
-_DRIVE_ACTION_GLOBAL_ADDENDUM = _DRIVE_ACTION_BASE + (
-    "\n\nTWO-STAGE COMPLETION -- in this global checkpoint prompt, do NOT "
-    "set complete=true. Reserve that field for the convergence stage. "
-    "Whenever you believe the subgoal has been achieved, set "
-    "should_stop=true and drive_action=\"stop\"; this halts the drone and "
-    "triggers a convergence check that verifies completion (or, if not "
-    "actually complete, issues a corrective). should_stop=true also "
-    "remains the right signal for the original off-track / overshoot / "
-    "imminent-collision cases, with drive_action=\"stop\" in those too. "
-    "If you are uncertain whether the subgoal is done, prefer "
-    "should_stop=true so convergence can render the final verdict."
-)
-
-# Convergence addendum: drive_action carries the corrective. complete=true
-# here is the final verdict and short-circuits the corrective_instruction.
-_DRIVE_ACTION_CONVERGENCE_ADDENDUM = _DRIVE_ACTION_BASE + (
-    "\n\nCONVERGENCE VERDICT -- the drone is currently stopped. If the "
-    "subgoal is truly complete, set complete=true and drive_action=\"stop\"; "
-    "the runner will advance to the next subgoal. If the subgoal is NOT "
-    "complete, set complete=false and pick the drive_action that, applied "
-    "at constant rate for the next ~3 seconds, would best correct the "
-    "remaining gap (e.g. drive_action=\"move_forward\" for stopped-short, "
-    "drive_action=\"turn_left\"/\"turn_right\" to re-acquire a lost "
-    "target). Your drive_action here is the actual corrective; the "
-    "corrective_instruction NL field is informational only in this run."
+    "the most recent visual evidence. Use \"stop\" when the subgoal is "
+    "complete, when the drone should hold position, or when you are "
+    "uncertain which way to go. Never omit drive_action."
 )
 
 
@@ -306,16 +274,13 @@ def _install_gpt_drive_overrides() -> None:
     import rvln.mininav.interface as iface
 
     # 1. Append the drive_action directive to every monitor prompt template
-    #    gpt-5.4 might respond to. The local prompt and diary are NOT
-    #    patched -- they keep their existing "what changed" semantics so
-    #    the diary continues to feed the global / convergence stages
-    #    exactly as in run_hardware. Module-level names are rebound here;
-    #    the monitor reads them via the bare name at format time, so
-    #    subsequent .format() calls pick up the patched values.
-    gam.GLOBAL_PROMPT_TEMPLATE += _DRIVE_ACTION_GLOBAL_ADDENDUM
-    gam.TEXT_ONLY_GLOBAL_PROMPT_TEMPLATE += _DRIVE_ACTION_GLOBAL_ADDENDUM
-    gam.CONVERGENCE_PROMPT_TEMPLATE += _DRIVE_ACTION_CONVERGENCE_ADDENDUM
-    gam.TEXT_ONLY_CONVERGENCE_PROMPT_TEMPLATE += _DRIVE_ACTION_CONVERGENCE_ADDENDUM
+    #    that gpt-5.4 might respond to. These are module-level names re-
+    #    bound here; the monitor reads them via the bare name at format
+    #    time, so subsequent .format() calls pick up the patched value.
+    gam.GLOBAL_PROMPT_TEMPLATE += _DRIVE_ACTION_ADDENDUM
+    gam.CONVERGENCE_PROMPT_TEMPLATE += _DRIVE_ACTION_ADDENDUM
+    gam.TEXT_ONLY_GLOBAL_PROMPT_TEMPLATE += _DRIVE_ACTION_ADDENDUM
+    gam.TEXT_ONLY_CONVERGENCE_PROMPT_TEMPLATE += _DRIVE_ACTION_ADDENDUM
 
     # 2. Wrap the JSON parser so every successful parse with a drive_action
     #    key updates the shared state. Defensive: if the parsed dict says
@@ -343,12 +308,8 @@ def _install_gpt_drive_overrides() -> None:
 
     # 3. Replace OpenVLAClient with a stub. predict() returns a dummy
     #    1-element action_poses list that the patched to_command function
-    #    will ignore. reset_model() is a true no-op: per-subgoal drive-
-    #    state reset happens in the monitor __init__ hook below. Leaving
-    #    reset_model alone preserves the drive_action that the
-    #    convergence stage just set when a corrective is issued (the
-    #    runner calls openvla.reset_model() right after a corrective and
-    #    we do not want that to clobber the corrective direction).
+    #    will ignore. reset_model() resets the shared state so each new
+    #    subgoal starts in "stop" until GPT picks something.
     class _StubOpenVLAClient:
         def __init__(self, predict_url: str = "", timeout_s: float = 30.0):
             self.predict_url = predict_url
@@ -359,7 +320,7 @@ def _install_gpt_drive_overrides() -> None:
             return self.predict_url
 
         def reset_model(self) -> None:
-            return None
+            _DRIVE_STATE.reset()
 
         def predict(self, image_bgr: Any, proprio: Any, instr: str) -> Dict[str, Any]:
             # Single zero-pose entry; to_command_from_action_pose is
@@ -367,21 +328,6 @@ def _install_gpt_drive_overrides() -> None:
             return {"action": [[0.0, 0.0, 0.0, 0.0]]}
 
     iface.OpenVLAClient = _StubOpenVLAClient
-
-    # 3b. Reset drive_state on subgoal advance. GoalAdherenceMonitor is
-    #     constructed fresh per subgoal in run_subgoal(), so wrapping
-    #     __init__ gives us a clean per-subgoal hook without touching
-    #     run_subgoal itself. Subgoal advance must reset to "stop" so a
-    #     direction picked by the previous subgoal's last GPT call does
-    #     not leak in during the new subgoal's first ~3 s before its
-    #     own first checkpoint result lands.
-    _orig_monitor_init = gam.GoalAdherenceMonitor.__init__
-
-    def _patched_monitor_init(self, *args, **kwargs):
-        _DRIVE_STATE.reset()
-        _orig_monitor_init(self, *args, **kwargs)
-
-    gam.GoalAdherenceMonitor.__init__ = _patched_monitor_init
 
     # 4. Replace to_command_from_action_pose with a state-driven version
     #    that ignores its inputs and returns the constant-rate velocity
