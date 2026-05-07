@@ -68,7 +68,6 @@ from rvln.eval.subgoal_runner import SubgoalConfig, run_subgoal
 from rvln.eval.task_utils import (
     get_completed_task_ids,
     is_abort_stop_reason,
-    load_eval_task,
     make_ask_help_callback,
     resolve_eval_tasks,
     sanitize_run_label,

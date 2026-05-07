@@ -38,10 +38,7 @@ if _SRC.is_dir() and str(_SRC) not in sys.path:
 from rvln.config import (
     ACTION_SMALL_DELTA_POS,
     ACTION_SMALL_DELTA_YAW,
-    DEFAULT_DIARY_CHECK_INTERVAL,
     DEFAULT_LLM_MODEL,
-    DEFAULT_MAX_CORRECTIONS,
-    DEFAULT_MAX_STEPS_PER_SUBGOAL,
     DEFAULT_SEED,
     DEFAULT_SERVER_HOST,
     DEFAULT_SERVER_PORT,
@@ -199,6 +196,8 @@ def run_single_frame_control_loop(
         all_vlm_records.extend(s.get("vlm_call_records", []))
     total_input_tokens = sum(r.get("input_tokens", 0) for r in all_vlm_records)
     total_output_tokens = sum(r.get("output_tokens", 0) for r in all_vlm_records)
+    total_image_tokens = sum(r.get("image_tokens", 0) for r in all_vlm_records)
+    total_cached_tokens = sum(r.get("cached_tokens", 0) for r in all_vlm_records)
     end_dt = datetime.fromisoformat(end_ts)
     start_dt = datetime.fromisoformat(start_ts)
     wall_clock_seconds = (end_dt - start_dt).total_seconds()
@@ -240,6 +239,8 @@ def run_single_frame_control_loop(
         "total_corrections": sum(s.get("corrections_used", 0) for s in subgoal_summaries),
         "total_input_tokens": total_input_tokens,
         "total_output_tokens": total_output_tokens,
+        "total_image_tokens": total_image_tokens,
+        "total_cached_tokens": total_cached_tokens,
         "vlm_call_records": all_vlm_records,
         "playback_mp4": str(playback_mp4) if playback_mp4 else None,
         "start_time": start_ts,

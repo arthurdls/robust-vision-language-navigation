@@ -47,7 +47,6 @@ from rvln.config import (
     DEFAULT_SIM_HOST,
     DEFAULT_SIM_PORT,
     DEFAULT_TIME_DILATION,
-    DEFAULT_VLM_MODEL,
 )
 from rvln.eval.task_utils import (
     get_completed_task_ids,
@@ -277,6 +276,8 @@ def run_open_loop_control_loop(
         all_vlm_records.extend(s.get("vlm_call_records", []))
     total_input_tokens = sum(r.get("input_tokens", 0) for r in all_vlm_records)
     total_output_tokens = sum(r.get("output_tokens", 0) for r in all_vlm_records)
+    total_image_tokens = sum(r.get("image_tokens", 0) for r in all_vlm_records)
+    total_cached_tokens = sum(r.get("cached_tokens", 0) for r in all_vlm_records)
     end_dt = datetime.fromisoformat(end_ts)
     start_dt = datetime.fromisoformat(start_ts)
     wall_clock_seconds = (end_dt - start_dt).total_seconds()
@@ -288,6 +289,7 @@ def run_open_loop_control_loop(
         # analysis-script schema is uniform across conditions.
         "aborted": False,
         "completed": True,
+        "stop_reason": "",
         "condition": "condition3_open_loop",
         "task": task,
         "seed": seed,
@@ -317,6 +319,8 @@ def run_open_loop_control_loop(
         "total_corrections": 0,
         "total_input_tokens": total_input_tokens,
         "total_output_tokens": total_output_tokens,
+        "total_image_tokens": total_image_tokens,
+        "total_cached_tokens": total_cached_tokens,
         "vlm_call_records": all_vlm_records,
         "playback_mp4": str(playback_mp4) if playback_mp4 else None,
         "start_time": start_ts,

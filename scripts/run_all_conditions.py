@@ -581,7 +581,13 @@ def main():
         help="Model for the goal-adherence monitor in C0/C2/C4/C5/C6 "
              f"(default: {DEFAULT_VLM_MODEL})",
     )
-    parser.add_argument("--diary_mode", type=str, default=DEFAULT_DIARY_MODE)
+    parser.add_argument(
+        "--diary-mode", type=str, choices=("frame", "time"),
+        default=DEFAULT_DIARY_MODE,
+        help=f"Diary scheduling mode (default: {DEFAULT_DIARY_MODE}). "
+             "Frame mode is the sim-eval default; time mode is for "
+             "hardware-style runs.",
+    )
     parser.add_argument("--results_dir", default=str(REPO_ROOT / "results"))
     parser.add_argument("--save-mp4", action="store_true")
     parser.add_argument("--mp4-fps", type=float, default=10.0)

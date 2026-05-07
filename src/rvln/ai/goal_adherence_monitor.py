@@ -254,7 +254,8 @@ class GoalAdherenceMonitor:
         # result is committed. While set, any in-flight checkpoint that
         # finishes later must NOT overwrite _pending_result -- otherwise
         # _convergence_loop's poll picks up a stale checkpoint result and
-        # the run incorrectly stops with convergence_no_command.
+        # the runner mistakes a stray force_converge for the convergence
+        # verdict.
         self._awaiting_convergence: bool = False
         self._last_checkpoint_time: float = time.time()
         self._monitor_thread: Optional[threading.Thread] = None
@@ -342,9 +343,8 @@ class GoalAdherenceMonitor:
         Also discards any pending checkpoint result. Without this,
         _convergence_loop's tight poll could pick up a stale checkpoint
         force_converge that landed between the caller's last poll and now,
-        and treat it as the convergence verdict; downstream that surfaces
-        as 'convergence_no_command' (force_converge has empty
-        new_instruction) and the subgoal incorrectly terminates.
+        and treat it as the convergence verdict; the subgoal would then
+        terminate on a stray force_converge with no new_instruction.
         """
         with self._lock:
             self._convergence_request = (Path(frame_path), list(displacement))

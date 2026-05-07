@@ -133,7 +133,11 @@ def resolve_eval_tasks(
         raise SystemExit("At most one of -c/--command, --task, or --run_all_tasks is allowed.")
 
     overrides = overrides or {}
-    tasks_dir = tasks_root / map_info.task_dir_name
+    # Look in the shared experimental-task directory first
+    # (tasks/rvln_tests/, where the preliminary-results task lives), then
+    # fall back to the per-map directory for legacy/per-map task suites.
+    primary_tasks_dir = tasks_root / "rvln_tests"
+    legacy_tasks_dir = tasks_root / map_info.task_dir_name
 
     if cmd is not None:
         initial_pos_str = getattr(args, "initial_position", None) or map_info.default_position
@@ -152,19 +156,32 @@ def resolve_eval_tasks(
         path = Path(task_file)
         if not path.is_absolute():
             if len(path.parts) > 1:
+                # Multi-component paths (e.g. "rvln_tests/first_task.json")
+                # are resolved against tasks_root.
                 path = tasks_root / path
             else:
-                path = tasks_dir / path.name
+                # Bare filenames: try the primary dir first, then legacy.
+                primary = primary_tasks_dir / path.name
+                legacy = legacy_tasks_dir / path.name
+                path = primary if primary.exists() else legacy
         if not path.exists():
-            raise SystemExit(f"Task file not found: {path}")
+            raise SystemExit(
+                f"Task file not found in either {primary_tasks_dir} or "
+                f"{legacy_tasks_dir}: {task_file}"
+            )
         task = load_eval_task(path)
         _apply_overrides(task, args, overrides)
         return [task]
 
-    tasks_dir.mkdir(parents=True, exist_ok=True)
-    json_files = sorted(glob.glob(str(tasks_dir / "*.json")))
+    # --run_all_tasks: pick the directory that actually has tasks.
+    primary_tasks_dir.mkdir(parents=True, exist_ok=True)
+    json_files = sorted(glob.glob(str(primary_tasks_dir / "*.json")))
+    if not json_files and legacy_tasks_dir.is_dir():
+        json_files = sorted(glob.glob(str(legacy_tasks_dir / "*.json")))
     if not json_files:
-        raise SystemExit(f"No JSON files found in {tasks_dir}")
+        raise SystemExit(
+            f"No JSON files found in {primary_tasks_dir} or {legacy_tasks_dir}"
+        )
     tasks = []
     for jf in json_files:
         try:

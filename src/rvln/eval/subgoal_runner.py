@@ -25,7 +25,6 @@ from rvln.config import (
     DEFAULT_DIARY_CHECK_INTERVAL,
     DEFAULT_MAX_CORRECTIONS,
     DEFAULT_MAX_STEPS_PER_SUBGOAL,
-    DEFAULT_VLM_MODEL,
 )
 
 logger = logging.getLogger(__name__)
