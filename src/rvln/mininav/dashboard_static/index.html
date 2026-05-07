@@ -1,1 +1,80 @@
-<!doctype html><html><body>placeholder</body></html>
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MiniNav Live</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header class="header" id="header">
+    <div class="header-brand">MiniNav Live</div>
+    <div class="header-subgoal">
+      <span class="header-subgoal-index" id="subgoal-index">--/--</span>
+      <span class="header-subgoal-name" id="subgoal-name">preparing run...</span>
+    </div>
+    <div class="header-meta">
+      <span class="header-checkpoint" id="checkpoint-count">--</span>
+      <span class="header-elapsed" id="elapsed">00:00</span>
+      <span class="status-pill" id="status-pill" data-status="waiting">WAITING</span>
+    </div>
+  </header>
+
+  <nav class="breadcrumb" id="breadcrumb" aria-label="Subgoal progress"></nav>
+
+  <main class="grid">
+    <section class="panel image-panel" id="panel-local">
+      <header class="panel-header">
+        <h2 class="panel-title">Local prompt</h2>
+        <span class="panel-ts" id="local-ts">waiting...</span>
+      </header>
+      <div class="image-frame">
+        <img id="img-local" alt="local prompt frame" hidden>
+        <span class="image-empty" id="local-empty">waiting for first checkpoint</span>
+      </div>
+    </section>
+
+    <section class="panel image-panel" id="panel-global">
+      <header class="panel-header">
+        <h2 class="panel-title">Global prompt</h2>
+        <span class="panel-ts" id="global-ts">waiting...</span>
+      </header>
+      <div class="image-frame">
+        <img id="img-global" alt="global prompt frame" hidden>
+        <span class="image-empty" id="global-empty">waiting for first checkpoint</span>
+      </div>
+    </section>
+
+    <section class="panel text-panel" id="panel-diary">
+      <header class="panel-header">
+        <h2 class="panel-title">Diary</h2>
+        <span class="panel-ts" id="diary-ts">waiting...</span>
+      </header>
+      <pre class="text-body" id="diary-body"><span class="text-empty">no entries yet</span></pre>
+    </section>
+
+    <section class="panel text-panel" id="panel-response">
+      <header class="panel-header">
+        <h2 class="panel-title">Last global response</h2>
+        <span class="panel-ts" id="response-ts">waiting...</span>
+      </header>
+      <pre class="text-body" id="response-body"><span class="text-empty">no entries yet</span></pre>
+    </section>
+
+    <section class="panel convergence-panel" id="panel-convergence" hidden>
+      <header class="panel-header">
+        <h2 class="panel-title">Convergence</h2>
+        <span class="panel-ts" id="convergence-ts">waiting...</span>
+      </header>
+      <div class="convergence-body">
+        <div class="image-frame convergence-image">
+          <img id="img-convergence" alt="convergence frame">
+        </div>
+        <pre class="text-body convergence-text" id="convergence-body"></pre>
+      </div>
+    </section>
+  </main>
+
+  <script src="/static/main.js" defer></script>
+</body>
+</html>
