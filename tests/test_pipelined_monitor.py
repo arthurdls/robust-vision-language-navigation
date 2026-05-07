@@ -59,7 +59,12 @@ def test_atomic_write_text_no_partial_visible(tmp_path):
 
 
 from unittest.mock import patch, MagicMock
-from rvln.ai.goal_adherence_monitor import GoalAdherenceMonitor, _CheckpointSnapshot
+from rvln.ai.goal_adherence_monitor import (
+    GoalAdherenceMonitor,
+    _CheckpointSnapshot,
+    _LocalStageResult,
+    _GlobalStageResult,
+)
 
 
 def _make_monitor(tmp_path, **kwargs):
@@ -107,3 +112,60 @@ def test_snapshot_returns_none_when_too_few_frames(tmp_path):
     m._frame_timestamps = [0.0]
     snap = m._snapshot_for_checkpoint()
     assert snap is None
+
+
+def test_run_local_stage_returns_diary_entry(tmp_path):
+    m = _make_monitor(tmp_path)
+    # Two frames, ~3 s apart
+    p0, p1 = tmp_path / "f0.png", tmp_path / "f1.png"
+    p0.write_bytes(b"img0"); p1.write_bytes(b"img1")
+    snap = _CheckpointSnapshot(
+        step=10,
+        displacement=[100.0, 200.0, 50.0, 30.0],
+        frame_paths=[p0, p1],
+        frame_timestamps=[0.0, 3.0],
+        diary_at_dispatch=[],
+    )
+    with patch("rvln.ai.goal_adherence_monitor.build_frame_grid", return_value=MagicMock()), \
+         patch.object(m, "_timed_query_vlm", return_value="moved forward"):
+        result = m._run_local_stage(snap)
+    assert result.step == 10
+    assert "moved forward" in result.diary_entry
+    assert result.response_local == "moved forward"
+
+
+def test_run_local_stage_skip_local_returns_empty_entry(tmp_path):
+    m = _make_monitor(tmp_path, skip_local=True)
+    p0, p1 = tmp_path / "f0.png", tmp_path / "f1.png"
+    p0.write_bytes(b"img"); p1.write_bytes(b"img")
+    snap = _CheckpointSnapshot(
+        step=10, displacement=[0, 0, 0, 0],
+        frame_paths=[p0, p1], frame_timestamps=[0.0, 3.0],
+        diary_at_dispatch=[],
+    )
+    result = m._run_local_stage(snap)
+    assert result.diary_entry == ""
+    assert result.response_local == ""
+    assert result.grid_local is None
+
+
+def test_run_global_stage_returns_parsed_json(tmp_path):
+    m = _make_monitor(tmp_path)
+    p0, p1 = tmp_path / "f0.png", tmp_path / "f1.png"
+    p0.write_bytes(b"img"); p1.write_bytes(b"img")
+    snap = _CheckpointSnapshot(
+        step=10, displacement=[0, 0, 0, 0],
+        frame_paths=[p0, p1], frame_timestamps=[0.0, 3.0],
+        diary_at_dispatch=["earlier entry"],
+    )
+    local = _LocalStageResult(
+        step=10, grid_local=None, prompt_local="", response_local="",
+        diary_entry="Steps ~10: moved forward",
+    )
+    response = '{"complete": false, "completion_percentage": 0.42, "on_track": true, "should_stop": false}'
+    with patch("rvln.ai.goal_adherence_monitor.build_frame_grid", return_value=MagicMock()), \
+         patch.object(m, "_timed_query_vlm", return_value=response):
+        gresult = m._run_global_stage(snap, local)
+    assert gresult.step == 10
+    assert gresult.parsed["completion_percentage"] == 0.42
+    assert gresult.response_global == response

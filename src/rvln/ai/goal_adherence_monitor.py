@@ -193,6 +193,25 @@ class _CheckpointSnapshot:
     frame_timestamps: List[float]
     diary_at_dispatch: List[str]
 
+
+@dataclass
+class _LocalStageResult:
+    step: int
+    grid_local: Any  # PIL.Image or None when skip_local
+    prompt_local: str
+    response_local: str  # change_text from local VLM
+    diary_entry: str  # what gets appended to _diary on commit; empty when skip_local
+
+
+@dataclass
+class _GlobalStageResult:
+    step: int
+    grid_global: Any  # PIL.Image or None when text_llm
+    prompt_global: str
+    response_global: str
+    parsed: dict  # parsed JSON, with parse_failure_fallback if both retries failed
+    system_prompt_global: str  # the actual system prompt used (varies by mode)
+
 # ---------------------------------------------------------------------------
 # GoalAdherenceMonitor
 # ---------------------------------------------------------------------------
@@ -1002,6 +1021,20 @@ class GoalAdherenceMonitor:
             displacement=disp_str,
         )
 
+    def _format_global_prompt_with_diary(self, diary_blob: str, disp_str: str) -> str:
+        """Variant of _format_global_prompt that takes an explicit diary blob.
+
+        The pipelined async path needs to use a snapshot diary, not self._diary,
+        because workers run on private snapshots and self._diary may have
+        already advanced.
+        """
+        return GLOBAL_PROMPT_TEMPLATE.format(
+            subgoal=self._subgoal,
+            diary=diary_blob,
+            prev_completion_pct=self._last_completion_pct,
+            displacement=disp_str,
+        )
+
     @staticmethod
     def _stop_reasoning_block(reason: Optional[str]) -> str:
         """Single-line context describing why the drone was stopped.
@@ -1444,6 +1477,130 @@ class GoalAdherenceMonitor:
             "output_tokens": usage.get("output_tokens", 0),
         })
         return response, prompt
+
+    def _run_local_stage(self, snap: "_CheckpointSnapshot") -> "_LocalStageResult":
+        """Run the local 2-frame VLM call for a pipelined checkpoint.
+
+        Pure with respect to monitor state: reads the snapshot only, returns
+        a result. The publisher commits the diary entry to ``_diary``.
+        """
+        curr_path = snap.frame_paths[-1]
+        prev_path = self._pick_local_prev_path(snap.frame_paths, snap.frame_timestamps)
+        if prev_path is None:
+            prev_path = curr_path
+
+        d = snap.displacement
+        disp_str = (
+            f"[x: {d[0] / 100:.2f} m, y: {d[1] / 100:.2f} m, "
+            f"z: {d[2] / 100:.2f} m, yaw: {d[3]:.1f}°]"
+        )
+        if self._skip_local:
+            return _LocalStageResult(
+                step=snap.step,
+                grid_local=None,
+                prompt_local="",
+                response_local="",
+                diary_entry="",
+            )
+        grid_two = build_frame_grid([prev_path, curr_path])
+        prompt_local = LOCAL_PROMPT_TEMPLATE.format(subgoal=self._subgoal)
+        change_text = self._timed_query_vlm(
+            grid_two, prompt_local, "local_checkpoint_async",
+            system_prompt=GENERAL_SYSTEM_PROMPT,
+        )
+        diary_entry = f"Steps ~{snap.step} {disp_str}: {change_text}"
+        return _LocalStageResult(
+            step=snap.step,
+            grid_local=grid_two,
+            prompt_local=prompt_local,
+            response_local=change_text,
+            diary_entry=diary_entry,
+        )
+
+    def _run_global_stage(
+        self, snap: "_CheckpointSnapshot", local: "_LocalStageResult",
+    ) -> "_GlobalStageResult":
+        """Run the global progress-assessment VLM call for a pipelined checkpoint.
+
+        Sees the diary as it appeared at dispatch time, with this checkpoint's
+        own local entry appended (best-effort visibility: earlier still-in-flight
+        checkpoints will not yet appear). Includes the parse-failure retry path
+        and falls back to a synthetic ``parsed`` dict if both attempts fail, so
+        the publisher always receives a usable result.
+        """
+        d = snap.displacement
+        disp_str = (
+            f"[x: {d[0] / 100:.2f} m, y: {d[1] / 100:.2f} m, "
+            f"z: {d[2] / 100:.2f} m, yaw: {d[3]:.1f}°]"
+        )
+        diary_lines = list(snap.diary_at_dispatch)
+        if local.diary_entry:
+            diary_lines.append(local.diary_entry)
+        diary_blob = "\n".join(diary_lines)
+
+        if self._global_backend == "text_llm":
+            response_global, prompt_global = self._run_text_only_global(
+                diary_blob, disp_str, snap.step,
+            )
+            grid_global = None
+            sysp_global = TEXT_ONLY_GLOBAL_SYSTEM_PROMPT
+        elif self._single_frame_mode:
+            grid_global = build_frame_grid([snap.frame_paths[-1]])
+            prompt_global = self._format_global_prompt_with_diary(diary_blob, disp_str)
+            response_global = self._timed_query_vlm(
+                grid_global, prompt_global, "global_checkpoint_async",
+                system_prompt=GENERAL_SYSTEM_PROMPT,
+            )
+            sysp_global = GENERAL_SYSTEM_PROMPT
+        else:
+            sampled = self._sample_frames_by_time(snap.frame_paths, snap.frame_timestamps)
+            sampled = sampled[-self.MAX_GLOBAL_FRAMES:] if sampled else [snap.frame_paths[-1]]
+            grid_global = build_frame_grid(sampled)
+            prompt_global = self._format_global_prompt_with_diary(diary_blob, disp_str)
+            response_global = self._timed_query_vlm(
+                grid_global, prompt_global, "global_checkpoint_async",
+                system_prompt=GENERAL_SYSTEM_PROMPT,
+            )
+            sysp_global = GENERAL_SYSTEM_PROMPT
+
+        parsed = self._parse_json_response(response_global)
+        if parsed is None:
+            self._parse_failures += 1
+            logger.warning(
+                "Async checkpoint ~%d JSON parse failed, retrying. Raw: %s",
+                snap.step, response_global[:200],
+            )
+            if self._global_backend == "text_llm":
+                response_global, prompt_global = self._run_text_only_global(
+                    diary_blob, disp_str, snap.step, label_suffix="_async_retry",
+                )
+            else:
+                response_global = self._timed_query_vlm(
+                    grid_global, prompt_global, "global_checkpoint_async_retry",
+                    system_prompt=GENERAL_SYSTEM_PROMPT,
+                )
+            parsed = self._parse_json_response(response_global)
+            if parsed is None:
+                self._parse_failures += 1
+                logger.error(
+                    "Async checkpoint ~%d JSON parse failed after retry; "
+                    "treating as continue with prior completion. Raw: %s",
+                    snap.step, response_global[:200],
+                )
+                parsed = {
+                    "complete": False,
+                    "completion_percentage": self._last_completion_pct,
+                    "should_stop": False,
+                    "reasoning": "parse_failure_fallback",
+                }
+        return _GlobalStageResult(
+            step=snap.step,
+            grid_global=grid_global,
+            prompt_global=prompt_global,
+            response_global=response_global,
+            parsed=parsed,
+            system_prompt_global=sysp_global,
+        )
 
     def _run_checkpoint_async(self) -> DiaryCheckResult:
         """Run a checkpoint from the background thread (time-based mode).
