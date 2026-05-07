@@ -459,8 +459,8 @@ class MonitorDashboard:
                 snap = build_run_state(self.run_dir)
                 with self._snapshot_lock:
                     self._snapshot = snap
-            except Exception:
-                logger.exception("Dashboard: snapshot build failed; retrying.")
+            except Exception as exc:
+                logger.warning("Dashboard: snapshot build failed (%s); retrying.", exc)
             self._poller_stop.wait(self.poll_interval_s)
 
     def _get_snapshot(self) -> RunState:
@@ -495,7 +495,8 @@ class MonitorDashboard:
 
         if self._server is not None:
             try:
-                self._server.shutdown()
+                if self._server_thread is not None and self._server_thread.is_alive():
+                    self._server.shutdown()
                 self._server.server_close()
             except Exception as exc:
                 logger.debug("Dashboard: server shutdown raised %s", exc)
