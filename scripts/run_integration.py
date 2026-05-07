@@ -67,6 +67,7 @@ from rvln.config import (
 from rvln.eval.subgoal_runner import SubgoalConfig, run_subgoal
 from rvln.eval.task_utils import (
     get_completed_task_ids,
+    is_abort_stop_reason,
     load_eval_task,
     make_ask_help_callback,
     resolve_eval_tasks,
@@ -267,7 +268,7 @@ def run_integrated_control_loop(
                     next_origin[0], next_origin[1], next_origin[2], next_origin[3],
                 )
 
-                if sr in ("abort", "ask_help"):
+                if is_abort_stop_reason(sr):
                     logger.info(
                         "Mission aborted (stop_reason=%s) at subgoal '%s'.",
                         sr, current_subgoal,

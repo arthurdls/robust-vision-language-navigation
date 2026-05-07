@@ -277,9 +277,15 @@ landing maneuver, which together provide many opportunities for the
 low-level controller to converge prematurely on incomplete subgoals.
 
 Category: SEQUENTIAL (1 task, in DowntownWest)
-  Pure sequential navigation. Strict A-then-B-then-C ordering with
-  multi-step traversals.
-  LTL: F pi_3 & (!pi_3 U pi_2) & (!pi_2 U pi_1)
+  Pure sequential navigation. Strict A-then-B-then-...-then-F
+  ordering with multi-step traversals.
+  LTL (illustrative form for N=6 sequential predicates):
+    F pi_6
+    & (!pi_6 U pi_5) & (!pi_5 U pi_4) & (!pi_4 U pi_3)
+    & (!pi_3 U pi_2) & (!pi_2 U pi_1)
+  The exact formula generated at runtime is whatever the LTL planner
+  emits for this instruction; the shape above is the canonical
+  linear-chain encoding the planner targets.
 
 Task: streetlamp_to_cars (file: first_task.json)
   "Go past the first streetlamp, then turn left until you see the

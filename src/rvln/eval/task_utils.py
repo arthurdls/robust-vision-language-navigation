@@ -240,13 +240,18 @@ ABORT_STOP_REASONS = frozenset({
     "ask_help_no_handler",
     "abort",
     "skipped",
-    "replan",
     "max_seconds",
     "no_image",
     "no_response",
     "empty_action",
     "action_error",
     "convergence_no_command",
+    # NOTE: "replan" is intentionally NOT here. It's a control signal
+    # used by interactive runners (C0/C2) to restart planning with a new
+    # instruction; the episode should NOT abort when the user picks
+    # replan. In non-interactive batch mode the ask_help callback returns
+    # "abort" rather than "replan", so this distinction only matters in
+    # interactive runs.
 })
 
 

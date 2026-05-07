@@ -45,7 +45,13 @@ from rvln.config import (
     DEFAULT_VLM_MODEL,
 )
 from rvln.eval.subgoal_runner import SubgoalConfig, run_subgoal
-from rvln.eval.task_utils import get_completed_task_ids, make_ask_help_callback, resolve_eval_tasks, sanitize_run_label
+from rvln.eval.task_utils import (
+    get_completed_task_ids,
+    is_abort_stop_reason,
+    make_ask_help_callback,
+    resolve_eval_tasks,
+    sanitize_run_label,
+)
 from rvln.paths import (
     BATCH_SCRIPT,
     REPO_ROOT,
@@ -247,7 +253,7 @@ def run_llm_planner_control_loop(
                 next_origin[0], next_origin[1], next_origin[2], next_origin[3],
             )
 
-            if sr in ("abort", "ask_help"):
+            if is_abort_stop_reason(sr):
                 logger.info(
                     "Mission aborted (stop_reason=%s) at subgoal '%s'.",
                     sr, subgoal_nl,
