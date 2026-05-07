@@ -832,6 +832,11 @@ def to_command_from_action_pose(
     vz = z - float(current_relative_pose[2])
     # current_relative_pose stores yaw in degrees; OpenVLA emits radians.
     vyaw = yaw - math.radians(float(current_relative_pose[3]))
+    # Sub-cm per-axis deltas are model hover-noise; zero them so the
+    # wire-side scale_output_translation can't amplify them into drift.
+    if abs(vx) < 1.0: vx = 0.0
+    if abs(vy) < 1.0: vy = 0.0
+    if abs(vz) < 1.0: vz = 0.0
     vx, vy, vz, vyaw = _clip_velocity(
         vx, vy, vz, vyaw, max_translation_cm_s, max_rotation_rad_s,
     )
