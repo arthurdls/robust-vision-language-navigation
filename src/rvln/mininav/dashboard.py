@@ -376,3 +376,130 @@ def launch_browser(url: str, browser: Optional[Path] = None) -> Optional[subproc
     except Exception as exc:
         logger.warning("Dashboard: failed to launch %s: %s", chrome, exc)
         return None
+
+
+# ----------------------------------------------------------------------
+# Section 4: MonitorDashboard (public lifecycle)
+# ----------------------------------------------------------------------
+
+
+class MonitorDashboard:
+    """Boots the HTTP server + browser; tears them down on close().
+
+    Public interface matches the old Tkinter dashboard so interface.py
+    requires no changes:
+      MonitorDashboard(run_dir).start() / .close()
+    """
+
+    DEFAULT_PORT = 8765
+    BROWSER_KILL_TIMEOUT_S = 2.0
+
+    def __init__(self, run_dir: Path, poll_interval_s: float = 0.25):
+        self.run_dir = Path(run_dir)
+        self.poll_interval_s = float(poll_interval_s)
+        self.port: Optional[int] = None
+        self._server: Optional[DashboardHTTPServer] = None
+        self._server_thread: Optional[threading.Thread] = None
+        self._browser: Optional[subprocess.Popen] = None
+        self._poller_stop = threading.Event()
+        self._poller_thread: Optional[threading.Thread] = None
+        self._snapshot_lock = threading.Lock()
+        self._snapshot = RunState()
+        self._closed = False
+
+    def start(self) -> None:
+        try:
+            self._start_server()
+            self._start_poller()
+            self._launch_browser()
+        except Exception as exc:
+            logger.warning("Dashboard: failed to start (%s); run continues.", exc)
+            self._safe_teardown()
+
+    def close(self) -> None:
+        if self._closed:
+            return
+        self._closed = True
+        self._safe_teardown()
+
+    # -- internal --------------------------------------------------------
+
+    def _start_server(self) -> None:
+        # Try DEFAULT_PORT first for predictable URLs; fall back to OS-assigned.
+        for addr in [("127.0.0.1", self.DEFAULT_PORT), ("127.0.0.1", 0)]:
+            try:
+                self._server = DashboardHTTPServer(
+                    addr, DashboardRequestHandler,
+                    run_dir=self.run_dir,
+                    snapshot_provider=self._get_snapshot,
+                )
+                break
+            except OSError:
+                continue
+        if self._server is None:
+            raise RuntimeError("could not bind dashboard server to 127.0.0.1")
+        self.port = self._server.server_address[1]
+        self._server_thread = threading.Thread(
+            target=self._server.serve_forever,
+            name="dashboard-http", daemon=True,
+        )
+        self._server_thread.start()
+        logger.info("Dashboard: serving on http://127.0.0.1:%d", self.port)
+
+    def _start_poller(self) -> None:
+        self._poller_stop.clear()
+        self._poller_thread = threading.Thread(
+            target=self._poll_loop, name="dashboard-poll", daemon=True,
+        )
+        self._poller_thread.start()
+
+    def _poll_loop(self) -> None:
+        while not self._poller_stop.is_set():
+            try:
+                snap = build_run_state(self.run_dir)
+                with self._snapshot_lock:
+                    self._snapshot = snap
+            except Exception:
+                logger.exception("Dashboard: snapshot build failed; retrying.")
+            self._poller_stop.wait(self.poll_interval_s)
+
+    def _get_snapshot(self) -> RunState:
+        with self._snapshot_lock:
+            return self._snapshot
+
+    def _launch_browser(self) -> None:
+        try:
+            self._browser = launch_browser(f"http://127.0.0.1:{self.port}/")
+        except Exception as exc:
+            logger.warning("Dashboard: launch_browser raised (%s); skipping.", exc)
+            self._browser = None
+
+    def _safe_teardown(self) -> None:
+        if self._browser is not None:
+            try:
+                self._browser.terminate()
+                try:
+                    self._browser.wait(timeout=self.BROWSER_KILL_TIMEOUT_S)
+                except subprocess.TimeoutExpired:
+                    self._browser.kill()
+            except (ProcessLookupError, OSError):
+                pass
+            except Exception as exc:
+                logger.debug("Dashboard: browser terminate raised %s", exc)
+        self._browser = None
+
+        self._poller_stop.set()
+        if self._poller_thread is not None and self._poller_thread.is_alive():
+            self._poller_thread.join(timeout=1.0)
+        self._poller_thread = None
+
+        if self._server is not None:
+            try:
+                self._server.shutdown()
+                self._server.server_close()
+            except Exception as exc:
+                logger.debug("Dashboard: server shutdown raised %s", exc)
+        self._server = None
+        if self._server_thread is not None and self._server_thread.is_alive():
+            self._server_thread.join(timeout=1.0)
+        self._server_thread = None

@@ -168,7 +168,7 @@ class TestRoutes:
         assert status == 404
 
 
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 from rvln.mininav.dashboard import find_chromium_executable, launch_browser
 
 
@@ -202,3 +202,48 @@ class TestBrowserLauncher:
             handle = launch_browser("http://127.0.0.1:8765")
             assert handle is None
             wo.assert_called_once_with("http://127.0.0.1:8765")
+
+
+from rvln.mininav.dashboard import MonitorDashboard
+
+
+class TestMonitorDashboard:
+    def test_start_boots_server_and_launches_browser(self, tmp_path):
+        fake_handle = MagicMock()
+        with patch("rvln.mininav.dashboard.launch_browser", return_value=fake_handle) as launch:
+            dash = MonitorDashboard(run_dir=tmp_path, poll_interval_s=0.05)
+            dash.start()
+            try:
+                # Hit the live server on its bound port to prove it's up.
+                port = dash.port
+                assert port is not None
+                conn = http.client.HTTPConnection("127.0.0.1", port, timeout=2.0)
+                conn.request("GET", "/api/state")
+                resp = conn.getresponse()
+                assert resp.status == 200
+                conn.close()
+            finally:
+                dash.close()
+            launch.assert_called_once()
+
+    def test_close_terminates_browser(self, tmp_path):
+        fake_handle = MagicMock()
+        with patch("rvln.mininav.dashboard.launch_browser", return_value=fake_handle):
+            dash = MonitorDashboard(run_dir=tmp_path, poll_interval_s=0.05)
+            dash.start()
+            dash.close()
+            fake_handle.terminate.assert_called_once()
+
+    def test_close_is_idempotent(self, tmp_path):
+        with patch("rvln.mininav.dashboard.launch_browser", return_value=None):
+            dash = MonitorDashboard(run_dir=tmp_path, poll_interval_s=0.05)
+            dash.start()
+            dash.close()
+            dash.close()  # second call should be a no-op, not raise
+
+    def test_start_swallows_browser_failure(self, tmp_path):
+        with patch("rvln.mininav.dashboard.launch_browser",
+                   side_effect=RuntimeError("boom")):
+            dash = MonitorDashboard(run_dir=tmp_path, poll_interval_s=0.05)
+            dash.start()  # must not raise; run continues without dashboard
+            dash.close()
