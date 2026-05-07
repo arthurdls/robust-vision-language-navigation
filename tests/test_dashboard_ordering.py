@@ -5,7 +5,6 @@ the dashboard must not regress to the older checkpoint."""
 
 import os
 import sys
-import time
 from pathlib import Path
 
 _SRC = Path(__file__).resolve().parent.parent / "src"
@@ -33,7 +32,6 @@ def test_build_run_state_picks_highest_step_even_when_older_has_newer_mtime(tmp_
     # Step 11 written first with old mtime; step 10 written second with new mtime
     # (simulating a late-returning older OpenAI call).
     _make_cp(tmp_path, 11, mtime=1000.0)
-    time.sleep(0.01)
     _make_cp(tmp_path, 10, mtime=2000.0)  # newer mtime, lower step
     state = build_run_state(tmp_path)
     assert state.checkpoint_label == "checkpoint_0011", \

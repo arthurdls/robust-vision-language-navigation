@@ -178,11 +178,9 @@ def _mtime(path: Path) -> float:
         return 0.0
 
 
-def _checkpoint_sort_key(cp: Path) -> tuple[str, str]:
-    # cp.parent.parent.name == subgoal dir (e.g. "subgoal_03_*")
-    # cp.name == "checkpoint_NNNN" or "convergence_NNN"
-    # Both zero-padded so lex == numeric.
-    return (cp.parent.parent.name, cp.name)
+def _artifact_sort_key(p: Path) -> tuple[str, str]:
+    """(subgoal_dir_name, artifact_dir_name); zero-padded names make lex == numeric."""
+    return (p.parent.parent.name, p.name)
 
 
 def build_run_state(run_dir: Path) -> RunState:
@@ -206,7 +204,7 @@ def build_run_state(run_dir: Path) -> RunState:
 
     cp_glob = list(run_dir.glob("subgoal_*/diary_artifacts/checkpoint_*"))
     if cp_glob:
-        cp = max(cp_glob, key=_checkpoint_sort_key)
+        cp = max(cp_glob, key=_artifact_sort_key)
         state.checkpoint_label = cp.name
         active_subgoal_dir = cp.parent.parent
         state.active_subgoal = _parse_subgoal_dir(active_subgoal_dir)
@@ -223,7 +221,7 @@ def build_run_state(run_dir: Path) -> RunState:
 
     cv_glob = list(run_dir.glob("subgoal_*/diary_artifacts/convergence_*"))
     if cv_glob:
-        cv = max(cv_glob, key=_checkpoint_sort_key)
+        cv = max(cv_glob, key=_artifact_sort_key)
         state.convergence_label = cv.name
         responses = sorted(cv.glob("response_*.txt"))
         if responses:
@@ -367,13 +365,13 @@ def _resolve_image_path(run_dir: Path, slot: str) -> Optional[Path]:
         cv_glob = list(run_dir.glob("subgoal_*/diary_artifacts/convergence_*"))
         if not cv_glob:
             return None
-        cv = max(cv_glob, key=_checkpoint_sort_key)
+        cv = max(cv_glob, key=_artifact_sort_key)
         images = sorted(cv.glob("grid_convergence_*.png"))
         return images[-1] if images else None
     cp_glob = list(run_dir.glob("subgoal_*/diary_artifacts/checkpoint_*"))
     if not cp_glob:
         return None
-    cp = max(cp_glob, key=_checkpoint_sort_key)
+    cp = max(cp_glob, key=_artifact_sort_key)
     name = "grid_local.png" if slot == "local" else "grid_global.png"
     return cp / name
 
