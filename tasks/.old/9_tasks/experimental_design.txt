@@ -1,0 +1,769 @@
+EXPERIMENTAL DESIGN: LTL-Guided Neuro-Symbolic UAV Control with
+Goal Adherence Monitoring
+======================================================================
+
+1. SYSTEM OVERVIEW (FULL PROPOSED METHOD)
+======================================================================
+
+Pipeline: NL --> LTL-NL (via LLM + Spot automaton) --> Subgoal sequence
+          --> SubgoalConverter --> OpenVLA control loop
+          + Goal adherence monitor (local + global prompts, 3x3 image grid,
+            text diary, displacement tracking)
+          + Convergence detection + Post-Convergence Supervisor Mode
+            (corrective commands up to budget)
+          + Stall detection (ask_help when plateaued)
+
+Key components:
+  - LTL Planner: LLM generates LTL-NL formula with pi predicates.
+    Spot translates to deterministic monitor automaton. State machine
+    advances through subgoals as each is confirmed complete.
+  - SubgoalConverter: Rewrites planner predicates into short OpenVLA
+    instructions. Strips visual detection conditions ("until you see X")
+    and converts spatial proximity ("until near X") to approach commands.
+  - Goal adherence monitor: Periodic VLM checkpoints during execution.
+    Local prompt: 2-frame comparison ("what changed?").
+    Global prompt: sampled 3x3 grid + text diary + displacement +
+    completion history ("how complete?").
+    Convergence prompt: evaluate on drone stop, issue corrective
+    command if incomplete.
+  - OpenVLA Server: Vision2Seq model fine-tuned on first-person drone
+    navigation. Takes image + proprioceptive state + instruction,
+    outputs action poses.
+
+Default parameters (from project configuration):
+  - LLM model: gpt-5.4 (planning, subgoal conversion, C6 global checks)
+  - VLM model: gpt-5.4 (goal adherence monitoring: local, global, convergence)
+  - SubgoalConverter uses the LLM model (gpt-5.4), not the VLM, since
+    subgoal conversion is a text-to-text task with no image input.
+  - Max steps per subgoal: 500
+  - Diary check interval: every 10 frames
+  - Max corrections per subgoal: 20
+  - Stall window: 10 checkpoints (hardware override: 5)
+  - Stall threshold: 0.05 (completion spread)
+  - Convergence: position delta < 3.0 cm AND yaw delta < 1.0 deg
+    for 10 consecutive steps
+  - Diary mode: frame-based for simulation eval (10-frame interval);
+    run_hardware forces time-based (3 s interval)
+
+Simulation: Unreal Engine via UnrealCV gym. Single map:
+DowntownWest (urban). See Section 4a for details.
+
+
+2. CONDITIONS (7 TOTAL: 1 FULL SYSTEM + 6 BASELINES)
+======================================================================
+
+CONDITION 0: FULL SYSTEM (Proposed Method)
+------------------------------------------
+Pipeline: NL --> LTL-NL --> Subgoal --> SubgoalConverter --> OpenVLA
+          + Goal adherence monitor (local + global with 3x3 grid + text diary
+            + displacement) + Convergence corrections + Stall detection
+Why: This is the proposed method. All other conditions ablate or
+     replace components of this pipeline.
+
+2a. REPLICATION MAP (entry points only)
+----------------------------------------
+These names identify where each condition is run in the codebase. They
+do not specify the scientific definition of the conditions, which is
+given by the pipeline descriptions above.
+  C0: run_integration.py
+  C1: run_condition1_naive.py
+  C2: run_condition2_llm_planner.py
+  C3: run_condition3_open_loop.py
+  C4: run_condition4_single_frame.py
+  C5: run_condition5_grid_only.py
+  C6: run_condition6_text_only.py
+
+CONDITION 1: NAIVE END-TO-END VLA
+---------------------------------
+Pipeline: Full NL instruction --> OpenVLA
+          (no LTL decomposition, no subgoal conversion, no monitoring)
+Procedure: The entire long-horizon instruction is passed directly to
+  OpenVLA as a single string. There is no LTL decomposition, no goal
+  adherence monitoring, and no supervisor corrections. The low-level
+  loop runs until convergence (drone stops moving).
+Why: Proves the base OpenVLA model cannot handle long-horizon,
+  multi-step instructions. Establishes that task decomposition is
+  strictly necessary.
+Expected outcome: Very low success rate. OpenVLA will attempt the
+  first mentioned action and then stop or drift.
+
+CONDITION 2: LLM SEQUENTIAL PLANNER (No LTL)
+---------------------------------------------
+Pipeline: NL --> LLM text-to-text decomposition --> Sequential subgoals
+          --> SubgoalConverter --> OpenVLA
+          + Goal adherence monitor (full, same as Condition 0)
+Procedure: The same language model (gpt-5.4) decomposes the
+  instruction into a numbered list of subgoals (text only, no LTL
+  formula, no automaton). Subgoals are executed in order with the
+  same closed-loop monitor and corrections as Condition 0. The next
+  subgoal starts when the monitor reports completion. There is no
+  formal state machine.
+Why: SECONDARY COMPARISON. Included as a representative of existing
+  LLM-planner approaches (SayCan, Inner Monologue, Code-as-Policies)
+  applied to UAV navigation. Isolates the LTL formalism by replacing
+  the LTL planner + Spot automaton with a plain LLM text decomposition
+  while keeping everything else identical.
+  NOTE: All current tasks are purely sequential (Section 4b), so a
+  flat numbered list is an adequate representation. The expressiveness
+  advantage of LTL (OR branches, concurrent obligations, conditional
+  dependencies) requires non-sequential task structures, which are
+  left to future work. This comparison is therefore expected to yield
+  a small or null difference on the current task set.
+Expected outcome: Similar performance to Condition 0 on sequential
+  tasks. A flat list and a linear-chain LTL formula are functionally
+  equivalent for strict A-then-B-then-C orderings. Any observed
+  difference would reflect decomposition quality (how the LLM breaks
+  down the instruction) rather than formal expressiveness.
+
+CONDITION 3: OPEN-LOOP LTL (No Monitor, No Corrections)
+--------------------------------------------------------
+Pipeline: NL --> LTL-NL --> Subgoal --> SubgoalConverter --> OpenVLA
+          (NO goal adherence monitoring, NO convergence corrections)
+          Advance to next subgoal on convergence (drone stops = done).
+Procedure: Full LTL-based planning and subgoal conversion as in
+  Condition 0, but the control loop has no monitor. When the drone
+  stops (convergence), the system treats the subgoal as done and
+  advances. There is no completion check and no corrective commands.
+Why: PRIMARY ABLATION AND HEADLINE COMPARISON. This is the single
+  most important baseline in the experiment. C3 vs C0 directly tests
+  the paper's core claim: that closed-loop goal adherence monitoring
+  is necessary for reliable long-horizon execution. Both conditions
+  share the same LTL planner, so any performance gap is attributable
+  entirely to the monitoring and correction pipeline.
+  Directly attacks the assumption in prior LTL + low-level-policy
+  literature that low-level controllers execute perfectly. By showing
+  how often OpenVLA stops prematurely (false convergence) and ruins
+  the downstream LTL sequence, we justify the entire goal adherence
+  monitoring and supervisor architecture.
+Expected outcome: Moderate planning accuracy (LTL decomposition works)
+  but frequent execution failures. The drone will stop short, think
+  it is done, and blindly advance, causing cascading failures in
+  subsequent subgoals.
+SUCCESS METRIC NOTE: Convergence in C3 is self-fulfilling (the system
+  always considers convergence as "success"), so the automated signal
+  is not meaningful. Task success for C3 is determined by human video
+  review, same as all other conditions (see Section 6d).
+
+CONDITION 4: FRAME-BY-FRAME MONITOR (No Temporal Context)
+----------------------------------------------------------
+Pipeline: NL --> LTL-NL --> Subgoal --> SubgoalConverter --> OpenVLA
+          + Single-frame VLM check (current frame + subgoal only)
+          + Convergence corrections (using single-frame assessment)
+Entry point: same integration harness as Condition 0, monitor set to
+  the single-frame variant.
+Procedure: At each checkpoint, the monitor sees only the current
+  first-person frame and the subgoal text. There is no running text
+  diary, no multi-frame grid, and no odometry block in the assessment.
+  The protocol does not run a separate local two-frame narrative
+  update, because that text is not used in this condition. Stall
+  detection still uses completion history across checkpoints, but
+  each per-checkpoint completion estimate is based on a single frame
+  only. Convergence uses the same single-frame assessment. Monitor
+  instructions describe only the inputs that are actually provided, so
+  the model is not told to expect diary or displacement. Completion
+  rules, orientation tolerance, and single-step correction guidance
+  match the full system in strictness; only the available sensory
+  context differs.
+Why: Proves that temporal context (the diary) is necessary. A VLM
+  looking at a single frame cannot distinguish between:
+  - "Stalled" (no progress for many steps)
+  - "Making slow progress" (gradually approaching)
+  - "Achieved" (arrived at goal)
+  Without history, the VLM has no way to track regression (moving
+  away from target) or calibrate completion percentage over time.
+  Stall detection still fires based on the completion history, but
+  each individual completion estimate lacks temporal grounding.
+Expected outcome: Higher false positive rate (premature completion
+  declarations) and degraded stall detection. Success rate lower
+  than full system, particularly on approach/traversal tasks where
+  completion requires observing change over time.
+
+CONDITION 5: IMAGE-GRID ONLY MONITOR (No Text Diary)
+-----------------------------------------------------
+Pipeline: NL --> LTL-NL --> Subgoal --> SubgoalConverter --> OpenVLA
+          + Goal adherence monitor with 3x3 image grid but NO text diary
+            and NO displacement data
+          + Convergence corrections (using grid only)
+Entry point: same integration harness as Condition 0, monitor set to
+  the grid-only variant.
+Procedure: Checkpoints use the same sampled 3x3 frame grid as the full
+  system. Global and convergence assessments omit the running text diary
+  and the displacement summary; the assessor sees only the subgoal and
+  the grid. There is no local two-frame narrative stage in this
+  condition, because those entries are not fed into global or
+  convergence in this ablation. Monitor instructions describe only the
+  inputs provided (subgoal + grid). Completion rules, orientation
+  tolerance, and single-step correction guidance match the full system
+  in strictness; only the available channels (visual sequence vs.
+  visual + diary + odometry) differ.
+Why: Tests whether VLMs can infer progress/completion from visual
+  history alone without explicit textual state tracking. Isolates the
+  contribution of the text diary and odometry data.
+Expected outcome: VLM can detect gross completion (target clearly
+  visible and close) but struggles with:
+  - Precise distance estimation (no displacement data)
+  - Detecting subtle regression (text diary tracks "moved closer then
+    moved away")
+  - Stall detection (completion percentage history still tracked, but
+    each estimate lacks textual grounding from the diary)
+  Performance between Condition 4 and Condition 0.
+
+CONDITION 6: TEXT-ONLY GLOBAL ASSESSMENT (No Image Grid)
+----------------------------------------------------------
+Pipeline: NL --> LTL-NL --> Subgoal --> SubgoalConverter --> OpenVLA
+          + Goal adherence monitor with text diary + displacement but NO
+            3x3 image grid (global and convergence use a text-only LLM)
+          + Convergence corrections (using text + displacement only)
+Entry point: same integration harness as Condition 0, monitor set to
+  the text-only global variant.
+Procedure: Local checkpoints still build a short diary by comparing
+  consecutive frames (this stage requires images). Global and
+  convergence assessments use only the text diary, displacement, and
+  prior completion summary via a text-only language model; no image
+  grid is attached to those calls. Monitor instructions for those stages
+  describe text-based reasoning from the diary and odometry. Completion
+  rules, orientation tolerance, and single-step correction guidance are
+  aligned with other conditions in strictness; obstacle-related guidance
+  is omitted at the global and convergence stages because there is no
+  direct image input there. Only the available sensory channel for those
+  stages (text + odometry vs. text + odometry + grid) differs from the
+  full system.
+
+  NOTE: The paper should label this condition "Text-Only Global
+  Assessment": a vision model still produces diary entries from frames,
+  but completion and corrections at global and convergence are decided
+  without an image grid.
+Why: Tests whether the text diary and odometry data are sufficient
+  for completion assessment, or whether visual confirmation from the
+  image grid is strictly required. The text log might say "moved
+  closer to the object" but only the camera can verify the drone
+  arrived at the correct target (not a similar-looking one).
+Expected outcome: Reasonable progress tracking but unreliable
+  completion verification. The text diary tracks relative motion
+  accurately but cannot visually confirm the drone is at the right
+  target. Higher false positive rate on completion for tasks with
+  similar-looking landmarks.
+
+
+4. TASK DESIGN
+======================================================================
+
+4a. ENVIRONMENT
+-----------------
+Single simulation map (Unreal Engine, UnrealCV):
+
+  DowntownWest: Urban setting with diverse landmarks.
+    Buildings, vehicles, streetlights, traffic lights, pergolas,
+    sculptures, people, dogs. Mixed commercial/residential.
+
+All tasks run in this single map to keep costs manageable (up to
+~$45 for the 9 episodes per condition).
+
+4b. TASK LIST (3 tasks, 9 episodes per condition)
+---------------------------------------------------
+Each task is a multi-step long-horizon instruction in the DowntownWest
+map. Tasks are designed to exercise sequential navigation with diverse
+landmarks and altitude changes.
+
+Category: SEQUENTIAL (3 tasks, all in downtown_west)
+  Pure sequential navigation. Ordered sequences (A then B then C)
+  with multi-step traversals.
+  LTL: F pi_3 & (!pi_3 U pi_2) & (!pi_2 U pi_1)
+
+Task 1: streetlamp_to_cars
+  "Go past the first streetlamp, then turn right until you see the
+  black car, then go to the black car, then turn toward the red car
+  and go to the red car. Finally, land in front of the traffic light
+  pole on the right."
+  Start: [-7500, 848, 396, -177]
+
+Task 2: past_pergolas
+  "Go past the streetlamps, then approach the pergolas on the left.
+  Ascend above the pergolas. Pass all of the pergolas ahead, then
+  turn right until you see the pergolas. Go below the pergolas and
+  continue past them until you no longer see them. Then land near
+  the structure ahead."
+  Start: [-1435, -536, 404, 4.5]
+
+Task 3: above_building_europa
+  "Ascend to a height above the building ahead. Then go past the
+  building ahead. Then descend to the ground. Turn right until you
+  see a sign that says Europa, go to the building and then land."
+  Start: [-7155, -5301, 74, 89]
+
+With 3 starting position variants per task: 9 episodes per condition.
+
+4c. TASK JSON FORMAT
+---------------------
+Each task JSON includes:
+{
+  "task_id": "streetlamp_to_cars",
+  "instruction": "Go past the first streetlamp, then turn right ...",
+  "initial_pos": [-7500, 848, 396, -177],
+  "expected_subgoal_count": 5,
+  "max_steps_per_subgoal": 500,
+  "max_corrections": 20,
+  "diary_check_interval": 10
+}
+
+4d. STARTING POSITION VARIATIONS
+----------------------------------
+Each task runs 3 times with different starting positions. All three
+variants are small spatial perturbations of the same general
+viewpoint, with position offsets of 65-135 cm and yaw changes of
+3-4 degrees. This tests robustness to minor initial condition
+variation (sensor noise, imprecise takeoff positioning) without
+requiring entirely different scenarios.
+
+Variations:
+  - Run 1: Default position (as specified in task JSON)
+  - Run 2: Nearby perturbation (65-135 cm offset, +3 to +4 deg yaw)
+  - Run 3: Nearby perturbation (65-135 cm offset, -3 to -4 deg yaw)
+
+NOTE: The three variants are close together by design. They test
+minor orientation robustness (small yaw perturbations in both
+directions) but NOT large heading changes (e.g., approaching the
+same goal from a 90-degree rotated heading). If orientation
+sensitivity is important for the paper, consider adding a fourth
+variant with a larger yaw rotation.
+
+
+5. EVALUATION METRICS
+======================================================================
+
+PRIMARY METRICS (reported in main results table):
+
+M1. Task Success Rate
+  - Definition: Fraction of episodes where the final long-horizon goal
+    was fully completed (all subgoals achieved in correct order).
+  - Measurement: Binary per episode. Determined by human video review
+    for ALL conditions (C0-C6). The experimenter watches the recorded
+    episode and judges whether the instruction was fulfilled.
+  - Report: Mean +/- 95% Wilson confidence interval per condition.
+  - Annotation: Recorded in results/annotations.csv (task_success column).
+
+M3. Subgoal Success Rate
+  - Definition: Fraction of individual subgoals (across all episodes)
+    that were successfully completed.
+  - Measurement: Per-subgoal count. The experimenter watches each
+    episode and records the number of subgoals completed out of the
+    total attempted. This applies to ALL conditions (C0-C6).
+    For C1 (naive, no explicit subgoals), the experimenter counts
+    how many instruction steps were visibly accomplished.
+  - Report: Mean +/- 95% Wilson CI per condition.
+  - Annotation: Recorded in results/annotations.csv (subgoals_completed
+    and subgoals_total columns).
+
+DIAGNOSTIC METRICS (reported in analysis section):
+
+M4. Supervisor Correction Rate (Rescue Rate)
+  - Definition: Of all convergence events where the drone stopped
+    prematurely (before subgoal completion), what fraction were
+    successfully rescued by the supervisor's corrective commands?
+  - Applicable to: Conditions 0, 2, 4, 5, 6 (not 1 or 3).
+  - Measurement: (rescued convergences) / (total premature
+    convergences)
+
+M5. False Positive / False Negative Rate of Convergence Assessment
+  - False Positive: Monitor declares subgoal complete but it is not
+    (determined by comparing monitor decisions against the human
+    success judgment from M1/M3).
+  - False Negative: Monitor issues correction when subgoal was
+    actually complete (causes unnecessary additional steps).
+  - Applicable to: Conditions 0, 4, 5, 6.
+  - Measurement: Compare monitor's automated decisions (from logs)
+    against human ground-truth judgments (from annotations.csv).
+    Since all episodes are human-reviewed, this can be computed
+    for all episodes, not just a subset.
+
+M6. Control Frequency / Latency
+  - OpenVLA loop Hz: Frames per second of the control loop
+    (excluding VLM checkpoint time in sync mode).
+  - Monitor checkpoint latency: Wall-clock time per VLM checkpoint
+    (local + global prompt pair).
+  - Report: Mean and p95 per condition.
+  - Purpose: Proves VLM monitoring does not block drone control in
+    async mode, and quantifies overhead in sync mode.
+
+M7. Token / Inference Overhead
+  - Total VLM/LLM calls per episode (broken down by type: local,
+    global, convergence, planning, subgoal conversion).
+  - Total input tokens per episode.
+  - Total output tokens per episode.
+  - Estimated API cost per episode.
+  - Report: Mean per condition.
+  - Purpose: Proves computational feasibility. Addresses reviewer
+    concern about running VLM monitoring continuously.
+
+M8. Average Episode Length
+  - Total steps (frames) per episode.
+  - Total wall-clock time per episode.
+  - Report: Mean +/- std per condition.
+  - Purpose: Reveals whether monitoring adds overhead that slows
+    task completion, even when it succeeds.
+
+
+6. EXPERIMENTAL PROCEDURE
+======================================================================
+
+6a. PER-EPISODE PROCEDURE
+---------------------------
+1. Load task JSON (instruction, initial_pos).
+2. Teleport drone to starting position. Wait for stabilization.
+3. Reset OpenVLA model state.
+4. Execute the pipeline for the active condition (see Section 2a for
+   entry-point names).
+5. Log all frames, diary entries, monitor decisions, corrections,
+   VLM call records, and trajectory poses.
+6. Record final outcome: success/failure, stop_reason, subgoal
+   completion status.
+
+6b. EPISODE COUNT
+------------------
+3 tasks x 3 starting variations = 9 episodes per condition
+7 conditions x 9 = 63 total episodes
+
+6c. RANDOMIZATION AND TASK ORDER
+----------------------------------
+- Starting position variations are fixed across conditions (same
+  3 positions per task for all 7 conditions) to enable paired
+  comparison (McNemar's test on matched episodes).
+- Task execution is interleaved by variant round: for each starting
+  position variant (1, 2, 3), all tasks are run across all conditions
+  before the next variant begins. Within a variant round, tasks are
+  ordered alphabetically by task_id and cycled through all conditions.
+  This ensures the first variant of every task is completed across
+  all conditions before any second variant starts, enabling early
+  progress monitoring and reducing the impact of long-running failures.
+  The simulator fully resets between episodes (teleport + state reset),
+  so there is no drift or carryover.
+- The simulator state is fully reset between episodes via
+  teleport + stabilization wait. There is no environmental drift
+  or accumulated state across episodes.
+
+6d. HUMAN VIDEO REVIEW (ALL CONDITIONS)
+-----------------------------------------
+ALL conditions (C0-C6) use human video review as the ground-truth
+success criterion for M1 and M3. With only 9 episodes per condition
+(63 total), manual review is feasible and eliminates the
+monitor-as-judge circularity problem (where the monitor grades its
+own performance).
+
+Procedure: After each episode completes, the experimenter watches the
+recorded video and fills in results/annotations.csv with:
+  - task_success: 1 if the full instruction was fulfilled, 0 otherwise
+  - subgoals_completed: count of subgoals visibly completed
+  - subgoals_total: count of subgoals the system attempted
+  - notes: optional free-text observations
+
+This replaces the prior approach where C0/C2/C4/C5/C6 used the
+monitor's "monitor_complete" signal and only C1/C3 used human review.
+Using a uniform measurement instrument across all conditions ensures
+that M1/M3 comparisons are apples-to-apples.
+
+For M5 (monitor false positive/negative analysis), the human ground
+truth from annotations.csv is compared against the monitor's automated
+decisions from the episode logs. This can be done post-hoc.
+
+Analysis: Run scripts/analyze_annotations.py to compute metrics and
+statistical tests from the completed CSV.
+
+
+7. COMPUTE BUDGET
+======================================================================
+
+7a. TOKEN COST ESTIMATE (REVISED)
+----------------------------------
+These estimates need empirical validation before committing.
+
+Per VLM checkpoint (local + global):
+  - Local prompt: 1 system message + 2 images (224x224 each)
+    Estimated: ~600 tokens (text) + ~1,700 tokens (2 images) = ~2,300
+  - Global prompt: 1 system message + 3x3 grid image + diary text
+    Estimated: ~800 tokens (text + diary) + ~4,000 tokens (grid image)
+    = ~4,800
+  - Total per checkpoint: ~7,100 input tokens
+
+Per convergence assessment:
+  - Similar to global: ~5,000 input tokens
+
+Per episode (rough estimate, diary interval = 10 frames):
+  - ~30 checkpoints per subgoal x 3 subgoals avg = 90 checkpoints
+  - 90 x 7,100 = ~640,000 input tokens
+  - Plus ~8 convergence assessments x 5,000 = ~40,000
+  - Plus planning + subgoal conversion: ~5,000
+  - Total per episode: ~685,000 input tokens
+
+IMPORTANT: These estimates must be validated empirically by running
+2-3 test episodes and measuring actual token usage from the VLM call
+logs. The image token count depends heavily on the VLM provider's
+image encoding. Adjust the budget after validation.
+
+Per-condition cost (at $2.50/MTok input, $10/MTok output for gpt-5.4):
+  - gpt-5.4 monitor: 9 eps x 685K tokens x $10/MTok = ~$62
+
+Total for 7 conditions:
+  - If all use gpt-5.4 monitor: ~$432
+  - If Conditions 1, 3 use no monitor: savings of ~$124
+  - Net estimate: ~$200-$320
+
+NOTE: Condition 1 (naive) and Condition 3 (open-loop) do not use the
+goal adherence monitor at all, saving significant cost. Condition 6 uses an
+LLM (not VLM) for global checks, which is cheaper but still requires
+VLM for local diary entries.
+
+7b. GPU COMPUTE
+----------------
+- OpenVLA inference: 1x GPU (CUDA, bfloat16)
+- Simulation: Unreal Engine rendering (separate from GPU inference
+  or on same machine with sufficient VRAM)
+- VLM API calls: External API (no local GPU needed)
+
+7c. WALL-CLOCK TIME ESTIMATE
+------------------------------
+Per episode: ~5-15 minutes (depends on task complexity and number of
+convergence corrections)
+Per condition: 9 eps x 10 min avg = ~1.5 hours
+Total: 7 conditions x 1.5 hours = ~10.5 hours
+With setup/teardown overhead: ~12-15 hours
+
+This can be parallelized if multiple simulation instances are
+available, but VLM API rate limits may be a bottleneck.
+
+
+8. STATISTICAL ANALYSIS PLAN
+======================================================================
+
+8a. STATISTICAL APPROACH (SMALL-SAMPLE DESIGN)
+-------------------------------------------------
+With 9 episodes per condition (3 tasks x 3 near-identical variants),
+statistical power is very limited. The effective independent sample
+size is ~3 (one per task), since the 3 variants per task are small
+spatial perturbations and produce highly correlated outcomes. The
+statistical approach is designed accordingly.
+
+SUCCESS CRITERION: All M1 and M3 judgments come from human video
+review (results/annotations.csv), applied uniformly across all
+conditions. This eliminates monitor-as-judge circularity.
+
+PRIMARY EVIDENCE: Per-task breakdown table.
+  A 3-task x 7-condition matrix showing pass/fail per variant.
+  This is the most informative output at this sample size. Readers
+  can directly inspect which tasks each condition succeeds or fails
+  on. Presented as the main results table in the paper.
+
+SUPPLEMENTARY EVIDENCE: Episode-level and task-level statistics.
+  - Wilson 95% CI per condition for M1 and M3.
+  - Task-level pass rate: a task "passes" a condition if >= 2/3
+    variants succeeded. This gives the honest n=3 summary.
+
+PRIMARY COMPARISONS (2 pre-specified, unadjusted alpha = 0.05):
+  - C0 vs C3: Monitoring ablation (headline comparison).
+  - C0 vs C1: Decomposition necessity.
+  No Bonferroni correction. With n=9 and only 2 pre-specified
+  comparisons, any multiple-comparison correction makes detection
+  of real effects nearly impossible. Fisher's exact test at n=9
+  requires extreme differences even at unadjusted alpha (e.g.,
+  9/9 vs 3/9 gives p ~ 0.009; 8/9 vs 2/9 gives p ~ 0.015;
+  7/9 vs 2/9 gives p ~ 0.057). Pre-specification of the 2
+  comparisons, rather than post-hoc correction, is the accepted
+  approach when the comparison set is small and fixed.
+  Two tests per comparison:
+    (a) Fisher's exact test (unpaired, on success counts).
+    (b) McNemar's exact binomial (paired by task+variant).
+
+SECONDARY COMPARISONS (descriptive only):
+  - C0 vs C2: LTL vs. flat LLM decomposition.
+  - C0 vs C4: Single-frame monitor.
+  - C0 vs C5: Grid-only monitor.
+  - C0 vs C6: Text-only global assessment.
+  Reported as proportions + Wilson CIs. No hypothesis tests.
+  With n=9 and expected small/null effects for some of these
+  (especially C2), hypothesis tests are uninformative.
+
+All statistics computed by scripts/analyze_annotations.py.
+
+PSEUDO-REPLICATION NOTE: The 3 variants per task are small
+perturbations (65-135 cm offset, 3-4 deg yaw). Outcomes within
+a task cluster are highly correlated. The episode-level Wilson CIs
+and Fisher's exact p-values treat all 9 as independent, which
+overstates confidence. The task-level pass rate (n=3) is the
+more honest measure. Both are reported; the paper should note
+this caveat.
+
+8b. FRAMING
+------------
+With n=9 episodes (effectively n=3 tasks), this experiment is a
+proof-of-concept demonstration, not a definitive hypothesis test.
+The primary evidence is the per-task breakdown table and qualitative
+video analysis. Statistical tests supplement but do not replace
+the descriptive results. If the full system (C0) succeeds on most
+tasks while C3 (no monitoring) consistently fails, the pattern is
+compelling regardless of p-values. Design tasks to produce large,
+visually obvious effect sizes.
+
+8c. ABLATION SUMMARY TABLE
+----------------------------
+Present a table showing which components are present in each condition.
+Comparison tiers: C1, C3 = primary comparisons; C2, C4, C5, C6 = secondary.
+
+                       |     | PRIMARY |     | PRIMARY | --- SECONDARY ---|
+Component              | C0  | C1  | C2  | C3  | C4  | C5  | C6
+-----------------------|-----|-----|-----|-----|-----|-----|-----
+LTL Decomposition      | Yes | No  | No  | Yes | Yes | Yes | Yes
+Spot Automaton         | Yes | No  | No  | Yes | Yes | Yes | Yes
+Local VLM (diary gen)  | Yes | No  | Yes | No  | No  | No  | Yes
+3x3 Image Grid         | Yes | No  | Yes | No  | No  | Yes | No
+Text Diary             | Yes | No  | Yes | No  | No  | No  | Yes
+Displacement Data      | Yes | No  | Yes | No  | No  | No  | Yes
+Convergence Correction | Yes | No  | Yes | No  | Yes*| Yes | Yes
+Stall Detection        | Yes | No  | Yes | No  | Yes*| Yes | Yes
+Monitor instruction set| Full| n/a | Full| n/a | SF  | GO  | TO
+
+ABORT SEMANTICS (uniform across all conditions):
+  All conditions use the same human-interaction and abort policy. In
+  non-interactive (batch) mode, any stall, max-step, or max-correction
+  limit that would request operator help ends the episode and is
+  recorded under a single failure class so M1 and M3 stay comparable
+  across conditions.
+
+C4*: Single-frame global and convergence VLM, no diary, no local
+     narrative stage. Convergence corrections and stall detection
+     both operate on single-frame completion estimates (the stall
+     logic still uses history across checkpoints). "SF" = instructions
+     reference only the current frame and subgoal.
+C5:  Image grid for global and convergence, no text diary, no
+     displacement, no local two-frame narrative (not used by this
+     ablation). "GO" = instructions reference the subgoal and the
+     frame grid only.
+C6:  Local two-frame comparison still produces diary text. Global and
+     convergence use a text-only assessor (no image grid). In the
+     paper, use the label "Text-Only Global Assessment" so readers do
+     not infer that no vision is used anywhere. "TO" = text-only
+     instruction set for global and convergence; obstacle guidance is
+     omitted there because those stages have no images.
+
+Instruction control: For monitor-based conditions, written
+     instructions are matched in scope and strictness (what counts as
+     done, orientation tolerance, one-step corrections) while varying
+     only the information channels under study. Obstacle-related
+     guidance is included when the assessor receives images (C0, C4,
+     C5) and withheld for C6 at global and convergence, where there is
+     no direct visual input.
+
+Checkpoint scheduling (C6): Whether checkpoints are triggered by frame
+     count or by elapsed time, global and convergence for Condition 6
+     always follow the text-and-odometry protocol with no image grid,
+     so the ablation is well defined across scheduling modes.
+
+
+9. KEY ASSUMPTIONS AND LIMITATIONS
+======================================================================
+
+A1. Low-level UAV safety is handled separately.
+    Physical collision avoidance, altitude bounds, and geofencing are
+    assumed to be implemented via control barrier functions (CBF) or
+    depth-map heuristics. This is standard in UAV systems and is
+    orthogonal to the task-level planning contribution of this work.
+    State this as a scope limitation in the paper.
+
+A2. Simulation-only evaluation.
+    All experiments run in a single Unreal Engine map (DowntownWest).
+    Acknowledge simulation-only limitation and single-map scope in
+    the paper and suggest multi-environment and real-world validation
+    as future work.
+
+A3. OpenVLA as the fixed low-level policy.
+    The system is designed to be policy-agnostic. OpenVLA is one
+    instantiation. The contribution is the LTL + monitoring framework,
+    not the specific VLA model.
+
+A4. VLM accuracy for completion monitoring.
+    The goal adherence monitor relies on VLM visual understanding to
+    assess subgoal completion. VLM errors (failing to notice the
+    drone has or has not reached the target) will propagate as
+    incorrect completion decisions. Quantify this in M5.
+
+A5. Simulation fidelity.
+    UnrealCV provides photorealistic rendering but lacks dynamic
+    obstacles, weather variation, and wind disturbances present in
+    real-world flight.
+
+
+10. PRE-EXPERIMENT VALIDATION CHECKLIST
+======================================================================
+
+Before running the full experiment suite:
+
+[ ] TOKEN COST VALIDATION: Run 3 test episodes with full monitoring.
+    Measure actual token usage per VLM call type (local, global,
+    convergence). Compare to estimates in Section 7a. Adjust budget.
+    Special attention to image token counts, which vary by provider
+    and resolution.
+
+[ ] 3x3 GRID NECESSITY: Run 5 test episodes comparing full system
+    (with grid) vs. text-only diary (no grid) informally. If the
+    grid provides no measurable benefit in these pilots, consider
+    dropping Condition 5 and reducing scope. (Per user NOTE2.)
+
+[ ] TASK SCOUTING: Verify the 3 tasks in DowntownWest:
+    (a) Starting positions are valid and the drone spawns correctly.
+    (b) Instructions reference visible landmarks from each start.
+
+[ ] PILOT RUNS: Complete one pilot episode per condition using the
+    replication map (Section 2a) before batch evaluation.
+
+[ ] ARTIFACT LOGGING: Verify all conditions produce comparable output
+    artifacts (frames, trajectories, monitor logs, playback videos)
+    for post-hoc analysis.
+
+
+11. PAPER FRAMING NOTES
+======================================================================
+
+- HEADLINE RESULT: Condition 3 vs. Condition 0. This is the primary
+  comparison and should anchor the results section. Both share the
+  same LTL planner, so any performance gap is attributable entirely
+  to the monitoring and correction pipeline. This proves that even
+  with correct planning, execution monitoring is critical.
+
+- Condition 2 is a SECONDARY comparison. Frame it as a
+  SOTA-representative baseline (cite SayCan, Inner Monologue,
+  Code-as-Policies) but discuss the result honestly: C2 is expected
+  to perform similarly to C0 on the current sequential task set,
+  because a flat numbered list is functionally equivalent to a
+  linear-chain LTL formula for strict A-then-B-then-C orderings.
+  If C2 and C0 produce similar results, state this is "consistent
+  with expectations for sequential tasks" and note that evaluating
+  LTL's expressiveness advantage (OR branches, concurrent
+  obligations, conditional dependencies) requires non-sequential
+  task structures, which is future work.
+
+- Conditions 4, 5, 6 are design ablations that justify architectural
+  choices in the monitoring pipeline. They can go in an ablation
+  subsection or appendix if space is tight.
+
+- Report M7 (token overhead) prominently to preempt feasibility
+  concerns. Show that monitoring adds <X% wall-clock overhead in
+  async mode.
+
+- Report results at the aggregate level: overall M1/M3 per condition
+  (main results table). With a single map, per-map breakdown is not
+  applicable. Acknowledge this as a scope limitation.
+
+- For C6, use the label "Text-Only Global Assessment" in all paper
+  text and tables. Explicitly note in the methods section that C6's
+  local diary entries are still generated by a VLM (2-frame
+  comparison requires image input); only the global/convergence
+  assessments are text-only.
+
+
+12. RECOMMENDED ROLLOUT ORDER
+======================================================================
+
+1. Task design and scouting (Section 4).
+2. Token cost pilot (Section 10, first item) to confirm budget.
+3. Primary baseline (Condition 3) before the full system (Condition 0).
+4. Full system (Condition 0), then remaining conditions in any order
+   that balances compute and risk.
+5. Post-hoc analysis and manual annotation.
