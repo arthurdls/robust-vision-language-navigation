@@ -177,6 +177,7 @@ def run_llm_planner_control_loop(
     total_frame_count = 0
     subgoal_index = 0
     aborted = False
+    final_stop_reason: str = ""
 
     origin_x, origin_y, origin_z = initial_pos[0], initial_pos[1], initial_pos[2]
     origin_yaw = initial_pos[3]
@@ -245,6 +246,7 @@ def run_llm_planner_control_loop(
                 sr, subgoal_nl,
             )
             aborted = True
+            final_stop_reason = sr
             break
 
     logger.info(
@@ -308,6 +310,7 @@ def run_llm_planner_control_loop(
         "decomposition_call_record": decomposition_record["call_record"],
         "aborted": aborted,
         "completed": not aborted,
+        "stop_reason": final_stop_reason,
         "subgoal_count": subgoal_index,
         "subgoal_summaries": subgoal_summaries,
         "total_steps": total_steps_all,

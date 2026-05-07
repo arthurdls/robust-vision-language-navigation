@@ -235,14 +235,26 @@ def sanitize_run_label(text: str, max_len: int = 40, fallback: str = "task") -> 
 # aborts and is recorded under a single failure class so M1/M3 stay
 # comparable across conditions (per Section 8c, with C3 being the
 # explicit exception that processes every subgoal regardless).
+#
+# Bucket meanings (kept narrow for clarity in post-hoc analysis):
+#   - "ask_help"      = legitimate operator-help case (stall, max_steps,
+#                       max_seconds, max_corrections). The four cases the
+#                       experimental design considers "would have asked
+#                       the operator in interactive mode".
+#   - "monitor_error" = monitor infrastructure failure (VLM exception,
+#                       JSON parse failure after retry, no usable
+#                       corrective after retry). Distinct from ask_help
+#                       so it can be filtered out of M1/M3 if desired.
+#   - The remaining entries are sim-side infrastructure failures from
+#     OpenVLA (no_response, empty_action, action_error) or the sim
+#     framing pipeline (no_image).
 ABORT_STOP_REASONS = frozenset({
     "ask_help",
-    "max_seconds",
+    "monitor_error",
     "no_image",
     "no_response",
     "empty_action",
     "action_error",
-    "convergence_no_command",
 })
 
 

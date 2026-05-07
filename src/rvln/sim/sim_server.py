@@ -20,7 +20,6 @@ Endpoints:
 import base64
 import logging
 import time
-from io import BytesIO
 from typing import Any, Optional
 
 import cv2

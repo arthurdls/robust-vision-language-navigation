@@ -35,7 +35,21 @@ MonitorMode = Literal["full", "single_frame", "grid_only", "text_only", "none"]
 
 @dataclass
 class SubgoalConfig:
-    """Configuration flags for how a subgoal is executed and monitored."""
+    """Configuration flags for how a subgoal is executed and monitored.
+
+    Diary scheduling is split into two strictly-disjoint modes:
+
+    - FRAME mode (sim eval): set ``check_interval`` (frames) and
+      ``max_steps`` (frames). Leave ``check_interval_s`` and ``max_seconds``
+      as None.
+    - TIME mode (hardware): set ``check_interval_s`` (seconds) and
+      ``max_seconds`` (seconds). The frame-mode fields are ignored.
+
+    Mixing modes (setting one time-mode field but not the other) is a
+    configuration bug and raises in __post_init__. Within a given mode
+    only the mode's own fields drive the loop budget and checkpoint
+    cadence; the other mode's fields have no effect.
+    """
     monitor_mode: MonitorMode = "full"
     check_interval: int = DEFAULT_DIARY_CHECK_INTERVAL
     max_steps: int = DEFAULT_MAX_STEPS_PER_SUBGOAL
@@ -43,6 +57,27 @@ class SubgoalConfig:
     check_interval_s: Optional[float] = None
     max_seconds: Optional[float] = None
     save_frames: bool = True
+
+    def __post_init__(self) -> None:
+        # Time-mode fields must be either both None (frame mode) or both
+        # set (time mode). Anything else is a misconfiguration.
+        time_fields = {
+            "check_interval_s": self.check_interval_s,
+            "max_seconds": self.max_seconds,
+        }
+        set_keys = [k for k, v in time_fields.items() if v is not None]
+        if set_keys and len(set_keys) != len(time_fields):
+            missing = sorted(set(time_fields) - set(set_keys))
+            raise ValueError(
+                "SubgoalConfig: time-mode fields must be set together. "
+                f"Missing: {missing}. Either set both check_interval_s and "
+                "max_seconds (time mode) or leave both None (frame mode)."
+            )
+
+    @property
+    def time_mode(self) -> bool:
+        """True iff the runner should schedule by wall-clock time."""
+        return self.check_interval_s is not None
 
 
 # ---------------------------------------------------------------------------
@@ -320,7 +355,7 @@ def run_subgoal(
 
     _patch_monitor_prompts(config.monitor_mode)
 
-    use_async = config.check_interval_s is not None
+    use_async = config.time_mode
 
     subgoal_dir.mkdir(parents=True, exist_ok=True)
     diary_artifacts = subgoal_dir / "diary_artifacts"
@@ -394,42 +429,94 @@ def run_subgoal(
     _step_timer = StepTimer(frames_dir.parent / "step_timings.jsonl")
     _frame_writer = AsyncFrameWriter(frames_dir, enabled=config.save_frames)
 
-    def _process_help(completion_pct: float, reasoning: str, trigger: str) -> None:
-        """Record an ask-help event and end the subgoal under stop_reason='ask_help'.
+    def _process_help(
+        completion_pct: float,
+        reasoning: str,
+        trigger: str,
+        ask_help_header: str = "",
+    ) -> None:
+        """End the subgoal because the runner cannot proceed.
 
-        Sim runs are batch-only: there is no interactive operator to issue
-        a correction, override, replan, or skip. Every ask-help condition
-        (stall, max-corrections exhaustion, monitor error, parse failure)
-        therefore terminates the subgoal here. Hardware runs use their own
-        ask-help logic in mininav/interface.py and do not go through this
-        path.
+        Sim is batch-only: there is no operator to consult, so any ask-help
+        event terminates the subgoal here. The stop_reason is split into
+        two strict buckets so future analysis can tell them apart:
+
+          stop_reason="ask_help" (LEGITIMATE - "would have called the
+          operator in interactive mode"):
+            - Stall detected for stall_window checkpoints (monitor returns
+              action=ask_help with empty header).
+            - Max corrections exhausted (monitor returns action=ask_help
+              with empty header from on_convergence's pre-check).
+            - Max steps per subgoal (frame mode budget; handled by the
+              outer loop, not here).
+            - Max seconds per subgoal (time mode budget; handled by the
+              outer loop, not here). The time analogue of max_steps.
+
+          stop_reason="monitor_error" (INFRASTRUCTURE):
+            - Monitor exception (subgoal_runner wraps on_frame /
+              on_convergence in try/except and returns ask_help with
+              header MONITOR ERROR / CONVERGENCE MONITOR ERROR /
+              CONVERGENCE VLM ERROR).
+            - Convergence VLM JSON parse failure after retry (header
+              CONVERGENCE PARSE FAILURE).
+            - Convergence VLM gave no usable corrective after retry
+              (header CONVERGENCE GAVE NO CORRECTIVE).
+
+        The discriminator is ``ask_help_header``: the monitor leaves it
+        empty for legitimate ask_help cases and sets it for infrastructure
+        errors. Hardware (mininav/interface.py) uses its own ask-help
+        logic and does not call this function; on hardware, every error
+        legitimately routes to operator intervention.
         """
         nonlocal stop_reason, total_steps
-
-        logger.warning(
-            "Ask-help triggered at step %d by %s (completion: %.0f%%): %s",
-            step, trigger, completion_pct * 100, reasoning,
-        )
-        if monitor is not None and monitor.corrections_exhausted:
-            logger.warning(
-                "Max corrections (%d) exhausted for subgoal '%s'.",
-                monitor.max_corrections, subgoal_nl,
+        if ask_help_header:
+            logger.error(
+                "Monitor infrastructure error at step %d by %s "
+                "(header=%s): %s",
+                step, trigger, ask_help_header, reasoning,
             )
-        stop_reason = "ask_help"
+            stop_reason = "monitor_error"
+        else:
+            logger.warning(
+                "Ask-help triggered at step %d by %s (completion: %.0f%%): %s",
+                step, trigger, completion_pct * 100, reasoning,
+            )
+            stop_reason = "ask_help"
         total_steps = step
 
     # Loop-carried frame: first iteration fetches via /get_frame, subsequent
     # iterations reuse the image returned by /step.
     image: Optional[np.ndarray] = None
 
-    while step < config.max_steps:
-        _step_timer.start_step(step)
-        try:
-            if config.max_seconds is not None and (time.time() - subgoal_start_time) >= config.max_seconds:
-                logger.info("Max seconds (%.1f) reached at step %d.", config.max_seconds, step)
-                stop_reason = "max_seconds"
+    # Mode-aware budget. Time mode and frame mode are strictly disjoint
+    # (validated in SubgoalConfig.__post_init__): only one budget check
+    # ever fires. Both produce stop_reason="ask_help" because they're the
+    # subgoal-step-ceiling case (max_steps) and its time analogue
+    # (max_seconds) -- the experimental-design semantics for ask_help.
+    while True:
+        if config.time_mode:
+            if (time.time() - subgoal_start_time) >= config.max_seconds:
+                logger.info(
+                    "Max seconds (%.1f) reached at step %d for subgoal '%s'; "
+                    "treating as ask_help.",
+                    config.max_seconds, step, subgoal_nl,
+                )
+                stop_reason = "ask_help"
                 total_steps = step
                 break
+        else:
+            if step >= config.max_steps:
+                logger.info(
+                    "Max steps (%d) reached for subgoal '%s'; "
+                    "treating as ask_help.",
+                    config.max_steps, subgoal_nl,
+                )
+                stop_reason = "ask_help"
+                total_steps = step
+                break
+
+        _step_timer.start_step(step)
+        try:
 
             async_force_converge = False
             if use_async and monitor:
@@ -444,6 +531,7 @@ def run_subgoal(
                             async_result.completion_pct,
                             async_result.reasoning,
                             "async_monitor",
+                            ask_help_header=async_result.ask_help_header,
                         )
                         break
                     if async_result.action == "force_converge":
@@ -504,6 +592,7 @@ def run_subgoal(
                 if result.action == "ask_help":
                     _process_help(
                         result.completion_pct, result.reasoning, "sync_monitor",
+                        ask_help_header=result.ask_help_header,
                     )
                     break
                 if result.action == "force_converge":
@@ -667,6 +756,7 @@ def run_subgoal(
                     in_correction = False
                     _process_help(
                         conv_result.completion_pct, conv_result.reasoning, "convergence",
+                        ask_help_header=conv_result.ask_help_header,
                     )
                     break
 
@@ -687,24 +777,16 @@ def run_subgoal(
                     small_count = 0
                     last_pose = None
                     batch.reset_model(server_url)
-                else:
-                    in_correction = False
-                    stop_reason = "convergence_no_command"
-                    break
+                # No else: after the parsing fixes the monitor's convergence
+                # path can only return action in {"stop", "command", "ask_help"},
+                # all three of which are handled above. A return value
+                # outside this set would indicate a contract violation in
+                # the monitor and should fail loudly via the assertion that
+                # one of the branches above ran.
 
             step += 1
         finally:
             _step_timer.end_step()
-    else:
-        # Reached the step ceiling without completing. Counted as an
-        # ask-for-help event and aborts the mission at the episode level.
-        logger.warning(
-            "Max step count (%d) reached for subgoal '%s'; "
-            "treating as ask_help and aborting mission.",
-            config.max_steps, subgoal_nl,
-        )
-        stop_reason = "ask_help"
-        total_steps = config.max_steps
 
     _step_timer.close()
     _frame_writer.close()

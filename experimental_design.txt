@@ -586,15 +586,41 @@ Stall Detection        | Yes | No  | Yes | No  | Yes*| Yes | Yes
 Monitor instruction set| Full| n/a | Full| n/a | SF  | GO  | TO
 
 ABORT SEMANTICS:
-  Monitor-based conditions (C0, C2, C4, C5, C6) use a uniform
-  human-interaction and abort policy. In non-interactive (batch) mode,
-  any stall, max-step, or max-correction limit that would request
-  operator help ends the episode and is recorded under a single
-  failure class so M1 and M3 stay comparable.
+  Monitor-based conditions (C0, C2, C4, C5, C6) use a uniform abort
+  policy in batch mode. The runner classifies every subgoal termination
+  into one of these stop_reason buckets, recorded in run_info.json so
+  the M1/M3 analysis can keep them apart:
+
+    - "monitor_complete" : monitor (or convergence VLM) said done.
+                           SUCCESS.
+    - "convergence"      : drone stopped moving, no monitor present
+                           (C3 only). SUCCESS for C3, by design.
+    - "ask_help"         : legitimate "would have asked the operator
+                           in interactive mode". STRICTLY one of:
+                             * stall detected for stall_window
+                               checkpoints (monitor)
+                             * max_steps per subgoal (frame mode)
+                             * max_seconds per subgoal (time mode;
+                               the time analogue of max_steps)
+                             * max_corrections exhausted (monitor)
+    - "monitor_error"    : monitor infrastructure failure (VLM
+                           exception, JSON parse failure after
+                           retry, no usable corrective after retry).
+                           Distinct from ask_help so it can be
+                           filtered out of headline metrics.
+    - "no_image" / "no_response" / "empty_action" / "action_error" :
+                           sim-side or OpenVLA-side infrastructure
+                           failures.
+
+  Frame mode (sim eval default) and time mode (hardware default) are
+  strictly disjoint: the runner uses max_steps + check_interval (frame)
+  XOR max_seconds + check_interval_s (time), never both. Mixing them is
+  rejected by SubgoalConfig at construction time.
 
   C1 (naive) runs OpenVLA on the full instruction with no monitor and
   terminates on convergence (drone stops moving) or its total step
-  budget; it never aborts via operator help.
+  budget; it never aborts via operator help. aborted is always false
+  in run_info.json.
 
   C3 (open-loop LTL) deliberately has NO abort branch. Each subgoal
   terminates on convergence OR max-steps, and either outcome is
@@ -604,11 +630,17 @@ ABORT SEMANTICS:
   through subsequent subgoals. Adding an abort would mask that
   cascade. The episode ends only when the LTL automaton reaches a
   terminal state or all planned subgoals have been processed.
+  aborted is always false in run_info.json.
 
-  All conditions write `aborted: <bool>` and a stop-reason category
-  to run_info.json. C1 and C3 always write `aborted: false`; the
-  other five may write `aborted: true` when the monitor or budget
-  triggers an end-of-episode event.
+  All conditions write `aborted: <bool>` and a `stop_reason` to
+  run_info.json. C1 and C3 always write `aborted: false`; the other
+  five write `aborted: true` for any non-success stop_reason in
+  the bucket list above.
+
+  HARDWARE NOTE: mininav/interface.py uses its own ask-help logic and
+  routes EVERY error class to operator help (an operator is present
+  to triage). The strict ask_help vs. monitor_error split above is
+  sim-only.
 
 C4*: Single-frame global and convergence VLM, no diary, no local
      narrative stage. Convergence corrections and stall detection

@@ -27,7 +27,6 @@ import sys
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
 
 _SRC = Path(__file__).resolve().parent.parent / "src"
 if _SRC.is_dir() and str(_SRC) not in sys.path:
@@ -114,6 +113,8 @@ def run_grid_only_control_loop(
     llm_interface = LLMUserInterface(model=llm_model)
     planner = LTLSymbolicPlanner(llm_interface)
     planner.plan_from_natural_language(instruction)
+    # Capture planner LLM tokens so M7 totals include the planning call.
+    planner_call_records = [dict(r) for r in llm_interface.llm_call_records]
 
     ltl_plan = {
         "ltl_nl_formula": llm_interface.ltl_nl_formula.get("ltl_nl_formula", ""),
@@ -196,7 +197,7 @@ def run_grid_only_control_loop(
         except Exception as e:
             logger.warning("Could not write playback.mp4: %s", e)
 
-    all_vlm_records = []
+    all_vlm_records = list(planner_call_records)
     for s in subgoal_summaries:
         all_vlm_records.extend(s.get("vlm_call_records", []))
     total_input_tokens = sum(r.get("input_tokens", 0) for r in all_vlm_records)

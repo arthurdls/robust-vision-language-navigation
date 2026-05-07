@@ -162,6 +162,7 @@ def run_integrated_control_loop(
     subgoal_index = 0
     aborted = False
     completed = False
+    final_stop_reason: str = ""
 
     origin_x, origin_y, origin_z = initial_pos[0], initial_pos[1], initial_pos[2]
     origin_yaw = initial_pos[3]
@@ -253,6 +254,7 @@ def run_integrated_control_loop(
                     sr, current_subgoal,
                 )
                 aborted = True
+                final_stop_reason = sr
                 break
 
             planner.advance_state(current_subgoal)
@@ -333,6 +335,7 @@ def run_integrated_control_loop(
             "ltl_plan": ltl_plan,
             "aborted": aborted,
             "completed": completed,
+            "stop_reason": final_stop_reason,
             "subgoal_count": subgoal_index,
             "subgoal_summaries": subgoal_summaries,
             "total_steps": total_steps_all,
