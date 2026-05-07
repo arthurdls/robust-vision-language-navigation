@@ -107,8 +107,10 @@ import shutil
 import tempfile
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
+from time import monotonic as _monotonic
 from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
 import numpy as np
@@ -351,6 +353,8 @@ class GoalAdherenceMonitor:
         global_model: Optional[str] = None,
         single_frame_mode: bool = False,
         skip_local: bool = False,
+        max_inflight: int = 16,
+        dispatch_timeout_s: float = 30.0,
     ):
         self._subgoal = subgoal
         self._check_interval = check_interval
@@ -444,10 +448,32 @@ class GoalAdherenceMonitor:
         # the runner mistakes a stray force_converge for the convergence
         # verdict.
         self._awaiting_convergence: bool = False
-        self._last_checkpoint_time: float = time.time()
+        self._last_checkpoint_time: float = _monotonic()
         self._monitor_thread: Optional[threading.Thread] = None
 
+        # Pipelined dispatch state (only meaningful in time-based mode but
+        # initialised unconditionally so attribute access is always safe).
+        self._dispatch_timeout_s: float = float(dispatch_timeout_s)
+        self._max_inflight: int = int(max_inflight)
+        self._executor: Optional[ThreadPoolExecutor] = None
+        self._local_buf = _ReorderBuffer()
+        self._global_buf = _ReorderBuffer()
+        # Controls when the publisher should run. The publisher drains both
+        # reorder buffers whenever a worker reports a result OR the dispatch
+        # timer ticks (so timeouts get checked even if no results arrive).
+        self._publish_cv = threading.Condition(self._lock)
+        self._publisher_thread: Optional[threading.Thread] = None
+        self._next_dispatch_step_id: int = 0  # for sanity checks
+
         if self._time_based:
+            self._executor = ThreadPoolExecutor(
+                max_workers=self._max_inflight,
+                thread_name_prefix="monitor-vlm",
+            )
+            self._publisher_thread = threading.Thread(
+                target=self._publish_loop, name="monitor-publish", daemon=True,
+            )
+            self._publisher_thread.start()
             self._monitor_thread = threading.Thread(
                 target=self._monitor_loop, daemon=True,
             )
@@ -1669,181 +1695,6 @@ class GoalAdherenceMonitor:
             system_prompt_global=sysp_global,
         )
 
-    def _run_checkpoint_async(self) -> DiaryCheckResult:
-        """Run a checkpoint from the background thread (time-based mode).
-
-        Snapshots frame data under the lock, then releases the lock before
-        making VLM calls.
-        """
-        with self._lock:
-            if len(self._frame_paths) < 2:
-                return DiaryCheckResult(
-                    action="continue",
-                    new_instruction="",
-                    reasoning="Not enough frames for async checkpoint.",
-                    diary_entry="",
-                    completion_pct=self._last_completion_pct,
-                )
-            curr_path = self._frame_paths[-1]
-            step = self._step
-            displacement = list(self._last_displacement)
-            frame_paths_snap = list(self._frame_paths)
-            frame_timestamps_snap = list(self._frame_timestamps)
-        # Pick prev OUTSIDE the lock to avoid holding it while doing the
-        # linear scan. The snapshots above are immutable copies.
-        prev_path = self._pick_local_prev_path(
-            frame_paths_snap, frame_timestamps_snap,
-        )
-        if prev_path is None:
-            prev_path = curr_path
-
-        # --- Local query: what changed (skipped when _skip_local is set) ---
-        d = displacement
-        disp_str = (
-            f"[x: {d[0] / 100:.2f} m, y: {d[1] / 100:.2f} m, "
-            f"z: {d[2] / 100:.2f} m, yaw: {d[3]:.1f}\u00b0]"
-        )
-        if self._skip_local:
-            grid_two = None
-            prompt_local = ""
-            change_text = ""
-            diary_entry = ""
-        else:
-            grid_two = build_frame_grid([prev_path, curr_path])
-            prompt_local = LOCAL_PROMPT_TEMPLATE.format(subgoal=self._subgoal)
-            change_text = self._timed_query_vlm(
-                grid_two, prompt_local, "local_checkpoint_async",
-                system_prompt=GENERAL_SYSTEM_PROMPT,
-            )
-            diary_entry = f"Steps ~{step} {disp_str}: {change_text}"
-            self._diary.append(diary_entry)
-
-        # --- Global query: assess progress ---
-        diary_blob = "\n".join(self._diary)
-
-        if self._global_backend == "text_llm":
-            response_global, prompt_global = self._run_text_only_global(diary_blob, disp_str, step)
-            grid_global = None
-        elif self._single_frame_mode:
-            grid_global = build_frame_grid([curr_path])
-            prompt_global = self._format_global_prompt(diary_blob, disp_str)
-            response_global = self._timed_query_vlm(
-                grid_global, prompt_global, "global_checkpoint_async",
-                system_prompt=GENERAL_SYSTEM_PROMPT,
-            )
-        else:
-            sampled = self._sample_frames_by_time(frame_paths_snap, frame_timestamps_snap)
-            if not sampled:
-                return DiaryCheckResult(
-                    action="continue",
-                    new_instruction="",
-                    reasoning="No sampled frames for global grid.",
-                    diary_entry=diary_entry,
-                    completion_pct=self._last_completion_pct,
-                )
-
-            sampled = sampled[-self.MAX_GLOBAL_FRAMES:]
-
-            grid_global = build_frame_grid(sampled)
-            prompt_global = self._format_global_prompt(diary_blob, disp_str)
-            response_global = self._timed_query_vlm(
-                grid_global, prompt_global, "global_checkpoint_async",
-                system_prompt=GENERAL_SYSTEM_PROMPT,
-            )
-
-        if self._global_backend == "text_llm":
-            parsed = self._parse_json_response(response_global)
-            if parsed is None:
-                self._parse_failures += 1
-                logger.warning(
-                    "Async text-only checkpoint ~%d JSON parse failed, retrying. Raw: %s",
-                    step, response_global[:200],
-                )
-                response_global, prompt_global = self._run_text_only_global(
-                    diary_blob, disp_str, step, label_suffix="_async_retry",
-                )
-                parsed = self._parse_json_response(response_global)
-                if parsed is None:
-                    self._parse_failures += 1
-                    logger.error(
-                        "Async text-only checkpoint ~%d JSON parse failed after "
-                        "retry; treating as continue with prior completion. Raw: %s",
-                        step, response_global[:200],
-                    )
-                    parsed = {
-                        "complete": False,
-                        "completion_percentage": self._last_completion_pct,
-                        "should_stop": False,
-                        "reasoning": "parse_failure_fallback",
-                    }
-        else:
-            parsed = self._parse_json_response(response_global)
-            if parsed is None:
-                self._parse_failures += 1
-                logger.warning(
-                    "Async checkpoint ~%d JSON parse failed, retrying. Raw: %s",
-                    step, response_global[:200],
-                )
-                response_global = self._timed_query_vlm(
-                    grid_global, prompt_global, "global_checkpoint_async_retry",
-                    system_prompt=GENERAL_SYSTEM_PROMPT,
-                )
-                parsed = self._parse_json_response(response_global)
-                if parsed is None:
-                    self._parse_failures += 1
-                    logger.error(
-                        "Async checkpoint ~%d JSON parse failed after retry; "
-                        "treating as continue with prior completion. Raw: %s",
-                        step, response_global[:200],
-                    )
-                    parsed = {
-                        "complete": False,
-                        "completion_percentage": self._last_completion_pct,
-                        "should_stop": False,
-                        "reasoning": "parse_failure_fallback",
-                    }
-
-        # Save artifacts in every mode, including text-only (grid_global=None).
-        sysp_global = (
-            TEXT_ONLY_GLOBAL_SYSTEM_PROMPT
-            if self._global_backend == "text_llm"
-            else GENERAL_SYSTEM_PROMPT
-        )
-        self._save_checkpoint_artifact(
-            step, grid_two, grid_global,
-            prompt_local, change_text,
-            prompt_global, response_global,
-            system_prompt_global=sysp_global,
-        )
-
-        result = self._parse_global_response(
-            response_global, diary_entry, parsed=parsed,
-        )
-
-        self._last_completion_pct = result.completion_pct
-        self._peak_completion = max(self._peak_completion, result.completion_pct)
-        self._completion_history.append(result.completion_pct)
-        self._diary.append(
-            f"Checkpoint ~{step}: completion = {result.completion_pct:.2f}"
-        )
-
-        if result.action == "continue" and self._is_stalled():
-            return DiaryCheckResult(
-                action="ask_help",
-                new_instruction="",
-                reasoning=f"Stall detected: completion plateau over last {self._stall_window} checkpoints.",
-                diary_entry=diary_entry,
-                completion_pct=result.completion_pct,
-            )
-
-        # Peak-dropoff override (async checkpoint). See _peak_dropoff_override.
-        if result.action == "continue":
-            override = self._peak_dropoff_override(result.completion_pct)
-            if override is not None:
-                return override
-
-        return result
-
     def _run_convergence_async(
         self, frame_path: Path, displacement: List[float],
     ) -> DiaryCheckResult:
@@ -2010,16 +1861,21 @@ class GoalAdherenceMonitor:
         )
 
     def _monitor_loop(self) -> None:
-        """Background thread main loop for time-based mode."""
+        """Background thread main loop for time-based pipelined mode.
+
+        Now strictly a dispatcher: every check_interval_s ticks, snapshot
+        monitor state and submit a worker task. Convergence requests still
+        run synchronously on this thread (after waiting briefly for any
+        in-flight workers to drain via timeout).
+        """
         while not self._stop_event.is_set():
             if self._stop_event.wait(timeout=0.05):
                 break
 
-            # Check for convergence request (higher priority)
+            # Convergence has highest priority; it interrupts the pipeline.
             with self._lock:
                 conv_req = self._convergence_request
                 self._convergence_request = None
-
             if conv_req is not None:
                 frame_path, displacement = conv_req
                 try:
@@ -2027,11 +1883,9 @@ class GoalAdherenceMonitor:
                 except Exception as exc:
                     logger.exception("Error in async convergence check")
                     result = DiaryCheckResult(
-                        action="ask_help",
-                        new_instruction="",
+                        action="ask_help", new_instruction="",
                         reasoning=f"async_convergence_error: {exc}",
-                        diary_entry="",
-                        ask_help_header="CONVERGENCE VLM ERROR",
+                        diary_entry="", ask_help_header="CONVERGENCE VLM ERROR",
                         completion_pct=self._last_completion_pct,
                     )
                 with self._lock:
@@ -2039,28 +1893,158 @@ class GoalAdherenceMonitor:
                     self._awaiting_convergence = False
                 continue
 
-            # Check if checkpoint interval has elapsed
-            now = time.time()
-            if now - self._last_checkpoint_time >= (self._check_interval_s or 0):
-                try:
-                    result = self._run_checkpoint_async()
-                except Exception:
-                    logger.exception("Error in async checkpoint")
-                    result = DiaryCheckResult(
-                        action="force_converge",
-                        new_instruction="",
-                        reasoning="async_checkpoint_error",
-                        diary_entry="",
-                        completion_pct=self._last_completion_pct,
-                    )
-                with self._lock:
-                    # If a convergence was requested while this checkpoint
-                    # was in flight, drop the result -- the operator-visible
-                    # next event must be the convergence verdict, not a
-                    # stale force_converge.
-                    if not self._awaiting_convergence:
-                        self._pending_result = result
-                self._last_checkpoint_time = now
+            # Tick: dispatch a new checkpoint if interval has elapsed.
+            now = _monotonic()
+            if now - self._last_checkpoint_time < (self._check_interval_s or 0):
+                continue
+            snap = self._snapshot_for_checkpoint()
+            if snap is None:
+                # Not enough frames yet; do not advance the timer (so we
+                # try again on the next tick once frames accumulate).
+                continue
+            # Skip when no new frames since last dispatch: the snapshot would
+            # be identical, and the reorder buffer requires unique step IDs.
+            # Don't advance the checkpoint timer either, so the next tick
+            # re-tries promptly once new frames arrive.
+            if snap.step <= self._next_dispatch_step_id:
+                continue
+            with self._publish_cv:
+                self._local_buf.register(snap.step, dispatch_time=now)
+                self._global_buf.register(snap.step, dispatch_time=now)
+                self._next_dispatch_step_id = snap.step
+            self._executor.submit(self._worker_run, snap)
+            self._last_checkpoint_time = now
+
+    def _worker_run(self, snap: "_CheckpointSnapshot") -> None:
+        """ThreadPoolExecutor task: run local and global stages, enqueue both
+        results into their respective reorder buffers, notify publisher."""
+        try:
+            local = self._run_local_stage(snap)
+        except Exception:
+            logger.exception("Local stage failed for step %d", snap.step)
+            local = None
+        with self._publish_cv:
+            self._local_buf.put(snap.step, local)
+            self._publish_cv.notify_all()
+
+        if local is None:
+            with self._publish_cv:
+                self._global_buf.put(snap.step, None)
+                self._publish_cv.notify_all()
+            return
+
+        try:
+            global_ = self._run_global_stage(snap, local)
+        except Exception:
+            logger.exception("Global stage failed for step %d", snap.step)
+            global_ = None
+        with self._publish_cv:
+            self._global_buf.put(snap.step, global_)
+            self._publish_cv.notify_all()
+
+    def _publish_loop(self) -> None:
+        """Drains the per-stage reorder buffers in dispatch order.
+
+        Wakes when a worker calls _enqueue_local / _enqueue_global, or every
+        ``min(0.5 s, check_interval_s)`` to re-check timeouts.
+        """
+        wake_period = min(0.5, max(0.05, (self._check_interval_s or 0.5)))
+        while not self._stop_event.is_set():
+            with self._publish_cv:
+                self._publish_cv.wait(timeout=wake_period)
+                if self._stop_event.is_set():
+                    return
+                now = _monotonic()
+                # Stage 1: local
+                ready_local = self._local_buf.release_ready(now, self._dispatch_timeout_s)
+                for step, payload in ready_local:
+                    if payload is None:
+                        # Worker reported failure; skip diary contribution
+                        continue
+                    self._commit_local(step, payload)
+                # Stage 2: global
+                ready_global = self._global_buf.release_ready(now, self._dispatch_timeout_s)
+                for step, payload in ready_global:
+                    if payload is None:
+                        continue
+                    self._commit_global(step, payload)
+
+    def _save_checkpoint_local_artifact(
+        self, step: int, local: "_LocalStageResult", diary_at_commit: List[str],
+    ) -> None:
+        """Stage 1 disk publish: local image + prompt + response + diary."""
+        if self._artifacts_dir is None:
+            return
+        cp_dir = self._artifacts_dir / f"checkpoint_{step:04d}"
+        cp_dir.mkdir(parents=True, exist_ok=True)
+        if local.grid_local is not None:
+            local.grid_local.save(cp_dir / "grid_local.png")
+        if local.prompt_local:
+            _atomic_write_text(cp_dir / "prompt_local.txt", local.prompt_local)
+        if local.response_local:
+            _atomic_write_text(cp_dir / "response_local.txt", local.response_local)
+        _atomic_write_text(cp_dir / "diary.txt", "\n".join(diary_at_commit))
+
+    def _save_checkpoint_global_artifact(
+        self, step: int, global_: "_GlobalStageResult", diary_at_commit: List[str],
+    ) -> None:
+        """Stage 2 disk publish: global image + prompts + response + system prompt
+        + (rewritten) diary."""
+        if self._artifacts_dir is None:
+            return
+        cp_dir = self._artifacts_dir / f"checkpoint_{step:04d}"
+        cp_dir.mkdir(parents=True, exist_ok=True)
+        if global_.grid_global is not None:
+            global_.grid_global.save(cp_dir / "grid_global.png")
+        _atomic_write_text(cp_dir / "system_prompt_global.txt", global_.system_prompt_global)
+        _atomic_write_text(cp_dir / "prompt_global.txt", global_.prompt_global)
+        _atomic_write_text(cp_dir / "response_global.txt", global_.response_global)
+        _atomic_write_text(cp_dir / "diary.txt", "\n".join(diary_at_commit))
+
+    def _commit_local(self, step: int, local: "_LocalStageResult") -> None:
+        """Apply a local-stage result. Caller holds ``self._lock``."""
+        if local.diary_entry:
+            self._diary.append(local.diary_entry)
+        diary_snapshot = list(self._diary)
+        # Disk write happens OUTSIDE the lock; we release temporarily
+        self._lock.release()
+        try:
+            self._save_checkpoint_local_artifact(step, local, diary_snapshot)
+        finally:
+            self._lock.acquire()
+
+    def _commit_global(self, step: int, global_: "_GlobalStageResult") -> None:
+        """Apply a global-stage result. Caller holds ``self._lock``."""
+        result = self._parse_global_response(
+            global_.response_global,
+            diary_entry="",
+            parsed=global_.parsed,
+        )
+        self._last_completion_pct = result.completion_pct
+        self._peak_completion = max(self._peak_completion, result.completion_pct)
+        self._completion_history.append(result.completion_pct)
+        self._diary.append(f"Checkpoint ~{step}: completion = {result.completion_pct:.2f}")
+
+        if result.action == "continue" and self._is_stalled():
+            result = DiaryCheckResult(
+                action="ask_help", new_instruction="",
+                reasoning=f"Stall detected: completion plateau over last {self._stall_window} checkpoints.",
+                diary_entry="", completion_pct=result.completion_pct,
+            )
+        elif result.action == "continue":
+            override = self._peak_dropoff_override(result.completion_pct)
+            if override is not None:
+                result = override
+
+        if not self._awaiting_convergence:
+            self._pending_result = result
+
+        diary_snapshot = list(self._diary)
+        self._lock.release()
+        try:
+            self._save_checkpoint_global_artifact(step, global_, diary_snapshot)
+        finally:
+            self._lock.acquire()
 
     def _parse_global_response(
         self, response: str, diary_entry: str,
@@ -2176,13 +2160,25 @@ class GoalAdherenceMonitor:
     # ------------------------------------------------------------------
 
     def cleanup(self) -> None:
-        """Stop background thread and remove temporary frame directory."""
+        """Stop background threads, drain executor, remove temp dir."""
         if not hasattr(self, "_stop_event"):
             return
         self._stop_event.set()
-        if self._monitor_thread is not None:
-            self._monitor_thread.join(timeout=5.0)
-            self._monitor_thread = None
+        if hasattr(self, "_publish_cv"):
+            with self._publish_cv:
+                self._publish_cv.notify_all()
+        if getattr(self, "_executor", None) is not None:
+            try:
+                self._executor.shutdown(wait=True, cancel_futures=True)
+            except Exception:
+                pass
+            self._executor = None
+        if getattr(self, "_publisher_thread", None) is not None and self._publisher_thread.is_alive():
+            self._publisher_thread.join(timeout=2.0)
+        self._publisher_thread = None
+        if self._monitor_thread is not None and self._monitor_thread.is_alive():
+            self._monitor_thread.join(timeout=2.0)
+        self._monitor_thread = None
         if self._temp_dir is not None:
             try:
                 shutil.rmtree(self._temp_dir, ignore_errors=True)

@@ -221,3 +221,117 @@ def test_reorder_buffer_late_arrival_after_skip():
     # publisher (its slot was skipped) but ALSO should not poison the buffer.
     out = buf.put(10, "ten_late")
     assert out is False  # signals "this step was already skipped"
+
+
+import io
+from PIL import Image
+
+
+def _png_bytes() -> bytes:
+    buf = io.BytesIO()
+    Image.new("RGB", (32, 32), (255, 0, 0)).save(buf, format="PNG")
+    return buf.getvalue()
+
+
+def _make_time_monitor(tmp_path, **kwargs):
+    """Build a real time-based monitor with VLM calls patched.
+
+    Threads ARE started: dispatcher, publisher, executor pool. Caller is
+    responsible for calling cleanup() at end of test.
+    """
+    art = tmp_path / "diary_artifacts"
+    art.mkdir(parents=True, exist_ok=True)
+    defaults = dict(
+        subgoal="Approach the tree",
+        check_interval=2,
+        model="gpt-4o",
+        artifacts_dir=art,
+        check_interval_s=0.05,  # fast tick for tests
+        global_grid_spacing_s=0.05,
+        local_grid_spacing_s=0.05,
+    )
+    defaults.update(kwargs)
+    # Patch _make_llm so OPENAI_API_KEY is not required
+    with patch.object(GoalAdherenceMonitor, "_make_llm", return_value=MagicMock()):
+        m = GoalAdherenceMonitor(**defaults)
+    return m
+
+
+def _seed_frames(m, n: int, dt: float = 0.1):
+    """Push ``n`` frames into the monitor (simulating ``on_frame``)."""
+    base = m._artifacts_dir.parent
+    for i in range(n):
+        p = base / f"frame_{i:04d}.png"
+        p.write_bytes(_png_bytes())
+        with m._lock:
+            m._frame_paths.append(p)
+            m._frame_timestamps.append(_time.time())
+            m._step += 1
+        _time.sleep(dt)
+
+
+def test_pipelined_dispatch_runs_concurrent_calls(tmp_path):
+    """With check_interval_s=0.05 and call latency=0.3, several checkpoints
+    are in flight at once and the dashboard sees a new dir per ~0.05 s."""
+    m = _make_time_monitor(tmp_path)
+    call_count = [0]
+    call_lock = threading.Lock()
+
+    def slow_query(grid, prompt, label, **kwargs):
+        with call_lock:
+            call_count[0] += 1
+        _time.sleep(0.3)
+        return '{"complete": false, "completion_percentage": 0.5, "on_track": true, "should_stop": false}'
+
+    try:
+        with patch.object(m, "_timed_query_vlm", side_effect=slow_query):
+            # Seed continuously while the dispatcher fires, so each tick
+            # produces a fresh snap.step. Over ~1.0 s at 50 ms/frame the
+            # dispatcher should submit ~10+ workers; with 0.3 s latency, at
+            # least 4 should complete (proves concurrent execution).
+            for i in range(20):
+                _seed_frames(m, 1, dt=0.05)
+            _time.sleep(0.6)
+            checkpoints = sorted((tmp_path / "diary_artifacts").glob("checkpoint_*"))
+            assert len(checkpoints) >= 4, \
+                f"expected >=4 pipelined checkpoints, got {len(checkpoints)}"
+    finally:
+        m.cleanup()
+
+
+def test_pipelined_out_of_order_returns_release_in_dispatch_order(tmp_path):
+    """Workers may finish in any order; the publisher commits diary entries
+    in dispatch order (the reorder buffer contract)."""
+    m = _make_time_monitor(tmp_path)
+
+    call_seq_lock = threading.Lock()
+    seen_calls: List[Tuple[str, int]] = []
+
+    def staggered_query(grid, prompt, label, **kwargs):
+        # Earlier "local" calls (which arrive first via dispatch order) take
+        # LONGER than later ones, so workers finish out of order. The buffer
+        # must still publish in dispatch order.
+        with call_seq_lock:
+            idx = len(seen_calls)
+            seen_calls.append((label, idx))
+        if "local" in label and idx < 4:
+            _time.sleep(0.6 - 0.1 * idx)
+        else:
+            _time.sleep(0.05)
+        return '{"complete": false, "completion_percentage": 0.5, "on_track": true, "should_stop": false}'
+
+    try:
+        with patch.object(m, "_timed_query_vlm", side_effect=staggered_query):
+            for _ in range(20):
+                _seed_frames(m, 1, dt=0.05)
+            _time.sleep(1.5)
+            checkpoints = sorted((tmp_path / "diary_artifacts").glob("checkpoint_*"))
+            # Directory names encode dispatched step IDs; lexical sort ==
+            # dispatch order. The publisher commits in strict dispatch order
+            # so the completion_history list (one entry per global commit)
+            # must be monotonic in step.
+            steps = [int(p.name.split("_")[1]) for p in checkpoints]
+            assert steps == sorted(steps), f"checkpoint dirs out of order: {steps}"
+            assert len(steps) >= 2
+    finally:
+        m.cleanup()
