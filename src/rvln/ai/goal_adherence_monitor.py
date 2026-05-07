@@ -230,6 +230,15 @@ class GoalAdherenceMonitor:
         self._frame_paths: List[Path] = []
         self._frame_timestamps: List[float] = []
         self._diary: List[str] = []
+        # Running log of corrective actions issued during convergence checks
+        # for this subgoal. Each entry is {step, diagnosis, completion_pct,
+        # instruction}. Forwarded into subsequent convergence prompts (see
+        # _format_correction_history_block) so the convergence VLM can avoid
+        # reissuing a correction that already failed -- the analogue of the
+        # diary, but for issued commands rather than observed frame changes.
+        # Reset implicitly per subgoal because GoalAdherenceMonitor is
+        # constructed fresh per subgoal in run_subgoal().
+        self._correction_history: List[Dict[str, Any]] = []
         self._step = 0
         self._corrections_used = 0
         self._parse_failures = 0
@@ -281,6 +290,15 @@ class GoalAdherenceMonitor:
     @property
     def corrections_used(self) -> int:
         return self._corrections_used
+
+    @property
+    def correction_history(self) -> List[Dict[str, Any]]:
+        """Copy of the corrective-action log for this subgoal (oldest first).
+
+        Each entry has {step, diagnosis, completion_pct, instruction}. See
+        _correction_history in __init__ for the rationale.
+        """
+        return [dict(entry) for entry in self._correction_history]
 
     @property
     def max_corrections(self) -> int:
@@ -562,6 +580,11 @@ class GoalAdherenceMonitor:
                 )
 
         self._corrections_used += 1
+        self._record_correction(
+            instruction=corrective,
+            diagnosis=parsed_for_reasoning.get("diagnosis"),
+            pct=pct,
+        )
         return DiaryCheckResult(
             action="command",
             new_instruction=corrective,
@@ -582,6 +605,7 @@ class GoalAdherenceMonitor:
             prev_completion_pct=self._last_completion_pct,
             displacement=disp_str,
             stop_reasoning_block=self._stop_reasoning_block(stop_reason),
+            corrections_block=self._format_correction_history_block(),
         )
 
         messages = [
@@ -726,6 +750,11 @@ class GoalAdherenceMonitor:
                 )
 
         self._corrections_used += 1
+        self._record_correction(
+            instruction=corrective,
+            diagnosis=parsed_for_reasoning.get("diagnosis"),
+            pct=pct,
+        )
         return DiaryCheckResult(
             action="command",
             new_instruction=corrective,
@@ -890,6 +919,71 @@ class GoalAdherenceMonitor:
         self._last_should_stop_reasoning = None
         return reason
 
+    def _format_correction_history_block(self) -> str:
+        """Format the corrective-action history for the convergence prompt.
+
+        Mirrors how the diary is formatted: an explicit header plus an
+        oldest-first list. When empty, returns a sentinel that tells the
+        VLM this is the first convergence check so the
+        avoid-repeating-a-correction guidance does not apply (otherwise
+        the model can second-guess a correct first-cycle verdict on
+        nonexistent prior history). When non-empty, the block also
+        carries the directive to switch axes on repeated failures, so
+        the static prompt body stays neutral about whether corrections
+        have happened yet.
+        """
+        if not self._correction_history:
+            return (
+                "Past corrective actions issued for this subgoal: "
+                "(none yet -- this is the first convergence check for "
+                "this subgoal, so reasoning about prior corrections does "
+                "not apply.)\n"
+            )
+        lines = ["Past corrective actions issued for this subgoal (oldest first):"]
+        for i, entry in enumerate(self._correction_history, start=1):
+            diag = entry.get("diagnosis") or "unknown"
+            pct = float(entry.get("completion_pct") or 0.0)
+            instr = (entry.get("instruction") or "").strip()
+            lines.append(
+                f"  {i}. [{diag}, {pct * 100:.0f}% complete] \"{instr}\""
+            )
+        lines.append(
+            "If completion has not improved since a recent correction, switch "
+            "axes (e.g., try altitude or a different turn direction) instead of "
+            "reissuing the same command."
+        )
+        return "\n".join(lines) + "\n"
+
+    def _record_correction(
+        self, instruction: str, diagnosis: Optional[str], pct: float,
+    ) -> None:
+        """Append a corrective-action entry. Called at each site that
+        increments _corrections_used so the history and the counter stay
+        in lockstep. Safe under the GIL; list.append is atomic and the
+        only concurrent reader (correction_history property) copies.
+
+        Also appends a marker line to the diary so the next convergence
+        prompt sees WHERE in the observation timeline each corrective
+        was applied. Without this, the convergence VLM gets the diary
+        and the corrections list as two unrelated sequences and cannot
+        tell which diary entries describe behaviour BEFORE vs AFTER a
+        given correction. The marker uses a distinct ``[CONVERGENCE @
+        step N]`` prefix so it is unambiguously metadata, not a frame
+        observation.
+        """
+        diag = diagnosis or "unknown"
+        instr = (instruction or "").strip()
+        self._correction_history.append({
+            "step": self._step,
+            "diagnosis": diag,
+            "completion_pct": float(pct),
+            "instruction": instr,
+        })
+        self._diary.append(
+            f"[CONVERGENCE @ step {self._step}]: corrective issued "
+            f"({diag}, {pct * 100:.0f}% complete) -- \"{instr}\""
+        )
+
     @staticmethod
     def _compose_convergence_reasoning(parsed: dict, label: str) -> str:
         """Build the operator-facing reasoning string for a convergence verdict.
@@ -915,6 +1009,7 @@ class GoalAdherenceMonitor:
             prev_completion_pct=self._last_completion_pct,
             displacement=disp_str,
             stop_reasoning_block=self._stop_reasoning_block(stop_reason),
+            corrections_block=self._format_correction_history_block(),
         )
 
     def _is_stalled(self) -> bool:
@@ -1484,6 +1579,11 @@ class GoalAdherenceMonitor:
                 )
 
         self._corrections_used += 1
+        self._record_correction(
+            instruction=corrective,
+            diagnosis=parsed_for_reasoning.get("diagnosis"),
+            pct=pct,
+        )
         return DiaryCheckResult(
             action="command",
             new_instruction=corrective,

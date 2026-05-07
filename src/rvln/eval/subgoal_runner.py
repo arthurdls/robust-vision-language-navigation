@@ -119,11 +119,13 @@ Subgoal: {subgoal}
 
 Previous estimated completion: {prev_completion_pct}
 {stop_reasoning_block}
+{corrections_block}
 The drone has stopped moving. The grid shows up to the 9 most recent sampled
 frames (left to right, top to bottom, in temporal order).
 
-Given the visual progression in the sampled frames, is the subgoal complete?
-If not, did the drone stop short or overshoot?
+Given the visual progression in the sampled frames and any past corrective
+actions listed above, is the subgoal complete? If not, did the drone stop
+short or overshoot?
 
 Respond with EXACTLY ONE JSON object (no markdown fences):
 
@@ -210,8 +212,10 @@ Subgoal: {subgoal}
 
 Previous estimated completion: {prev_completion_pct}
 {stop_reasoning_block}
-The drone has stopped moving. Based on the current camera view, is the subgoal
-complete? If not, did it stop short or overshoot?
+{corrections_block}
+The drone has stopped moving. Based on the current camera view and any past
+corrective actions listed above, is the subgoal complete? If not, did it stop
+short or overshoot?
 
 Respond with EXACTLY ONE JSON object (no markdown fences):
 
@@ -807,6 +811,7 @@ def run_subgoal(
         "subgoal": subgoal_nl,
         "converted_instruction": converted_instruction,
         "diary": monitor.diary if monitor else [],
+        "correction_history": monitor.correction_history if monitor else [],
         "override_history": override_history,
         "corrections_used": monitor.corrections_used if monitor else 0,
         "last_completion_pct": monitor.last_completion_pct if monitor else 0.0,

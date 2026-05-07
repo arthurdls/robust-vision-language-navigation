@@ -268,7 +268,15 @@ Subgoal: {subgoal}
 Previous estimated completion: {prev_completion_pct}
 Current displacement from start: [x, y, z, yaw] = {displacement}
 {stop_reasoning_block}
-Diary of changes observed so far:
+Diary of changes observed so far (entries beginning with ``[CONVERGENCE @ step
+N]: corrective issued ...`` are not frame observations -- they mark the point
+in the timeline at which a previous corrective action was issued, so diary
+entries before that line describe behaviour under the previous instruction
+and entries after it describe behaviour under the new corrective. If the
+diary contains one or more such markers and completion has not improved
+since the most recent one, switch axes for this correction (e.g., try
+altitude or a different turn direction) instead of reissuing the same
+command):
 {diary}
 
 The drone has stopped moving. The grid shows up to the 9 most recent sampled
@@ -276,8 +284,9 @@ frames (left to right, top to bottom, in temporal order). If there are more
 than 9 diary entries, earlier frames are no longer visible in the grid -- rely
 on the diary text for that history.
 
-Given the diary and the sampled frames, is the subgoal complete? If not, did
-the drone stop short or overshoot?
+Given the diary (including any ``[CONVERGENCE]`` markers in it) and the
+sampled frames, is the subgoal complete? If not, did the drone stop short or
+overshoot?
 
 Respond with EXACTLY ONE JSON object (no markdown fences):
 
@@ -789,12 +798,21 @@ Subgoal: {subgoal}
 Previous estimated completion: {prev_completion_pct}
 Current displacement from start: [x, y, z, yaw] = {displacement}
 {stop_reasoning_block}
-Diary of changes observed so far:
+Diary of changes observed so far (entries beginning with ``[CONVERGENCE @ step
+N]: corrective issued ...`` are not frame observations -- they mark the point
+in the timeline at which a previous corrective action was issued, so diary
+entries before that line describe behaviour under the previous instruction
+and entries after it describe behaviour under the new corrective. If the
+diary contains one or more such markers and completion has not improved
+since the most recent one, switch axes for this correction (e.g., try
+altitude or a different turn direction) instead of reissuing the same
+command):
 {diary}
 
-The drone has stopped moving. Based on the diary text and displacement data
-only (no images available), is the subgoal complete? If not, did the drone
-stop short or overshoot?
+The drone has stopped moving. Based on the diary text (including any
+``[CONVERGENCE]`` markers in it) and displacement data only (no images
+available), is the subgoal complete? If not, did the drone stop short or
+overshoot?
 
 Respond with EXACTLY ONE JSON object (no markdown fences):
 

@@ -241,6 +241,11 @@ class ManualGoalAdherenceMonitor:
         self._max_corrections = max_corrections
 
         self._diary: List[str] = []
+        # Mirror of GoalAdherenceMonitor._correction_history so callers
+        # (subgoal_runner, interface) can persist the same field whether
+        # or not --no-ai is active. See goal_adherence_monitor.__init__
+        # for the rationale.
+        self._correction_history: List[Dict[str, Any]] = []
         self._step = 0
         self._corrections_used = 0
         self._parse_failures = 0
@@ -264,6 +269,11 @@ class ManualGoalAdherenceMonitor:
     @property
     def corrections_used(self) -> int:
         return self._corrections_used
+
+    @property
+    def correction_history(self) -> List[Dict[str, Any]]:
+        """Mirror of GoalAdherenceMonitor.correction_history."""
+        return [dict(entry) for entry in self._correction_history]
 
     @property
     def max_corrections(self) -> int:
@@ -370,6 +380,17 @@ class ManualGoalAdherenceMonitor:
             pct = _prompt_float("  completion_pct (0-1)", self._last_completion_pct)
             self._update_completion(pct)
             self._corrections_used += 1
+            self._correction_history.append({
+                "step": self._step,
+                "diagnosis": "manual",
+                "completion_pct": float(self._last_completion_pct),
+                "instruction": new_instr.strip(),
+            })
+            self._diary.append(
+                f"[CONVERGENCE @ step {self._step}]: corrective issued "
+                f"(manual, {self._last_completion_pct * 100:.0f}% complete) "
+                f"-- \"{new_instr.strip()}\""
+            )
             return DiaryCheckResult(
                 action="command", new_instruction=new_instr,
                 reasoning="manual convergence command",

@@ -19,7 +19,7 @@ and is framed accordingly throughout.
 Pipeline: NL -> LTL-NL (via LLM + Spot automaton) -> Subgoal sequence
           -> SubgoalConverter -> OpenVLA control loop
           + Goal adherence monitor (local + global prompts, 3x3 image grid,
-            text diary, displacement tracking)
+            text diary, displacement tracking, corrective-action history)
           + Convergence detection + Post-Convergence Supervisor Mode
             (corrective commands up to budget)
           + Stall detection (ask_help when plateaued)
@@ -36,7 +36,33 @@ Key components:
     Global prompt: sampled 3x3 grid + text diary + displacement +
     completion history ("how complete?").
     Convergence prompt: evaluate on drone stop, issue corrective
-    command if incomplete.
+    command if incomplete. Past correctives for this subgoal are
+    surfaced to the convergence VLM in one of two equivalent forms,
+    depending on whether the condition's convergence prompt displays
+    the diary:
+      * Diary-using conditions (C0, C2, C6): each issued corrective
+        drops a `[CONVERGENCE @ step N]: corrective issued
+        (<diagnosis>, <pct>% complete) -- "<instruction>"` marker into
+        the running diary, so the convergence VLM sees past correctives
+        interleaved with frame observations and can localise each
+        corrective in the temporal record.
+      * Non-diary conditions (C4, C5): the convergence prompt instead
+        carries an explicit oldest-first corrective-action history
+        block (same fields), since these ablations omit the diary by
+        design. C5 additionally disables the local VLM, so its diary
+        contains only the markers (still persisted to
+        diary_summary.json for record-keeping but not shown to the VLM).
+    Both forms ship the same directive: if completion has not improved
+    since a recent correction, switch axes for this correction
+    (e.g., altitude or a different turn direction) instead of
+    reissuing the same command. C1 and C3 have no monitor and no
+    convergence cycle and are therefore unaffected.
+  - OpenVLA frame: the proprioceptive state sent to OpenVLA is
+    rebased to [0, 0, 0, 0] at the start of every new low-level
+    instruction (initial converted instruction or any monitor-issued
+    correction). The diary, displacement vector, and corrective-action
+    history remain subgoal-relative; only the OpenVLA proprio is
+    instruction-relative.
   - OpenVLA Server: Vision2Seq model fine-tuned on first-person drone
     navigation. Takes image + proprioceptive state + instruction,
     outputs action poses.
@@ -582,8 +608,28 @@ Local VLM (diary gen)  | Yes | No  | Yes | No  | No  | No  | Yes
 Text Diary             | Yes | No  | Yes | No  | No  | No  | Yes
 Displacement Data      | Yes | No  | Yes | No  | No  | No  | Yes
 Convergence Correction | Yes | No  | Yes | No  | Yes*| Yes | Yes
+Past Correctives Shown | Yes | No  | Yes | No  | Yes | Yes | Yes
+  via                  | dia | n/a | dia | n/a | blk | blk | dia
 Stall Detection        | Yes | No  | Yes | No  | Yes*| Yes | Yes
 Monitor instruction set| Full| n/a | Full| n/a | SF  | GO  | TO
+
+  Past Correctives Shown: every monitor-based condition forwards past
+    correctives (oldest-first, each with diagnosis and completion at
+    issue) into the convergence prompt so the VLM can avoid reissuing
+    a recent correction that did not move completion. The transport
+    differs by condition:
+      * "dia" (C0, C2, C6): inline as ``[CONVERGENCE @ step N]: ...``
+        markers in the diary, since those conditions display the
+        diary in the convergence prompt. The persisted diary in
+        diary_summary.json carries the markers regardless of
+        condition (useful for offline analysis).
+      * "blk" (C4, C5): a separate oldest-first corrective-action
+        block in the convergence prompt, since those conditions omit
+        the diary by design. C5 additionally disables the local VLM
+        (skip_local), so its persisted diary contains only the
+        markers and no observation entries.
+    C1 and C3 have no monitor and no convergence cycle, so neither
+    form applies.
 
 ABORT SEMANTICS:
   Monitor-based conditions (C0, C2, C4, C5, C6) use a uniform abort

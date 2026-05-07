@@ -1783,6 +1783,7 @@ def run_subgoal(
                     "subgoal": subgoal_nl,
                     "converted_instruction": converted_instruction,
                     "diary": monitor.diary,
+                    "correction_history": monitor.correction_history,
                     "override_history": override_history,
                     "corrections_used": monitor.corrections_used,
                     "last_completion_pct": monitor.last_completion_pct,
