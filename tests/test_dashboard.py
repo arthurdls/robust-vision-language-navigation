@@ -173,7 +173,7 @@ from rvln.mininav.dashboard import find_chromium_executable, launch_browser
 
 
 class TestBrowserLauncher:
-    def test_returns_first_existing(self, tmp_path, monkeypatch):
+    def test_returns_first_existing(self, tmp_path):
         existing = tmp_path / "chrome.exe"
         existing.write_text("")
         candidates = [tmp_path / "missing.exe", existing, tmp_path / "other.exe"]

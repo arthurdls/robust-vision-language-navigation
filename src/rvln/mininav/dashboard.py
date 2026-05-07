@@ -293,6 +293,7 @@ def _wsl_chromium_candidates() -> list[Path]:
     return [
         Path("/mnt/c/Program Files/Google/Chrome/Application/chrome.exe"),
         Path("/mnt/c/Program Files (x86)/Google/Chrome/Application/chrome.exe"),
+        Path("/mnt/c/Program Files/Microsoft/Edge/Application/msedge.exe"),
         Path("/mnt/c/Program Files (x86)/Microsoft/Edge/Application/msedge.exe"),
     ]
 
