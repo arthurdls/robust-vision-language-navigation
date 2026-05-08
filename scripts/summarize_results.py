@@ -126,7 +126,6 @@ def telemetry_from_run_info(run_info: Dict[str, Any]) -> Dict[str, Any]:
         "M6_avg_monitor_rtt_s": avg_monitor_rtt,
         "M7_total_input_tokens": run_info.get("total_input_tokens", 0),
         "M7_total_output_tokens": run_info.get("total_output_tokens", 0),
-        "M7_total_image_tokens": run_info.get("total_image_tokens", 0),
         "M8_total_steps": run_info.get("total_steps", 0),
         "M8_wall_clock_seconds": run_info.get("wall_clock_seconds", 0),
         "stop_reason": run_info.get("stop_reason", ""),
@@ -172,7 +171,7 @@ def print_table(summary: Dict[str, Any]) -> None:
     rows = summary["rows"]
     header = (
         "Cond  Label                       Outcome  Subgoals       Steps    Wall(s)   "
-        "Monitor calls  Avg RTT(s)  Tokens(in/out/img)         Stop reason"
+        "Monitor calls  Avg RTT(s)  Tokens(in/out)             Stop reason"
     )
     sep = "-" * len(header)
     print()
@@ -190,8 +189,7 @@ def print_table(summary: Dict[str, Any]) -> None:
         )
         tokens = (
             f"{_fmt(row.get('M7_total_input_tokens'), '0')}/"
-            f"{_fmt(row.get('M7_total_output_tokens'), '0')}/"
-            f"{_fmt(row.get('M7_total_image_tokens'), '0')}"
+            f"{_fmt(row.get('M7_total_output_tokens'), '0')}"
         )
         print(
             f"C{row['condition']}    {row['label']:<26}  "

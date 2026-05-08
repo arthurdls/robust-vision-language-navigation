@@ -196,8 +196,6 @@ class LLMUserInterface():
                 "model": cached.get("model", self._model),
                 "input_tokens": cached_usage.get("input_tokens", 0),
                 "output_tokens": cached_usage.get("output_tokens", 0),
-                "image_tokens": cached_usage.get("image_tokens", 0),
-                "cached_tokens": cached_usage.get("cached_tokens", 0),
             })
             response_text = cached.get("raw_response", "")
             self._history.append({"role": "user", "content": request})
@@ -218,8 +216,6 @@ class LLMUserInterface():
             "model": usage.get("model", self._model),
             "input_tokens": usage.get("input_tokens", 0),
             "output_tokens": usage.get("output_tokens", 0),
-            "image_tokens": usage.get("image_tokens", 0),
-            "cached_tokens": usage.get("cached_tokens", 0),
         })
 
         try:

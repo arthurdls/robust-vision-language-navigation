@@ -271,16 +271,10 @@ class OpenAIProvider(BaseLLM):
                 data = _normalize_sdk_response(resp)
 
                 usage = data.get("usage") or {}
-                # Newer OpenAI usage objects expose finer breakdowns under
-                # prompt_tokens_details (image_tokens, cached_tokens). Pull
-                # them out so M7 can validate the per-image-token estimate.
-                prompt_details = (usage.get("prompt_tokens_details") or {})
                 self.last_usage = {
                     "model": data.get("model", self.model),
                     "input_tokens": usage.get("prompt_tokens", 0),
                     "output_tokens": usage.get("completion_tokens", 0),
-                    "image_tokens": prompt_details.get("image_tokens", 0),
-                    "cached_tokens": prompt_details.get("cached_tokens", 0),
                 }
 
                 # canonical OpenAI chat response path

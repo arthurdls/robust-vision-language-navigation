@@ -109,8 +109,6 @@ class SubgoalConverter:
             "model": usage.get("model", self._model),
             "input_tokens": usage.get("input_tokens", 0),
             "output_tokens": usage.get("output_tokens", 0),
-            "image_tokens": usage.get("image_tokens", 0),
-            "cached_tokens": usage.get("cached_tokens", 0),
         })
         instruction, error = self._parse_response(response)
         if instruction is not None:
