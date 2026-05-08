@@ -17,6 +17,10 @@ dependencies:
   - pip
   # LTL planner (Spot library)
   - spot
+  # ffmpeg with libx264 for playback.mp4 encoding (write_frames_to_mp4
+  # shells out to ffmpeg; the opencv-python wheel's bundled ffmpeg lacks
+  # libx264).
+  - ffmpeg
 
   - pip:
       # UAV-Flow-Eval / gym_unrealcv stack

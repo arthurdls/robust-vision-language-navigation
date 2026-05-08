@@ -235,10 +235,13 @@ def write_frames_to_mp4(
     out_path: Path,
     *,
     fps: float = 10.0,
-    fourcc: str = "mp4v",
     frame_labels: Optional[Dict[int, Union[FrameLabel, str]]] = None,
 ) -> Path:
-    """Encode image sequence to MP4 using OpenCV.
+    """Encode image sequence to MP4 by piping raw frames into ffmpeg (libx264).
+
+    The PyPI ``opencv-python`` wheel statically links a stripped ffmpeg
+    without libx264, so ``cv2.VideoWriter`` cannot produce H.264 output.
+    Shell out to the env's ffmpeg instead. ``ffmpeg`` must be on PATH.
 
     Parameters
     ----------
@@ -248,19 +251,31 @@ def write_frames_to_mp4(
         Output .mp4 path (parent directory is created if needed).
     fps
         Frame rate.
-    fourcc
-        Four-character codec.
     frame_labels
         Optional mapping from frame index to overlay label. Each value is a
         ``(subgoal, openvla_command)`` tuple drawn at the top and bottom of
         the frame respectively. Plain strings are also accepted for backward
         compatibility (drawn at the top only).
     """
+    import shutil
+    import subprocess
+    import sys
+
     import cv2
 
     paths = [Path(p) for p in frame_paths]
     if not paths:
         raise ValueError("frame_paths is empty")
+
+    ffmpeg = shutil.which("ffmpeg")
+    if ffmpeg is None:
+        # Also check the running interpreter's bin dir (covers conda envs
+        # invoked via absolute python path without activation).
+        candidate = Path(sys.executable).parent / "ffmpeg"
+        if candidate.is_file():
+            ffmpeg = str(candidate)
+    if ffmpeg is None:
+        raise OSError("ffmpeg not found on PATH; install ffmpeg (libx264) to encode playback mp4s")
 
     out_path = Path(out_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -270,11 +285,24 @@ def write_frames_to_mp4(
         raise OSError(f"could not read first frame: {paths[0]}")
 
     h, w = first.shape[:2]
-    cc = cv2.VideoWriter_fourcc(*fourcc)
-    writer = cv2.VideoWriter(str(out_path), cc, float(fps), (w, h))
-    if not writer.isOpened():
-        writer.release()
-        raise OSError(f"VideoWriter could not open {out_path} (codec={fourcc!r})")
+
+    cmd = [
+        ffmpeg, "-y",
+        "-loglevel", "error",
+        "-f", "rawvideo",
+        "-pix_fmt", "bgr24",
+        "-s", f"{w}x{h}",
+        "-r", f"{float(fps)}",
+        "-i", "-",
+        "-c:v", "libx264",
+        "-pix_fmt", "yuv420p",
+        "-crf", "23",
+        "-preset", "veryfast",
+        "-movflags", "+faststart",
+        str(out_path),
+    ]
+    proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
+    assert proc.stdin is not None
 
     try:
         for idx, p in enumerate(paths):
@@ -286,9 +314,14 @@ def write_frames_to_mp4(
                 img = cv2.resize(img, (w, h), interpolation=cv2.INTER_AREA)
             if frame_labels and idx in frame_labels:
                 draw_label_overlay(img, frame_labels[idx])
-            writer.write(img)
+            proc.stdin.write(img.tobytes())
     finally:
-        writer.release()
+        if proc.stdin:
+            proc.stdin.close()
+        rc = proc.wait()
+        if rc != 0:
+            err = proc.stderr.read().decode("utf-8", errors="replace") if proc.stderr else ""
+            raise OSError(f"ffmpeg exited with code {rc} writing {out_path}: {err}")
 
     return out_path
 
@@ -298,7 +331,6 @@ def save_run_directory_mp4(
     *,
     out_name: str = "playback.mp4",
     fps: float = 10.0,
-    fourcc: str = "mp4v",
     overlay: bool = True,
 ) -> Optional[Path]:
     """Write ``run_dir / out_name`` from frames under *run_dir*.
@@ -313,7 +345,7 @@ def save_run_directory_mp4(
     frame_labels = load_frame_labels(run_dir) if overlay else None
     out_path = run_dir / out_name
     write_frames_to_mp4(
-        paths, out_path, fps=fps, fourcc=fourcc,
+        paths, out_path, fps=fps,
         frame_labels=frame_labels,
     )
     logger.info("Saved video to %s", out_path)

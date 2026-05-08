@@ -3,7 +3,7 @@
 Display FPV frames or trajectory plot images from a results directory.
 
 Also exports save_run_directory_mp4 and write_frames_to_mp4 for encoding the same
-frame layouts to MP4 (mp4v fourcc), e.g. from experiment runners.
+frame layouts to H.264 MP4 via ffmpeg, e.g. from experiment runners.
 
 Supports:
 - LTL results: run dir with frames/ subdir (frame_000000.png, ...). Pass the run dir.
