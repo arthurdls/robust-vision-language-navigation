@@ -7,8 +7,8 @@ import pytest
 
 
 def _load_summarize():
-    path = Path(__file__).resolve().parent.parent / "scripts" / "benchmark_sim_loop.py"
-    spec = importlib.util.spec_from_file_location("benchmark_sim_loop", path)
+    path = Path(__file__).resolve().parent.parent / "scripts" / "summarize_step_timings.py"
+    spec = importlib.util.spec_from_file_location("summarize_step_timings", path)
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     return mod.summarize

@@ -1,7 +1,7 @@
-"""Benchmark a fixed number of control-loop iterations and print stats.
+"""Summarize a step_timings.jsonl and print median/p95/max per phase.
 
 Usage:
-    python scripts/benchmark_sim_loop.py path/to/step_timings.jsonl
+    python scripts/summarize_step_timings.py path/to/step_timings.jsonl
 
 Reads step_timings.jsonl produced by the runner and prints median/p95
 per phase. Used to verify each speedup task lands.
