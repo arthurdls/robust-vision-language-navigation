@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  html, body { margin: 0; padding: 0; background: #0d0d10; }
+  body { width: 1920px; height: 1080px; overflow: hidden; }
+  .canvas {
+    width: 1920px;
+    height: 1080px;
+    background: #0d0d10;
+    display: grid;
+    grid-template-columns: 1fr 34%;
+    grid-template-rows: auto 1fr;
+    gap: 6px;
+    padding: 8px;
+    box-sizing: border-box;
+    color: #c8c8d0;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 11px;
+  }
+  .topbar {
+    grid-column: 1 / 3;
+    background: #16161c;
+    border: 1px solid #2a2a32;
+    padding: 6px 10px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 11px;
+  }
+  .topbar b { color: #e8e8ee; }
+  .left { display: grid; grid-template-rows: 1.55fr 0.95fr 0.7fr; gap: 6px; min-height: 0; }
+  .right { display: grid; grid-template-rows: 9fr 16fr; gap: 6px; min-height: 0; height: 100%; }
+  .pane { background: #16161c; border: 1px solid #2a2a32; padding: 6px 8px; overflow: hidden; display: flex; flex-direction: column; min-height: 0; }
+  .pane .title { font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; color: #8a8aa0; margin-bottom: 4px; display: flex; justify-content: space-between; flex: 0 0 auto; }
+  .pane .title em { color: #6a6a80; font-style: normal; font-weight: normal; }
+  .twocol { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; min-height: 0; }
+  .pane.prompt-pane { display: flex; flex-direction: column; min-height: 0; }
+  .pane.prompt-pane .image { flex: 1 1 auto; min-height: 0; display: flex; align-items: center; justify-content: center; background: #0a0a0e; border: 1px solid #1f1f28; overflow: hidden; margin-bottom: 4px; }
+  .pane.prompt-pane .image img { max-width: 100%; max-height: 100%; object-fit: contain; }
+  .pane.prompt-pane .meta { display: flex; flex-wrap: wrap; gap: 4px; font-size: 9px; flex: 0 0 auto; margin-bottom: 4px; }
+  .chip { background: #1c2230; color: #b8c8e0; padding: 1px 5px; border-radius: 8px; font-size: 9px; border: 1px solid #2a3548; }
+  .chip.warn { background: #2a1c14; color: #e0b070; border-color: #5a3a20; }
+  .chip.ok   { background: #1a2a1c; color: #8ed09a; border-color: #2a4a32; }
+  .chip.bad  { background: #2a1414; color: #e08070; border-color: #5a2020; }
+  .reasoning { flex: 0 0 auto; color: #f0f0f4; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; font-size: 13px; line-height: 1.45; border-left: 3px solid #4caf50; padding: 6px 10px; background: #0f1d14; overflow: hidden; }
+  .reasoning::before { content: "REASONING"; display: block; color: #6aa070; font-size: 9px; letter-spacing: 0.08em; margin-bottom: 4px; font-family: ui-monospace, monospace; }
+  .video { background: #1a1a22; border: 1px dashed #3a3a48; display: flex; align-items: center; justify-content: center; color: #6a6a80; font-size: 11px; width: 100%; height: 100%; min-height: 0; overflow: hidden; }
+  .badge { display: inline-block; padding: 1px 6px; background: #2a4a6a; color: #cfe6ff; border-radius: 3px; font-size: 9px; }
+  .diary-wrap { flex: 1; min-height: 0; position: relative; overflow: hidden; display: flex; flex-direction: column; justify-content: flex-end; }
+  .diary-wrap::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 28px; background: linear-gradient(180deg, #16161c 0%, rgba(22,22,28,0) 100%); pointer-events: none; z-index: 2; }
+  .diary { margin: 0; padding-left: 18px; font-size: 12px; line-height: 1.5; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; color: #d8d8e0; }
+  .diary li { color: #d8d8e0; }
+  .diary li.fading { opacity: 0.45; }
+  .diary li.newest { background: #1a2a20; border-left: 2px solid #4caf50; margin-left: -10px; padding: 2px 6px; list-style-position: inside; }
+  .checkpoint { color: #8aa0ff; font-family: ui-monospace, monospace; font-size: 10px; }
+  .conv-pane { border-color: #6a4a2a !important; background: #1c1610; }
+  .conv-pane .title { color: #e0a060; }
+  .conv-meta { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 4px; flex: 0 0 auto; }
+  .conv-reason { color: #f4e8d0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; font-size: 13px; line-height: 1.45; border-left: 3px solid #c08850; padding: 6px 10px; background: #221810; flex: 1; min-height: 0; overflow: hidden; }
+  .conv-reason::before { content: "VERDICT REASONING"; display: block; color: #c08850; font-size: 9px; letter-spacing: 0.08em; margin-bottom: 4px; font-family: ui-monospace, monospace; }
+</style>
+</head>
+<body>
+<div class="canvas">
+  <div class="topbar">
+    <span><b>Hardware run replay</b> &nbsp; <span id="bar-time">00:00 / 00:00</span> &nbsp; , &nbsp; subgoal <span id="bar-sg">1</span>/<span id="bar-sg-total">4</span>: <span class="badge" id="bar-slug">init</span> &nbsp; <span id="bar-sg-text"></span></span>
+    <span>completion <span id="bar-completion">0.00</span> , drive: <b style="color:#9ad0ff" id="bar-drive">stop</b></span>
+  </div>
+
+  <div class="left">
+    <div class="twocol">
+      <div class="pane prompt-pane">
+        <div class="title">Local prompt <em>(2-frame delta)</em></div>
+        <div class="image"><img id="local-img" src="" alt=""></div>
+        <div class="reasoning" id="local-reasoning">awaiting first checkpoint...</div>
+      </div>
+      <div class="pane prompt-pane">
+        <div class="title">Global prompt <em>(9-frame grid)</em></div>
+        <div class="image"><img id="global-img" src="" alt=""></div>
+        <div class="meta" id="global-meta"></div>
+        <div class="reasoning" id="global-reasoning">awaiting first checkpoint...</div>
+      </div>
+    </div>
+
+    <div class="pane">
+      <div class="title">Running diary <em>(scrolls; newest pinned to bottom)</em></div>
+      <div class="diary-wrap"><ul class="diary" id="diary-list"><li>awaiting first checkpoint...</li></ul></div>
+    </div>
+
+    <div class="pane conv-pane">
+      <div class="title">Convergence output <em>(latest verdict)</em> <span class="badge" id="conv-status" style="background:#6a4a2a;color:#fdcc88">idle</span></div>
+      <div class="conv-meta" id="conv-meta"></div>
+      <div class="conv-reason" id="conv-reasoning">no convergence yet</div>
+    </div>
+  </div>
+
+  <div class="right">
+    <div class="video">phone: waiting for stream</div>
+    <div class="video">on-board: waiting for stream</div>
+  </div>
+</div>
+<script src="panel.js"></script>
+</body>
+</html>
