@@ -1,0 +1,1 @@
+{"complete":false,"completion_percentage":0.31,"should_stop":false,"reasoning":"The black car is still visible ahead-right and relatively small, but the drone appears to be making gradual progress toward it without immediate collision risk."}

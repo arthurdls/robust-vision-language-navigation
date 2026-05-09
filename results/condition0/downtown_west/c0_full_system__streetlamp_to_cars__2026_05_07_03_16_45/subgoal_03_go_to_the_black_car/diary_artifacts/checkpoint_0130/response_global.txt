@@ -1,0 +1,1 @@
+{"complete":true,"completion_percentage":1.0,"should_stop":false,"reasoning":"The black car grew large and moved off the lower-left edge, matching the approach-and-pass pattern that indicates the drone has reached or just passed it."}

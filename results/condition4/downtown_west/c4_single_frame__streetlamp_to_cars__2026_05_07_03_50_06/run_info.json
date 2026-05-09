@@ -1,0 +1,2865 @@
+{
+  "aborted": true,
+  "completed": false,
+  "stop_reason": "ask_help",
+  "condition": "condition4_single_frame",
+  "task": {
+    "instruction": "Go past the first streetlamp, then turn until you see the black car, then go to the black car, then turn toward the red car and go to the red car. Finally, land in front of the traffic light pole on the right.",
+    "initial_pos": [
+      -7500.0,
+      848.0,
+      396.0,
+      -177.0
+    ],
+    "max_steps": 3000,
+    "max_steps_per_subgoal": 500,
+    "diary_check_interval": 10,
+    "max_corrections": 20,
+    "expected_subgoal_count": 6,
+    "task_id": "streetlamp_to_cars"
+  },
+  "seed": 0,
+  "time_dilation": 10,
+  "env_id": "UnrealTrack-DowntownWest-ContinuousColor-v0",
+  "server_url": "http://127.0.0.1:5007/predict",
+  "drone_cam_id": 5,
+  "diary_mode": "frame",
+  "llm_model": "gpt-4o",
+  "monitor_model": "gpt-5.4",
+  "models": {
+    "ltl_nl_planning": "gpt-4o",
+    "subgoal_converter": "gpt-4o",
+    "single_frame_vlm": "gpt-5.4",
+    "openvla_predict_url": "http://127.0.0.1:5007/predict"
+  },
+  "config": {
+    "max_steps_per_subgoal": 500,
+    "diary_check_interval": 10,
+    "max_corrections": 20,
+    "convergence_thresholds": {
+      "position_delta": 3.0,
+      "yaw_delta": 1.0,
+      "consecutive_steps": 10
+    }
+  },
+  "ltl_plan": {
+    "ltl_nl_formula": "F pi_6 & (!pi_6 U pi_5) & (!pi_5 U pi_4) & (!pi_4 U pi_3) & (!pi_3 U pi_2) & (!pi_2 U pi_1)",
+    "pi_predicates": {
+      "pi_1": "Go past the first streetlamp",
+      "pi_2": "Turn until you see the black car",
+      "pi_3": "Go to the black car",
+      "pi_4": "Turn toward the red car",
+      "pi_5": "Go to the red car",
+      "pi_6": "Land in front of the traffic light pole on the right"
+    }
+  },
+  "subgoal_count": 5,
+  "subgoal_summaries": [
+    {
+      "subgoal": "Go past the first streetlamp",
+      "converted_instruction": "go past the first streetlamp",
+      "total_steps": 320,
+      "stop_reason": "monitor_complete",
+      "corrections_used": 1,
+      "last_completion_pct": 0.72,
+      "peak_completion": 1.0,
+      "vlm_call_count": 34,
+      "vlm_call_records": [
+        {
+          "label": "global_checkpoint",
+          "step": 10,
+          "rtt_s": 2.278,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 1474,
+          "output_tokens": 53
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 20,
+          "rtt_s": 1.967,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 1474,
+          "output_tokens": 52
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 30,
+          "rtt_s": 1.661,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 1474,
+          "output_tokens": 55
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 40,
+          "rtt_s": 2.179,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 1474,
+          "output_tokens": 51
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 50,
+          "rtt_s": 4.022,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 1474,
+          "output_tokens": 50
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 60,
+          "rtt_s": 2.07,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 1474,
+          "output_tokens": 51
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 70,
+          "rtt_s": 2.48,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 1474,
+          "output_tokens": 49
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 80,
+          "rtt_s": 3.714,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 1474,
+          "output_tokens": 57
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 90,
+          "rtt_s": 1.973,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 1474,
+          "output_tokens": 57
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 100,
+          "rtt_s": 2.072,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 1474,
+          "output_tokens": 53
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 110,
+          "rtt_s": 1.955,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 1474,
+          "output_tokens": 50
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 120,
+          "rtt_s": 2.793,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 1474,
+          "output_tokens": 56
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 130,
+          "rtt_s": 2.376,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 1474,
+          "output_tokens": 60
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 140,
+          "rtt_s": 2.078,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 1474,
+          "output_tokens": 52
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 150,
+          "rtt_s": 2.581,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 1474,
+          "output_tokens": 65
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 160,
+          "rtt_s": 2.184,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 1474,
+          "output_tokens": 57
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 170,
+          "rtt_s": 1.975,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 1474,
+          "output_tokens": 57
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 180,
+          "rtt_s": 2.175,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 1474,
+          "output_tokens": 55
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 190,
+          "rtt_s": 2.796,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 1474,
+          "output_tokens": 57
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 200,
+          "rtt_s": 2.39,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 1474,
+          "output_tokens": 59
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 210,
+          "rtt_s": 1.966,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 1474,
+          "output_tokens": 57
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 220,
+          "rtt_s": 2.282,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 1474,
+          "output_tokens": 55
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 230,
+          "rtt_s": 3.705,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 1474,
+          "output_tokens": 57
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 240,
+          "rtt_s": 2.481,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 1474,
+          "output_tokens": 60
+        },
+        {
+          "label": "convergence",
+          "step": 245,
+          "rtt_s": 2.584,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2000,
+          "output_tokens": 87
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 250,
+          "rtt_s": 2.379,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 1474,
+          "output_tokens": 56
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 260,
+          "rtt_s": 2.174,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 1474,
+          "output_tokens": 51
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 270,
+          "rtt_s": 2.381,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 1474,
+          "output_tokens": 54
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 280,
+          "rtt_s": 4.629,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 1474,
+          "output_tokens": 53
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 290,
+          "rtt_s": 2.173,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 1474,
+          "output_tokens": 56
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 300,
+          "rtt_s": 2.069,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 1474,
+          "output_tokens": 58
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 310,
+          "rtt_s": 2.076,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 1474,
+          "output_tokens": 58
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 320,
+          "rtt_s": 1.972,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 1474,
+          "output_tokens": 56
+        },
+        {
+          "label": "convergence",
+          "step": 320,
+          "rtt_s": 2.794,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2075,
+          "output_tokens": 87
+        },
+        {
+          "label": "subgoal_convert",
+          "subgoal": "Go past the first streetlamp",
+          "rtt_s": 0.618,
+          "model": "gpt-4o-2024-08-06",
+          "input_tokens": 367,
+          "output_tokens": 12
+        }
+      ],
+      "next_origin": [
+        -13827.127011501172,
+        7.848985347334292,
+        396.0,
+        -177.0470587393962
+      ],
+      "parse_failures": 0,
+      "override_history": [
+        {
+          "step": 244,
+          "type": "convergence_command",
+          "old_instruction": "go past the first streetlamp",
+          "new_instruction": "Move forward 0.5 meters",
+          "reasoning": "convergence (stopped_short): The nearest streetlamp is still visible ahead on the right side of the walkway, indicating the drone has approached it but not clearly passed it yet. A small forward move is the biggest missing action to get beyond the first streetlamp with high confidence."
+        },
+        {
+          "step": 319,
+          "type": "force_converge",
+          "reasoning": "Checkpoint thinks complete, verifying at convergence. Reasoning: The nearest pair of streetlamps is now behind or alongside the drone at the bottom edges of the view, indicating it has moved past the first streetlamp. Raw: {\"complete\":true,\"completion_percentage\":1.0,\"should_stop\":false,\"reasoning\":\"The nearest pair of streetlamps is now behind or alongside the drone at the bottom edges of the view, indicating it has moved past the first streetlamp.\"}"
+        }
+      ]
+    },
+    {
+      "subgoal": "Turn until you see the black car",
+      "converted_instruction": "turn",
+      "total_steps": 130,
+      "stop_reason": "monitor_complete",
+      "corrections_used": 5,
+      "last_completion_pct": 1.0,
+      "peak_completion": 1.0,
+      "vlm_call_count": 19,
+      "vlm_call_records": [
+        {
+          "label": "global_checkpoint",
+          "step": 10,
+          "rtt_s": 1.959,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 1475,
+          "output_tokens": 50
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 20,
+          "rtt_s": 2.381,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 1475,
+          "output_tokens": 55
+        },
+        {
+          "label": "convergence",
+          "step": 24,
+          "rtt_s": 2.588,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2001,
+          "output_tokens": 94
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 30,
+          "rtt_s": 1.977,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 1475,
+          "output_tokens": 51
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 40,
+          "rtt_s": 2.052,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 1475,
+          "output_tokens": 54
+        },
+        {
+          "label": "convergence",
+          "step": 43,
+          "rtt_s": 6.79,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2035,
+          "output_tokens": 91
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 50,
+          "rtt_s": 1.871,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 1475,
+          "output_tokens": 44
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 60,
+          "rtt_s": 1.967,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 1475,
+          "output_tokens": 57
+        },
+        {
+          "label": "convergence",
+          "step": 62,
+          "rtt_s": 2.791,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2056,
+          "output_tokens": 94
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 70,
+          "rtt_s": 2.073,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 1475,
+          "output_tokens": 56
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 80,
+          "rtt_s": 2.471,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 1475,
+          "output_tokens": 57
+        },
+        {
+          "label": "convergence",
+          "step": 89,
+          "rtt_s": 2.272,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2077,
+          "output_tokens": 95
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 90,
+          "rtt_s": 1.931,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 1475,
+          "output_tokens": 55
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 100,
+          "rtt_s": 2.784,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 1475,
+          "output_tokens": 56
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 110,
+          "rtt_s": 4.626,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 1475,
+          "output_tokens": 55
+        },
+        {
+          "label": "convergence",
+          "step": 115,
+          "rtt_s": 2.788,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2098,
+          "output_tokens": 90
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 120,
+          "rtt_s": 1.965,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 1475,
+          "output_tokens": 54
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 130,
+          "rtt_s": 2.679,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 1475,
+          "output_tokens": 47
+        },
+        {
+          "label": "convergence",
+          "step": 130,
+          "rtt_s": 2.17,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2149,
+          "output_tokens": 72
+        },
+        {
+          "label": "subgoal_convert",
+          "subgoal": "Turn until you see the black car",
+          "rtt_s": 0.543,
+          "model": "gpt-4o-2024-08-06",
+          "input_tokens": 368,
+          "output_tokens": 7
+        }
+      ],
+      "next_origin": [
+        -13823.956135307026,
+        -9.300499708739022,
+        384.70588207244873,
+        -67.84721006290454
+      ],
+      "parse_failures": 0,
+      "override_history": [
+        {
+          "step": 23,
+          "type": "convergence_command",
+          "old_instruction": "turn",
+          "new_instruction": "Turn right 20 degrees",
+          "reasoning": "convergence (stopped_short): The current frame shows a pedestrian street with trees, benches, and lamp posts, but no clearly identifiable black car anywhere in view. Since this is a visual search task and there is no directional evidence pointing left, the drone appears to have stopped before finding the target and should continue sweeping right."
+        },
+        {
+          "step": 42,
+          "type": "convergence_command",
+          "old_instruction": "Turn right 20 degrees",
+          "new_instruction": "Turn right 20 degrees",
+          "reasoning": "convergence (stopped_short): The current frame shows a pedestrian plaza with trees, benches, and storefronts, but no identifiable black car anywhere in view. Since this is a visual search task and the target is still not visible, the drone has stopped short and should continue sweeping right to search new area."
+        },
+        {
+          "step": 61,
+          "type": "convergence_command",
+          "old_instruction": "Turn right 20 degrees",
+          "new_instruction": "Turn right 20 degrees",
+          "reasoning": "convergence (stopped_short): The current frame shows a pedestrian plaza with trees, benches, lamp posts, and storefronts, but no identifiable black car anywhere in view. Since the target is still not visible and there is no directional cue suggesting a left turn, continue the rightward search sweep with a small additional turn."
+        },
+        {
+          "step": 88,
+          "type": "convergence_command",
+          "old_instruction": "Turn right 20 degrees",
+          "new_instruction": "Turn right 20 degrees",
+          "reasoning": "convergence (stopped_short): The current frame shows a plaza with trees, benches, lamp posts, and storefronts, but no identifiable black car anywhere in view. Since this is a visual search task and the target is still not visible, the drone has stopped short and should continue the rightward sweep to search new area."
+        },
+        {
+          "step": 114,
+          "type": "convergence_command",
+          "old_instruction": "Turn right 20 degrees",
+          "new_instruction": "Turn right 20 degrees",
+          "reasoning": "convergence (stopped_short): The black car is not visible anywhere in the current frame; I only see the plaza, storefront, tree, lamp post, and kiosk. Since this is a visual search task and there is no directional evidence pointing left, continue the rightward sweep to search new ground."
+        },
+        {
+          "step": 129,
+          "type": "force_converge",
+          "reasoning": "Checkpoint thinks complete, verifying at convergence. Reasoning: A black car is clearly visible on the right side of the frame, so the visual search subgoal is complete. Raw: {\"complete\":true,\"completion_percentage\":1.0,\"should_stop\":false,\"reasoning\":\"A black car is clearly visible on the right side of the frame, so the visual search subgoal is complete.\"}"
+        }
+      ]
+    },
+    {
+      "subgoal": "Go to the black car",
+      "converted_instruction": "go to the black car",
+      "total_steps": 210,
+      "stop_reason": "monitor_complete",
+      "corrections_used": 5,
+      "last_completion_pct": 1.0,
+      "peak_completion": 1.0,
+      "vlm_call_count": 27,
+      "vlm_call_records": [
+        {
+          "label": "global_checkpoint",
+          "step": 10,
+          "rtt_s": 2.067,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 1473,
+          "output_tokens": 59
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 20,
+          "rtt_s": 1.957,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 1473,
+          "output_tokens": 60
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 30,
+          "rtt_s": 1.754,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 1473,
+          "output_tokens": 50
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 40,
+          "rtt_s": 2.157,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 1473,
+          "output_tokens": 54
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 50,
+          "rtt_s": 2.367,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 1473,
+          "output_tokens": 62
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 60,
+          "rtt_s": 2.359,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 1473,
+          "output_tokens": 53
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 70,
+          "rtt_s": 2.165,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 1473,
+          "output_tokens": 54
+        },
+        {
+          "label": "convergence",
+          "step": 76,
+          "rtt_s": 2.576,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 1999,
+          "output_tokens": 89
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 80,
+          "rtt_s": 2.374,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 1473,
+          "output_tokens": 55
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 90,
+          "rtt_s": 2.156,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 1473,
+          "output_tokens": 56
+        },
+        {
+          "label": "convergence",
+          "step": 99,
+          "rtt_s": 2.983,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2034,
+          "output_tokens": 104
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 100,
+          "rtt_s": 2.117,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 1473,
+          "output_tokens": 58
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 110,
+          "rtt_s": 1.962,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 1473,
+          "output_tokens": 51
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 120,
+          "rtt_s": 1.757,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 1473,
+          "output_tokens": 59
+        },
+        {
+          "label": "convergence",
+          "step": 126,
+          "rtt_s": 2.162,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2055,
+          "output_tokens": 101
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 130,
+          "rtt_s": 2.065,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 1473,
+          "output_tokens": 52
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 140,
+          "rtt_s": 1.956,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 1473,
+          "output_tokens": 57
+        },
+        {
+          "label": "convergence",
+          "step": 145,
+          "rtt_s": 2.787,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2076,
+          "output_tokens": 100
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 150,
+          "rtt_s": 2.171,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 1473,
+          "output_tokens": 61
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 160,
+          "rtt_s": 1.963,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 1473,
+          "output_tokens": 59
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 170,
+          "rtt_s": 2.584,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 1473,
+          "output_tokens": 58
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 180,
+          "rtt_s": 2.176,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 1473,
+          "output_tokens": 58
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 190,
+          "rtt_s": 1.769,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 1473,
+          "output_tokens": 49
+        },
+        {
+          "label": "convergence",
+          "step": 190,
+          "rtt_s": 2.792,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2130,
+          "output_tokens": 78
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 200,
+          "rtt_s": 2.688,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 1473,
+          "output_tokens": 61
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 210,
+          "rtt_s": 1.768,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 1473,
+          "output_tokens": 44
+        },
+        {
+          "label": "convergence",
+          "step": 210,
+          "rtt_s": 2.587,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2147,
+          "output_tokens": 73
+        },
+        {
+          "label": "subgoal_convert",
+          "subgoal": "Go to the black car",
+          "rtt_s": 0.548,
+          "model": "gpt-4o-2024-08-06",
+          "input_tokens": 366,
+          "output_tokens": 11
+        }
+      ],
+      "next_origin": [
+        -12472.845503384822,
+        -845.0932622810816,
+        390.35294103622437,
+        -26.035502923864442
+      ],
+      "parse_failures": 0,
+      "override_history": [
+        {
+          "step": 75,
+          "type": "convergence_command",
+          "old_instruction": "go to the black car",
+          "new_instruction": "Move closer to the black car",
+          "reasoning": "convergence (stopped_short): The car lot is visible ahead, but the target black car does not fill much of the frame and appears still some distance away near the right side of the parking area. The drone seems to have stopped before reaching it, so the biggest gap is forward distance."
+        },
+        {
+          "step": 98,
+          "type": "convergence_command",
+          "old_instruction": "Move closer to the black car",
+          "new_instruction": "Turn right 20 degrees",
+          "reasoning": "convergence (stopped_short): The black car is not visible in the current frame; I only see a storefront on the left and a parking lot with a white and a blue/purple car near the blue building. Since the previous forward correction did not improve completion, the bigger bottleneck is reacquiring the target, so a small right turn is the best next step."
+        },
+        {
+          "step": 125,
+          "type": "convergence_command",
+          "old_instruction": "Turn right 20 degrees",
+          "new_instruction": "Turn right 20 degrees",
+          "reasoning": "convergence (stopped_short): The black car is not clearly visible in the current frame; I only see a light-colored car near the far building and a motorcycle in the foreground. Since the target is not in view and there is no clear leftward cue, the best next step is to continue the rightward search sweep to reacquire the black car."
+        },
+        {
+          "step": 144,
+          "type": "convergence_command",
+          "old_instruction": "Turn right 20 degrees",
+          "new_instruction": "Move closer to the black car",
+          "reasoning": "convergence (stopped_short): The black car is visible at the lower right of the frame, so the target has been acquired, but it still occupies only a small portion of the image and is clearly some distance away across the parking area. Since recent right-turn corrections already found the car, the main remaining gap is forward distance rather than yaw."
+        },
+        {
+          "step": 189,
+          "type": "force_converge",
+          "reasoning": "Checkpoint thinks complete, verifying at convergence. Reasoning: The black car is very close and fills a substantial portion of the lower-right frame, indicating the drone has reached the target. Raw: {\"complete\":true,\"completion_percentage\":1.0,\"should_stop\":false,\"reasoning\":\"The black car is very close and fills a substantial portion of the lower-right frame, indicating the drone has reached the target.\"}"
+        },
+        {
+          "step": 189,
+          "type": "convergence_command",
+          "old_instruction": "Move closer to the black car",
+          "new_instruction": "Move closer to the black car",
+          "reasoning": "convergence (stopped_short): The black car is clearly visible in the lower-right foreground and already quite close, but it does not yet dominate the frame enough for high-confidence arrival. A small forward move is the biggest remaining gap."
+        },
+        {
+          "step": 209,
+          "type": "force_converge",
+          "reasoning": "Checkpoint thinks complete, verifying at convergence. Reasoning: The black car fills a large portion of the lower foreground, indicating the drone has reached the target. Raw: {\"complete\":true,\"completion_percentage\":1.0,\"should_stop\":false,\"reasoning\":\"The black car fills a large portion of the lower foreground, indicating the drone has reached the target.\"}"
+        }
+      ]
+    },
+    {
+      "subgoal": "Turn toward the red car",
+      "converted_instruction": "turn toward the red car",
+      "total_steps": 20,
+      "stop_reason": "monitor_complete",
+      "corrections_used": 1,
+      "last_completion_pct": 1.0,
+      "peak_completion": 1.0,
+      "vlm_call_count": 4,
+      "vlm_call_records": [
+        {
+          "label": "global_checkpoint",
+          "step": 10,
+          "rtt_s": 2.168,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 1473,
+          "output_tokens": 53
+        },
+        {
+          "label": "convergence",
+          "step": 12,
+          "rtt_s": 3.398,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 1999,
+          "output_tokens": 106
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 20,
+          "rtt_s": 3.201,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 1473,
+          "output_tokens": 52
+        },
+        {
+          "label": "convergence",
+          "step": 20,
+          "rtt_s": 3.606,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2068,
+          "output_tokens": 76
+        },
+        {
+          "label": "subgoal_convert",
+          "subgoal": "Turn toward the red car",
+          "rtt_s": 0.753,
+          "model": "gpt-4o-2024-08-06",
+          "input_tokens": 366,
+          "output_tokens": 11
+        }
+      ],
+      "next_origin": [
+        -12469.914829045585,
+        -843.7340269309007,
+        390.35294103622437,
+        -37.9648976713537
+      ],
+      "parse_failures": 0,
+      "override_history": [
+        {
+          "step": 11,
+          "type": "convergence_command",
+          "old_instruction": "turn toward the red car",
+          "new_instruction": "Turn left 20 degrees",
+          "reasoning": "convergence (stopped_short): A red car is not clearly visible in the current frame; the most prominent nearby vehicle is a dark car at the bottom foreground, with another purple car off to the left. Since the target is not yet identifiable and there is directional evidence from the visible cars on the left side, a small left turn is the best single correction to continue the search."
+        },
+        {
+          "step": 19,
+          "type": "force_converge",
+          "reasoning": "Checkpoint thinks complete, verifying at convergence. Reasoning: A red/purple car is clearly visible in the frame, so the drone is already turned toward it and the search subgoal is complete. Raw: {\"complete\":true,\"completion_percentage\":1.0,\"should_stop\":false,\"reasoning\":\"A red/purple car is clearly visible in the frame, so the drone is already turned toward it and the search subgoal is complete.\"}"
+        }
+      ]
+    },
+    {
+      "subgoal": "Go to the red car",
+      "converted_instruction": "approach the red car",
+      "total_steps": 500,
+      "stop_reason": "ask_help",
+      "corrections_used": 15,
+      "last_completion_pct": 0.97,
+      "peak_completion": 1.0,
+      "vlm_call_count": 65,
+      "vlm_call_records": [
+        {
+          "label": "global_checkpoint",
+          "step": 10,
+          "rtt_s": 1.969,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 1473,
+          "output_tokens": 52
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 20,
+          "rtt_s": 2.375,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 1473,
+          "output_tokens": 61
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 30,
+          "rtt_s": 7.19,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 1473,
+          "output_tokens": 60
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 40,
+          "rtt_s": 2.582,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 1473,
+          "output_tokens": 54
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 50,
+          "rtt_s": 2.165,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 1473,
+          "output_tokens": 54
+        },
+        {
+          "label": "convergence",
+          "step": 53,
+          "rtt_s": 2.792,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 1999,
+          "output_tokens": 91
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 60,
+          "rtt_s": 2.276,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 1473,
+          "output_tokens": 56
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 70,
+          "rtt_s": 2.791,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 1473,
+          "output_tokens": 55
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 80,
+          "rtt_s": 1.869,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 1473,
+          "output_tokens": 61
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 90,
+          "rtt_s": 3.402,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 1473,
+          "output_tokens": 56
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 100,
+          "rtt_s": 2.581,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 1473,
+          "output_tokens": 60
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 110,
+          "rtt_s": 2.579,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 1473,
+          "output_tokens": 59
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 120,
+          "rtt_s": 2.468,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 1473,
+          "output_tokens": 57
+        },
+        {
+          "label": "convergence",
+          "step": 127,
+          "rtt_s": 2.385,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2034,
+          "output_tokens": 88
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 130,
+          "rtt_s": 1.971,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 1473,
+          "output_tokens": 58
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 140,
+          "rtt_s": 2.626,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 1473,
+          "output_tokens": 55
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 150,
+          "rtt_s": 2.173,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 1473,
+          "output_tokens": 55
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 160,
+          "rtt_s": 2.173,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 1473,
+          "output_tokens": 49
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 170,
+          "rtt_s": 2.255,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 1473,
+          "output_tokens": 57
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 180,
+          "rtt_s": 2.272,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 1473,
+          "output_tokens": 53
+        },
+        {
+          "label": "convergence",
+          "step": 189,
+          "rtt_s": 2.787,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2056,
+          "output_tokens": 99
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 190,
+          "rtt_s": 2.102,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 1473,
+          "output_tokens": 53
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 200,
+          "rtt_s": 1.961,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 1473,
+          "output_tokens": 55
+        },
+        {
+          "label": "convergence",
+          "step": 208,
+          "rtt_s": 3.295,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2077,
+          "output_tokens": 100
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 210,
+          "rtt_s": 1.854,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 1473,
+          "output_tokens": 51
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 220,
+          "rtt_s": 2.579,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 1473,
+          "output_tokens": 56
+        },
+        {
+          "label": "convergence",
+          "step": 227,
+          "rtt_s": 2.577,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2098,
+          "output_tokens": 105
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 230,
+          "rtt_s": 3.499,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 1473,
+          "output_tokens": 55
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 240,
+          "rtt_s": 2.167,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 1473,
+          "output_tokens": 53
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 250,
+          "rtt_s": 1.964,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 1473,
+          "output_tokens": 54
+        },
+        {
+          "label": "convergence",
+          "step": 253,
+          "rtt_s": 2.576,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2119,
+          "output_tokens": 96
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 260,
+          "rtt_s": 2.044,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 1473,
+          "output_tokens": 51
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 270,
+          "rtt_s": 1.954,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 1473,
+          "output_tokens": 51
+        },
+        {
+          "label": "convergence",
+          "step": 275,
+          "rtt_s": 3.392,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2140,
+          "output_tokens": 110
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 280,
+          "rtt_s": 1.865,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 1473,
+          "output_tokens": 51
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 290,
+          "rtt_s": 1.758,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 1473,
+          "output_tokens": 46
+        },
+        {
+          "label": "convergence",
+          "step": 294,
+          "rtt_s": 2.988,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2161,
+          "output_tokens": 92
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 300,
+          "rtt_s": 2.374,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 1473,
+          "output_tokens": 52
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 310,
+          "rtt_s": 1.759,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 1473,
+          "output_tokens": 45
+        },
+        {
+          "label": "convergence",
+          "step": 313,
+          "rtt_s": 2.373,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2182,
+          "output_tokens": 93
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 320,
+          "rtt_s": 1.956,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 1473,
+          "output_tokens": 53
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 330,
+          "rtt_s": 3.183,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 1473,
+          "output_tokens": 53
+        },
+        {
+          "label": "convergence",
+          "step": 332,
+          "rtt_s": 2.978,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2203,
+          "output_tokens": 95
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 340,
+          "rtt_s": 1.755,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 1473,
+          "output_tokens": 52
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 350,
+          "rtt_s": 1.967,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 1473,
+          "output_tokens": 49
+        },
+        {
+          "label": "convergence",
+          "step": 352,
+          "rtt_s": 2.581,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2224,
+          "output_tokens": 91
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 360,
+          "rtt_s": 2.075,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 1473,
+          "output_tokens": 47
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 370,
+          "rtt_s": 1.759,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 1473,
+          "output_tokens": 51
+        },
+        {
+          "label": "convergence",
+          "step": 371,
+          "rtt_s": 2.686,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2245,
+          "output_tokens": 107
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 380,
+          "rtt_s": 2.156,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 1473,
+          "output_tokens": 61
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 390,
+          "rtt_s": 3.616,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 1473,
+          "output_tokens": 59
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 400,
+          "rtt_s": 3.002,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 1473,
+          "output_tokens": 57
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 410,
+          "rtt_s": 2.999,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 1473,
+          "output_tokens": 53
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 420,
+          "rtt_s": 2.172,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 1473,
+          "output_tokens": 48
+        },
+        {
+          "label": "convergence",
+          "step": 420,
+          "rtt_s": 4.337,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2297,
+          "output_tokens": 93
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 430,
+          "rtt_s": 2.282,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 1473,
+          "output_tokens": 58
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 440,
+          "rtt_s": 2.386,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 1473,
+          "output_tokens": 59
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 450,
+          "rtt_s": 2.08,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 1473,
+          "output_tokens": 60
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 460,
+          "rtt_s": 1.874,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 1473,
+          "output_tokens": 54
+        },
+        {
+          "label": "convergence",
+          "step": 467,
+          "rtt_s": 3.728,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2289,
+          "output_tokens": 105
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 470,
+          "rtt_s": 1.99,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 1473,
+          "output_tokens": 54
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 480,
+          "rtt_s": 2.572,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 1473,
+          "output_tokens": 52
+        },
+        {
+          "label": "convergence",
+          "step": 486,
+          "rtt_s": 3.205,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2312,
+          "output_tokens": 95
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 490,
+          "rtt_s": 2.18,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 1473,
+          "output_tokens": 61
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 500,
+          "rtt_s": 6.37,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 1473,
+          "output_tokens": 54
+        },
+        {
+          "label": "subgoal_convert",
+          "subgoal": "Go to the red car",
+          "rtt_s": 0.556,
+          "model": "gpt-4o-2024-08-06",
+          "input_tokens": 366,
+          "output_tokens": 11
+        }
+      ],
+      "next_origin": [
+        -10983.21088996104,
+        -1177.4824384202673,
+        -4.000002324581146,
+        158.62304142642483
+      ],
+      "parse_failures": 0,
+      "override_history": [
+        {
+          "step": 52,
+          "type": "convergence_command",
+          "old_instruction": "approach the red car",
+          "new_instruction": "Move closer to the red car",
+          "reasoning": "convergence (stopped_short): The red car is clearly visible in the lower-left area of the frame, but it still appears relatively small and several parking-space lengths away, so the drone has not yet arrived. The biggest gap is forward distance rather than orientation, since the car is already in view."
+        },
+        {
+          "step": 126,
+          "type": "convergence_command",
+          "old_instruction": "Move closer to the red car",
+          "new_instruction": "Move closer to the red car",
+          "reasoning": "convergence (stopped_short): The red car is still clearly visible in the lower-left of the frame and remains fairly small, so the drone has not yet arrived at it. The car is already in view, making forward motion the main missing step rather than a turn or altitude change."
+        },
+        {
+          "step": 188,
+          "type": "convergence_command",
+          "old_instruction": "Move closer to the red car",
+          "new_instruction": "Turn right 20 degrees",
+          "reasoning": "convergence (stopped_short): The red car is only partially visible at the far right edge of the frame and is still relatively small, so the drone has not yet reached it. Since repeated 'move closer' corrections did not improve completion, the bigger issue now is orientation; turning right should bring the red car into view for a better approach."
+        },
+        {
+          "step": 207,
+          "type": "convergence_command",
+          "old_instruction": "Turn right 20 degrees",
+          "new_instruction": "Turn right 20 degrees",
+          "reasoning": "convergence (stopped_short): The red car is not visible in the current frame; I only see the side of a building, a pedestrian walkway, trees, and street furniture. Since the target cannot be located and the last turn-right search likely has not yet brought it into view, continue sweeping right to reacquire the red car before moving closer."
+        },
+        {
+          "step": 226,
+          "type": "convergence_command",
+          "old_instruction": "Turn right 20 degrees",
+          "new_instruction": "Turn right 20 degrees",
+          "reasoning": "convergence (stopped_short): The red car is not clearly visible in the current frame; the view looks down a pedestrian street with buildings on the left and trees on the right, so the drone has not yet reached the car. Since the target cannot be located and recent forward corrections did not improve completion, the biggest gap is reacquiring it with a rightward search turn."
+        },
+        {
+          "step": 252,
+          "type": "convergence_command",
+          "old_instruction": "Turn right 20 degrees",
+          "new_instruction": "Turn right 20 degrees",
+          "reasoning": "convergence (stopped_short): The red car is visible ahead but small and partly obscured near the left side of the street, so the drone has not yet reached it. Since recent forward corrections did not improve completion much, the bigger bottleneck is orientation; turning right should bring the car more into view for the next approach."
+        },
+        {
+          "step": 274,
+          "type": "convergence_command",
+          "old_instruction": "Turn right 20 degrees",
+          "new_instruction": "Turn right 20 degrees",
+          "reasoning": "convergence (stopped_short): The red car is not clearly visible in the current frame; the view is dominated by the plaza, trees, and buildings, with only a dark vehicle-like shape far left in the distance that is not identifiable as the target. Since the target is not in view and recent progress has not improved, the biggest gap is reacquiring it, so continue the rightward search."
+        },
+        {
+          "step": 293,
+          "type": "convergence_command",
+          "old_instruction": "Turn right 20 degrees",
+          "new_instruction": "Turn right 20 degrees",
+          "reasoning": "convergence (stopped_short): The red car is not visible anywhere in the current frame; I only see the street corner, building, trees, and intersection. Since the target cannot be located and recent progress has remained very low, the biggest bottleneck is reacquiring it visually by continuing the rightward search."
+        },
+        {
+          "step": 312,
+          "type": "convergence_command",
+          "old_instruction": "Turn right 20 degrees",
+          "new_instruction": "Turn right 20 degrees",
+          "reasoning": "convergence (stopped_short): No red car is visible in the current frame; the view shows a street corner, building, crosswalk, and traffic lights. Since the target cannot be seen and there is no clear leftward evidence, the best next step is to keep sweeping right to reacquire the red car."
+        },
+        {
+          "step": 331,
+          "type": "convergence_command",
+          "old_instruction": "Turn right 20 degrees",
+          "new_instruction": "Turn right 20 degrees",
+          "reasoning": "convergence (stopped_short): No red car is visible anywhere in the current frame; the view shows an empty intersection, buildings, and traffic lights. Since the target is not in sight and recent progress has remained very low, the drone appears stopped short and should continue the rightward search sweep to reacquire the red car."
+        },
+        {
+          "step": 351,
+          "type": "convergence_command",
+          "old_instruction": "Turn right 20 degrees",
+          "new_instruction": "Turn right 20 degrees",
+          "reasoning": "convergence (stopped_short): No red car is visible anywhere in the current frame; the view shows an empty intersection, buildings, and traffic lights. Since recent progress has remained very low and the target is not in sight, the biggest gap is reacquiring it, so continue the rightward search sweep."
+        },
+        {
+          "step": 370,
+          "type": "convergence_command",
+          "old_instruction": "Turn right 20 degrees",
+          "new_instruction": "Turn right 20 degrees",
+          "reasoning": "convergence (stopped_short): The red car is not clearly visible in the current frame; only a dark vehicle is partially visible at the bottom right, and there is no strong evidence the drone has approached the red car closely. Since the target is not in view and recent progress remains low, the biggest gap is reacquiring it, so a small right turn is the best single action."
+        },
+        {
+          "step": 419,
+          "type": "force_converge",
+          "reasoning": "Checkpoint thinks complete, verifying at convergence. Reasoning: The red car is directly below and fills a substantial portion of the lower frame, indicating the drone has reached the car. Raw: {\"complete\":true,\"completion_percentage\":1.0,\"should_stop\":false,\"reasoning\":\"The red car is directly below and fills a substantial portion of the lower frame, indicating the drone has reached the car.\"}"
+        },
+        {
+          "step": 419,
+          "type": "convergence_command",
+          "old_instruction": "Turn right 20 degrees",
+          "new_instruction": "Descend 0.5 meters",
+          "reasoning": "convergence (stopped_short): The car is clearly visible near the bottom-center and fairly close, but it does not fill a large portion of the frame yet, so the drone appears slightly above and short of the arrival point. A small descent is the biggest missing adjustment to get directly to the red car."
+        },
+        {
+          "step": 466,
+          "type": "convergence_command",
+          "old_instruction": "Descend 0.5 meters",
+          "new_instruction": "Ascend 0.5 meters",
+          "reasoning": "convergence (stopped_short): The red car is clearly visible and very close, but it is still seen ahead rather than having been reached or passed; the camera is extremely low to the ground, suggesting altitude is the remaining bottleneck. The last correction was also a descent, which likely made things worse, so switching axes by ascending slightly is the best next step."
+        },
+        {
+          "step": 485,
+          "type": "convergence_command",
+          "old_instruction": "Ascend 0.5 meters",
+          "new_instruction": "Move closer to the red car",
+          "reasoning": "convergence (stopped_short): The car is clearly visible near the center-right of the frame, but it still occupies only a modest portion of the view rather than filling it, so the drone appears close but not yet at the car. Recent altitude tweaks did not improve completion, so the main remaining gap is forward distance."
+        }
+      ]
+    }
+  ],
+  "total_steps": 1180,
+  "total_vlm_calls": 149,
+  "total_corrections": 27,
+  "total_input_tokens": 243583,
+  "total_output_tokens": 9563,
+  "vlm_call_records": [
+    {
+      "label": "ltl_nl_planning_cached",
+      "rtt_s": 0.0,
+      "model": "gpt-4o",
+      "input_tokens": 2443,
+      "output_tokens": 161
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 10,
+      "rtt_s": 2.278,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1474,
+      "output_tokens": 53
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 20,
+      "rtt_s": 1.967,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1474,
+      "output_tokens": 52
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 30,
+      "rtt_s": 1.661,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1474,
+      "output_tokens": 55
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 40,
+      "rtt_s": 2.179,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1474,
+      "output_tokens": 51
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 50,
+      "rtt_s": 4.022,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1474,
+      "output_tokens": 50
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 60,
+      "rtt_s": 2.07,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1474,
+      "output_tokens": 51
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 70,
+      "rtt_s": 2.48,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1474,
+      "output_tokens": 49
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 80,
+      "rtt_s": 3.714,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1474,
+      "output_tokens": 57
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 90,
+      "rtt_s": 1.973,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1474,
+      "output_tokens": 57
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 100,
+      "rtt_s": 2.072,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1474,
+      "output_tokens": 53
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 110,
+      "rtt_s": 1.955,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1474,
+      "output_tokens": 50
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 120,
+      "rtt_s": 2.793,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1474,
+      "output_tokens": 56
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 130,
+      "rtt_s": 2.376,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1474,
+      "output_tokens": 60
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 140,
+      "rtt_s": 2.078,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1474,
+      "output_tokens": 52
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 150,
+      "rtt_s": 2.581,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1474,
+      "output_tokens": 65
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 160,
+      "rtt_s": 2.184,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1474,
+      "output_tokens": 57
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 170,
+      "rtt_s": 1.975,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1474,
+      "output_tokens": 57
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 180,
+      "rtt_s": 2.175,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1474,
+      "output_tokens": 55
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 190,
+      "rtt_s": 2.796,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1474,
+      "output_tokens": 57
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 200,
+      "rtt_s": 2.39,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1474,
+      "output_tokens": 59
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 210,
+      "rtt_s": 1.966,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1474,
+      "output_tokens": 57
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 220,
+      "rtt_s": 2.282,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1474,
+      "output_tokens": 55
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 230,
+      "rtt_s": 3.705,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1474,
+      "output_tokens": 57
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 240,
+      "rtt_s": 2.481,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1474,
+      "output_tokens": 60
+    },
+    {
+      "label": "convergence",
+      "step": 245,
+      "rtt_s": 2.584,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2000,
+      "output_tokens": 87
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 250,
+      "rtt_s": 2.379,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1474,
+      "output_tokens": 56
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 260,
+      "rtt_s": 2.174,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1474,
+      "output_tokens": 51
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 270,
+      "rtt_s": 2.381,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1474,
+      "output_tokens": 54
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 280,
+      "rtt_s": 4.629,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1474,
+      "output_tokens": 53
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 290,
+      "rtt_s": 2.173,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1474,
+      "output_tokens": 56
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 300,
+      "rtt_s": 2.069,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1474,
+      "output_tokens": 58
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 310,
+      "rtt_s": 2.076,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1474,
+      "output_tokens": 58
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 320,
+      "rtt_s": 1.972,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1474,
+      "output_tokens": 56
+    },
+    {
+      "label": "convergence",
+      "step": 320,
+      "rtt_s": 2.794,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2075,
+      "output_tokens": 87
+    },
+    {
+      "label": "subgoal_convert",
+      "subgoal": "Go past the first streetlamp",
+      "rtt_s": 0.618,
+      "model": "gpt-4o-2024-08-06",
+      "input_tokens": 367,
+      "output_tokens": 12
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 10,
+      "rtt_s": 1.959,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1475,
+      "output_tokens": 50
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 20,
+      "rtt_s": 2.381,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1475,
+      "output_tokens": 55
+    },
+    {
+      "label": "convergence",
+      "step": 24,
+      "rtt_s": 2.588,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2001,
+      "output_tokens": 94
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 30,
+      "rtt_s": 1.977,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1475,
+      "output_tokens": 51
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 40,
+      "rtt_s": 2.052,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1475,
+      "output_tokens": 54
+    },
+    {
+      "label": "convergence",
+      "step": 43,
+      "rtt_s": 6.79,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2035,
+      "output_tokens": 91
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 50,
+      "rtt_s": 1.871,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1475,
+      "output_tokens": 44
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 60,
+      "rtt_s": 1.967,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1475,
+      "output_tokens": 57
+    },
+    {
+      "label": "convergence",
+      "step": 62,
+      "rtt_s": 2.791,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2056,
+      "output_tokens": 94
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 70,
+      "rtt_s": 2.073,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1475,
+      "output_tokens": 56
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 80,
+      "rtt_s": 2.471,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1475,
+      "output_tokens": 57
+    },
+    {
+      "label": "convergence",
+      "step": 89,
+      "rtt_s": 2.272,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2077,
+      "output_tokens": 95
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 90,
+      "rtt_s": 1.931,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1475,
+      "output_tokens": 55
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 100,
+      "rtt_s": 2.784,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1475,
+      "output_tokens": 56
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 110,
+      "rtt_s": 4.626,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1475,
+      "output_tokens": 55
+    },
+    {
+      "label": "convergence",
+      "step": 115,
+      "rtt_s": 2.788,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2098,
+      "output_tokens": 90
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 120,
+      "rtt_s": 1.965,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1475,
+      "output_tokens": 54
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 130,
+      "rtt_s": 2.679,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1475,
+      "output_tokens": 47
+    },
+    {
+      "label": "convergence",
+      "step": 130,
+      "rtt_s": 2.17,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2149,
+      "output_tokens": 72
+    },
+    {
+      "label": "subgoal_convert",
+      "subgoal": "Turn until you see the black car",
+      "rtt_s": 0.543,
+      "model": "gpt-4o-2024-08-06",
+      "input_tokens": 368,
+      "output_tokens": 7
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 10,
+      "rtt_s": 2.067,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1473,
+      "output_tokens": 59
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 20,
+      "rtt_s": 1.957,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1473,
+      "output_tokens": 60
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 30,
+      "rtt_s": 1.754,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1473,
+      "output_tokens": 50
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 40,
+      "rtt_s": 2.157,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1473,
+      "output_tokens": 54
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 50,
+      "rtt_s": 2.367,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1473,
+      "output_tokens": 62
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 60,
+      "rtt_s": 2.359,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1473,
+      "output_tokens": 53
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 70,
+      "rtt_s": 2.165,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1473,
+      "output_tokens": 54
+    },
+    {
+      "label": "convergence",
+      "step": 76,
+      "rtt_s": 2.576,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1999,
+      "output_tokens": 89
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 80,
+      "rtt_s": 2.374,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1473,
+      "output_tokens": 55
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 90,
+      "rtt_s": 2.156,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1473,
+      "output_tokens": 56
+    },
+    {
+      "label": "convergence",
+      "step": 99,
+      "rtt_s": 2.983,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2034,
+      "output_tokens": 104
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 100,
+      "rtt_s": 2.117,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1473,
+      "output_tokens": 58
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 110,
+      "rtt_s": 1.962,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1473,
+      "output_tokens": 51
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 120,
+      "rtt_s": 1.757,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1473,
+      "output_tokens": 59
+    },
+    {
+      "label": "convergence",
+      "step": 126,
+      "rtt_s": 2.162,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2055,
+      "output_tokens": 101
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 130,
+      "rtt_s": 2.065,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1473,
+      "output_tokens": 52
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 140,
+      "rtt_s": 1.956,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1473,
+      "output_tokens": 57
+    },
+    {
+      "label": "convergence",
+      "step": 145,
+      "rtt_s": 2.787,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2076,
+      "output_tokens": 100
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 150,
+      "rtt_s": 2.171,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1473,
+      "output_tokens": 61
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 160,
+      "rtt_s": 1.963,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1473,
+      "output_tokens": 59
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 170,
+      "rtt_s": 2.584,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1473,
+      "output_tokens": 58
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 180,
+      "rtt_s": 2.176,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1473,
+      "output_tokens": 58
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 190,
+      "rtt_s": 1.769,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1473,
+      "output_tokens": 49
+    },
+    {
+      "label": "convergence",
+      "step": 190,
+      "rtt_s": 2.792,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2130,
+      "output_tokens": 78
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 200,
+      "rtt_s": 2.688,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1473,
+      "output_tokens": 61
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 210,
+      "rtt_s": 1.768,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1473,
+      "output_tokens": 44
+    },
+    {
+      "label": "convergence",
+      "step": 210,
+      "rtt_s": 2.587,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2147,
+      "output_tokens": 73
+    },
+    {
+      "label": "subgoal_convert",
+      "subgoal": "Go to the black car",
+      "rtt_s": 0.548,
+      "model": "gpt-4o-2024-08-06",
+      "input_tokens": 366,
+      "output_tokens": 11
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 10,
+      "rtt_s": 2.168,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1473,
+      "output_tokens": 53
+    },
+    {
+      "label": "convergence",
+      "step": 12,
+      "rtt_s": 3.398,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1999,
+      "output_tokens": 106
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 20,
+      "rtt_s": 3.201,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1473,
+      "output_tokens": 52
+    },
+    {
+      "label": "convergence",
+      "step": 20,
+      "rtt_s": 3.606,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2068,
+      "output_tokens": 76
+    },
+    {
+      "label": "subgoal_convert",
+      "subgoal": "Turn toward the red car",
+      "rtt_s": 0.753,
+      "model": "gpt-4o-2024-08-06",
+      "input_tokens": 366,
+      "output_tokens": 11
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 10,
+      "rtt_s": 1.969,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1473,
+      "output_tokens": 52
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 20,
+      "rtt_s": 2.375,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1473,
+      "output_tokens": 61
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 30,
+      "rtt_s": 7.19,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1473,
+      "output_tokens": 60
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 40,
+      "rtt_s": 2.582,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1473,
+      "output_tokens": 54
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 50,
+      "rtt_s": 2.165,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1473,
+      "output_tokens": 54
+    },
+    {
+      "label": "convergence",
+      "step": 53,
+      "rtt_s": 2.792,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1999,
+      "output_tokens": 91
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 60,
+      "rtt_s": 2.276,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1473,
+      "output_tokens": 56
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 70,
+      "rtt_s": 2.791,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1473,
+      "output_tokens": 55
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 80,
+      "rtt_s": 1.869,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1473,
+      "output_tokens": 61
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 90,
+      "rtt_s": 3.402,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1473,
+      "output_tokens": 56
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 100,
+      "rtt_s": 2.581,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1473,
+      "output_tokens": 60
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 110,
+      "rtt_s": 2.579,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1473,
+      "output_tokens": 59
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 120,
+      "rtt_s": 2.468,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1473,
+      "output_tokens": 57
+    },
+    {
+      "label": "convergence",
+      "step": 127,
+      "rtt_s": 2.385,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2034,
+      "output_tokens": 88
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 130,
+      "rtt_s": 1.971,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1473,
+      "output_tokens": 58
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 140,
+      "rtt_s": 2.626,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1473,
+      "output_tokens": 55
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 150,
+      "rtt_s": 2.173,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1473,
+      "output_tokens": 55
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 160,
+      "rtt_s": 2.173,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1473,
+      "output_tokens": 49
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 170,
+      "rtt_s": 2.255,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1473,
+      "output_tokens": 57
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 180,
+      "rtt_s": 2.272,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1473,
+      "output_tokens": 53
+    },
+    {
+      "label": "convergence",
+      "step": 189,
+      "rtt_s": 2.787,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2056,
+      "output_tokens": 99
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 190,
+      "rtt_s": 2.102,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1473,
+      "output_tokens": 53
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 200,
+      "rtt_s": 1.961,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1473,
+      "output_tokens": 55
+    },
+    {
+      "label": "convergence",
+      "step": 208,
+      "rtt_s": 3.295,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2077,
+      "output_tokens": 100
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 210,
+      "rtt_s": 1.854,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1473,
+      "output_tokens": 51
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 220,
+      "rtt_s": 2.579,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1473,
+      "output_tokens": 56
+    },
+    {
+      "label": "convergence",
+      "step": 227,
+      "rtt_s": 2.577,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2098,
+      "output_tokens": 105
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 230,
+      "rtt_s": 3.499,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1473,
+      "output_tokens": 55
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 240,
+      "rtt_s": 2.167,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1473,
+      "output_tokens": 53
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 250,
+      "rtt_s": 1.964,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1473,
+      "output_tokens": 54
+    },
+    {
+      "label": "convergence",
+      "step": 253,
+      "rtt_s": 2.576,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2119,
+      "output_tokens": 96
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 260,
+      "rtt_s": 2.044,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1473,
+      "output_tokens": 51
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 270,
+      "rtt_s": 1.954,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1473,
+      "output_tokens": 51
+    },
+    {
+      "label": "convergence",
+      "step": 275,
+      "rtt_s": 3.392,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2140,
+      "output_tokens": 110
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 280,
+      "rtt_s": 1.865,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1473,
+      "output_tokens": 51
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 290,
+      "rtt_s": 1.758,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1473,
+      "output_tokens": 46
+    },
+    {
+      "label": "convergence",
+      "step": 294,
+      "rtt_s": 2.988,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2161,
+      "output_tokens": 92
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 300,
+      "rtt_s": 2.374,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1473,
+      "output_tokens": 52
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 310,
+      "rtt_s": 1.759,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1473,
+      "output_tokens": 45
+    },
+    {
+      "label": "convergence",
+      "step": 313,
+      "rtt_s": 2.373,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2182,
+      "output_tokens": 93
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 320,
+      "rtt_s": 1.956,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1473,
+      "output_tokens": 53
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 330,
+      "rtt_s": 3.183,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1473,
+      "output_tokens": 53
+    },
+    {
+      "label": "convergence",
+      "step": 332,
+      "rtt_s": 2.978,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2203,
+      "output_tokens": 95
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 340,
+      "rtt_s": 1.755,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1473,
+      "output_tokens": 52
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 350,
+      "rtt_s": 1.967,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1473,
+      "output_tokens": 49
+    },
+    {
+      "label": "convergence",
+      "step": 352,
+      "rtt_s": 2.581,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2224,
+      "output_tokens": 91
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 360,
+      "rtt_s": 2.075,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1473,
+      "output_tokens": 47
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 370,
+      "rtt_s": 1.759,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1473,
+      "output_tokens": 51
+    },
+    {
+      "label": "convergence",
+      "step": 371,
+      "rtt_s": 2.686,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2245,
+      "output_tokens": 107
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 380,
+      "rtt_s": 2.156,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1473,
+      "output_tokens": 61
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 390,
+      "rtt_s": 3.616,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1473,
+      "output_tokens": 59
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 400,
+      "rtt_s": 3.002,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1473,
+      "output_tokens": 57
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 410,
+      "rtt_s": 2.999,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1473,
+      "output_tokens": 53
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 420,
+      "rtt_s": 2.172,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1473,
+      "output_tokens": 48
+    },
+    {
+      "label": "convergence",
+      "step": 420,
+      "rtt_s": 4.337,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2297,
+      "output_tokens": 93
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 430,
+      "rtt_s": 2.282,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1473,
+      "output_tokens": 58
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 440,
+      "rtt_s": 2.386,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1473,
+      "output_tokens": 59
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 450,
+      "rtt_s": 2.08,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1473,
+      "output_tokens": 60
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 460,
+      "rtt_s": 1.874,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1473,
+      "output_tokens": 54
+    },
+    {
+      "label": "convergence",
+      "step": 467,
+      "rtt_s": 3.728,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2289,
+      "output_tokens": 105
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 470,
+      "rtt_s": 1.99,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1473,
+      "output_tokens": 54
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 480,
+      "rtt_s": 2.572,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1473,
+      "output_tokens": 52
+    },
+    {
+      "label": "convergence",
+      "step": 486,
+      "rtt_s": 3.205,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2312,
+      "output_tokens": 95
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 490,
+      "rtt_s": 2.18,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1473,
+      "output_tokens": 61
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 500,
+      "rtt_s": 6.37,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1473,
+      "output_tokens": 54
+    },
+    {
+      "label": "subgoal_convert",
+      "subgoal": "Go to the red car",
+      "rtt_s": 0.556,
+      "model": "gpt-4o-2024-08-06",
+      "input_tokens": 366,
+      "output_tokens": 11
+    }
+  ],
+  "playback_mp4": null,
+  "start_time": "2026-05-07T03:50:08.887283",
+  "end_time": "2026-05-07T04:08:21.668329",
+  "wall_clock_seconds": 1092.78
+}

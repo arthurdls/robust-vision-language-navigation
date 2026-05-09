@@ -1,0 +1,1 @@
+{"complete":false,"completion_percentage":0.29,"should_stop":true,"reasoning":"The black car remains ahead-right at about the same apparent size and has shifted farther right, indicating lateral drift rather than approaching the target."}

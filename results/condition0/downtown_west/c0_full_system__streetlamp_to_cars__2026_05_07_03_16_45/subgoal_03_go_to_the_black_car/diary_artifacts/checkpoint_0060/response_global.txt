@@ -1,0 +1,1 @@
+{"complete":false,"completion_percentage":0.58,"should_stop":false,"reasoning":"The black car is still clearly visible ahead-right and growing slightly larger and more centered, indicating slow but correct approach progress."}

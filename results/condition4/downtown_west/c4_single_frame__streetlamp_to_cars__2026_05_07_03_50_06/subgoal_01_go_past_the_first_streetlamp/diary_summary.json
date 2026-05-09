@@ -1,0 +1,354 @@
+{
+  "subgoal": "Go past the first streetlamp",
+  "converted_instruction": "go past the first streetlamp",
+  "diary": [
+    "Checkpoint 10: completion = 0.42",
+    "Checkpoint 20: completion = 0.58",
+    "Checkpoint 30: completion = 0.72",
+    "Checkpoint 40: completion = 0.79",
+    "Checkpoint 50: completion = 0.86",
+    "Checkpoint 60: completion = 0.90",
+    "Checkpoint 70: completion = 0.93",
+    "Checkpoint 80: completion = 0.95",
+    "Checkpoint 90: completion = 0.97",
+    "Checkpoint 100: completion = 0.98",
+    "Checkpoint 110: completion = 0.99",
+    "Checkpoint 120: completion = 0.99",
+    "Checkpoint 130: completion = 0.98",
+    "Checkpoint 140: completion = 0.97",
+    "Checkpoint 150: completion = 0.98",
+    "Checkpoint 160: completion = 0.99",
+    "Checkpoint 170: completion = 0.99",
+    "Checkpoint 180: completion = 0.97",
+    "Checkpoint 190: completion = 0.98",
+    "Checkpoint 200: completion = 0.99",
+    "Checkpoint 210: completion = 0.99",
+    "Checkpoint 220: completion = 0.97",
+    "Checkpoint 230: completion = 0.98",
+    "Checkpoint 240: completion = 0.99",
+    "[CONVERGENCE @ step 245]: corrective issued (stopped_short, 97% complete) -- \"Move forward 0.5 meters\"",
+    "Checkpoint 250: completion = 0.98",
+    "Checkpoint 260: completion = 0.99",
+    "Checkpoint 270: completion = 0.99",
+    "Checkpoint 280: completion = 0.99",
+    "Checkpoint 290: completion = 0.99",
+    "Checkpoint 300: completion = 0.97",
+    "Checkpoint 310: completion = 0.98",
+    "Checkpoint 320: completion = 1.00",
+    "Peak dropoff override (step 320): peak=1.00, current=0.72, treating subgoal as achieved"
+  ],
+  "correction_history": [
+    {
+      "step": 245,
+      "diagnosis": "stopped_short",
+      "completion_pct": 0.97,
+      "instruction": "Move forward 0.5 meters"
+    }
+  ],
+  "override_history": [
+    {
+      "step": 244,
+      "type": "convergence_command",
+      "old_instruction": "go past the first streetlamp",
+      "new_instruction": "Move forward 0.5 meters",
+      "reasoning": "convergence (stopped_short): The nearest streetlamp is still visible ahead on the right side of the walkway, indicating the drone has approached it but not clearly passed it yet. A small forward move is the biggest missing action to get beyond the first streetlamp with high confidence."
+    },
+    {
+      "step": 319,
+      "type": "force_converge",
+      "reasoning": "Checkpoint thinks complete, verifying at convergence. Reasoning: The nearest pair of streetlamps is now behind or alongside the drone at the bottom edges of the view, indicating it has moved past the first streetlamp. Raw: {\"complete\":true,\"completion_percentage\":1.0,\"should_stop\":false,\"reasoning\":\"The nearest pair of streetlamps is now behind or alongside the drone at the bottom edges of the view, indicating it has moved past the first streetlamp.\"}"
+    }
+  ],
+  "corrections_used": 1,
+  "last_completion_pct": 0.72,
+  "peak_completion": 1.0,
+  "parse_failures": 0,
+  "vlm_call_count": 34,
+  "vlm_call_records": [
+    {
+      "label": "global_checkpoint",
+      "step": 10,
+      "rtt_s": 2.278,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1474,
+      "output_tokens": 53
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 20,
+      "rtt_s": 1.967,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1474,
+      "output_tokens": 52
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 30,
+      "rtt_s": 1.661,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1474,
+      "output_tokens": 55
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 40,
+      "rtt_s": 2.179,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1474,
+      "output_tokens": 51
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 50,
+      "rtt_s": 4.022,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1474,
+      "output_tokens": 50
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 60,
+      "rtt_s": 2.07,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1474,
+      "output_tokens": 51
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 70,
+      "rtt_s": 2.48,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1474,
+      "output_tokens": 49
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 80,
+      "rtt_s": 3.714,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1474,
+      "output_tokens": 57
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 90,
+      "rtt_s": 1.973,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1474,
+      "output_tokens": 57
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 100,
+      "rtt_s": 2.072,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1474,
+      "output_tokens": 53
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 110,
+      "rtt_s": 1.955,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1474,
+      "output_tokens": 50
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 120,
+      "rtt_s": 2.793,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1474,
+      "output_tokens": 56
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 130,
+      "rtt_s": 2.376,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1474,
+      "output_tokens": 60
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 140,
+      "rtt_s": 2.078,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1474,
+      "output_tokens": 52
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 150,
+      "rtt_s": 2.581,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1474,
+      "output_tokens": 65
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 160,
+      "rtt_s": 2.184,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1474,
+      "output_tokens": 57
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 170,
+      "rtt_s": 1.975,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1474,
+      "output_tokens": 57
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 180,
+      "rtt_s": 2.175,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1474,
+      "output_tokens": 55
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 190,
+      "rtt_s": 2.796,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1474,
+      "output_tokens": 57
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 200,
+      "rtt_s": 2.39,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1474,
+      "output_tokens": 59
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 210,
+      "rtt_s": 1.966,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1474,
+      "output_tokens": 57
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 220,
+      "rtt_s": 2.282,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1474,
+      "output_tokens": 55
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 230,
+      "rtt_s": 3.705,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1474,
+      "output_tokens": 57
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 240,
+      "rtt_s": 2.481,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1474,
+      "output_tokens": 60
+    },
+    {
+      "label": "convergence",
+      "step": 245,
+      "rtt_s": 2.584,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2000,
+      "output_tokens": 87
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 250,
+      "rtt_s": 2.379,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1474,
+      "output_tokens": 56
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 260,
+      "rtt_s": 2.174,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1474,
+      "output_tokens": 51
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 270,
+      "rtt_s": 2.381,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1474,
+      "output_tokens": 54
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 280,
+      "rtt_s": 4.629,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1474,
+      "output_tokens": 53
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 290,
+      "rtt_s": 2.173,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1474,
+      "output_tokens": 56
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 300,
+      "rtt_s": 2.069,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1474,
+      "output_tokens": 58
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 310,
+      "rtt_s": 2.076,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1474,
+      "output_tokens": 58
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 320,
+      "rtt_s": 1.972,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1474,
+      "output_tokens": 56
+    },
+    {
+      "label": "convergence",
+      "step": 320,
+      "rtt_s": 2.794,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2075,
+      "output_tokens": 87
+    }
+  ],
+  "converter_call_records": [
+    {
+      "label": "subgoal_convert",
+      "subgoal": "Go past the first streetlamp",
+      "rtt_s": 0.618,
+      "model": "gpt-4o-2024-08-06",
+      "input_tokens": 367,
+      "output_tokens": 12
+    }
+  ],
+  "stop_reason": "monitor_complete",
+  "total_steps": 320,
+  "in_correction_at_end": false
+}

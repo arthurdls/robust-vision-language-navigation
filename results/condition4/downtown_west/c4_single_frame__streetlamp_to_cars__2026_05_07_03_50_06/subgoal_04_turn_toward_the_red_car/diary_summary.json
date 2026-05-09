@@ -1,0 +1,83 @@
+{
+  "subgoal": "Turn toward the red car",
+  "converted_instruction": "turn toward the red car",
+  "diary": [
+    "Checkpoint 10: completion = 0.18",
+    "[CONVERGENCE @ step 12]: corrective issued (stopped_short, 41% complete) -- \"Turn left 20 degrees\"",
+    "Checkpoint 20: completion = 1.00"
+  ],
+  "correction_history": [
+    {
+      "step": 12,
+      "diagnosis": "stopped_short",
+      "completion_pct": 0.41,
+      "instruction": "Turn left 20 degrees"
+    }
+  ],
+  "override_history": [
+    {
+      "step": 11,
+      "type": "convergence_command",
+      "old_instruction": "turn toward the red car",
+      "new_instruction": "Turn left 20 degrees",
+      "reasoning": "convergence (stopped_short): A red car is not clearly visible in the current frame; the most prominent nearby vehicle is a dark car at the bottom foreground, with another purple car off to the left. Since the target is not yet identifiable and there is directional evidence from the visible cars on the left side, a small left turn is the best single correction to continue the search."
+    },
+    {
+      "step": 19,
+      "type": "force_converge",
+      "reasoning": "Checkpoint thinks complete, verifying at convergence. Reasoning: A red/purple car is clearly visible in the frame, so the drone is already turned toward it and the search subgoal is complete. Raw: {\"complete\":true,\"completion_percentage\":1.0,\"should_stop\":false,\"reasoning\":\"A red/purple car is clearly visible in the frame, so the drone is already turned toward it and the search subgoal is complete.\"}"
+    }
+  ],
+  "corrections_used": 1,
+  "last_completion_pct": 1.0,
+  "peak_completion": 1.0,
+  "parse_failures": 0,
+  "vlm_call_count": 4,
+  "vlm_call_records": [
+    {
+      "label": "global_checkpoint",
+      "step": 10,
+      "rtt_s": 2.168,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1473,
+      "output_tokens": 53
+    },
+    {
+      "label": "convergence",
+      "step": 12,
+      "rtt_s": 3.398,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1999,
+      "output_tokens": 106
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 20,
+      "rtt_s": 3.201,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1473,
+      "output_tokens": 52
+    },
+    {
+      "label": "convergence",
+      "step": 20,
+      "rtt_s": 3.606,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2068,
+      "output_tokens": 76
+    }
+  ],
+  "converter_call_records": [
+    {
+      "label": "subgoal_convert",
+      "subgoal": "Turn toward the red car",
+      "rtt_s": 0.753,
+      "model": "gpt-4o-2024-08-06",
+      "input_tokens": 366,
+      "output_tokens": 11
+    }
+  ],
+  "stop_reason": "monitor_complete",
+  "total_steps": 20,
+  "in_correction_at_end": false
+}

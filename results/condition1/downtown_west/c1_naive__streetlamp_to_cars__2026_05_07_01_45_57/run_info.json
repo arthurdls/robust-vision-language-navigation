@@ -1,0 +1,45 @@
+{
+  "aborted": false,
+  "completed": true,
+  "condition": "condition1_naive",
+  "diary_mode": "frame",
+  "task": {
+    "instruction": "Go past the first streetlamp, then turn until you see the black car, then go to the black car, then turn toward the red car and go to the red car. Finally, land in front of the traffic light pole on the right.",
+    "initial_pos": [
+      -7500.0,
+      848.0,
+      396.0,
+      -177.0
+    ],
+    "max_steps": 3000,
+    "max_steps_per_subgoal": 500,
+    "diary_check_interval": 10,
+    "max_corrections": 20,
+    "expected_subgoal_count": 6,
+    "task_id": "streetlamp_to_cars"
+  },
+  "seed": 0,
+  "time_dilation": 10,
+  "env_id": "UnrealTrack-DowntownWest-ContinuousColor-v0",
+  "server_url": "http://127.0.0.1:5007/predict",
+  "drone_cam_id": 5,
+  "config": {
+    "max_steps": 3000,
+    "convergence_thresholds": {
+      "position_delta": 3.0,
+      "yaw_delta": 1.0,
+      "consecutive_steps": 10
+    }
+  },
+  "instruction_sent": "Go past the first streetlamp, then turn until you see the black car, then go to the black car, then turn toward the red car and go to the red car. Finally, land in front of the traffic light pole on the right.",
+  "total_steps": 56,
+  "stop_reason": "convergence",
+  "total_vlm_calls": 0,
+  "total_corrections": 0,
+  "total_input_tokens": 0,
+  "total_output_tokens": 0,
+  "playback_mp4": null,
+  "start_time": "2026-05-07T01:45:59.896623",
+  "end_time": "2026-05-07T01:46:29.303368",
+  "wall_clock_seconds": 29.41
+}

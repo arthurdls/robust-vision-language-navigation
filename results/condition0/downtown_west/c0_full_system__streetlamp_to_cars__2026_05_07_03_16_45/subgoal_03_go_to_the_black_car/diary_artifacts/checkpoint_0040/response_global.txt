@@ -1,0 +1,1 @@
+{"complete":false,"completion_percentage":0.41,"should_stop":false,"reasoning":"The black car is still ahead-right and only modestly larger, so the drone is making slow but correct approach progress without an immediate obstacle risk."}

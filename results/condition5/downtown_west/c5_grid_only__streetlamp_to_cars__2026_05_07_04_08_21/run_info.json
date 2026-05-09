@@ -1,0 +1,2982 @@
+{
+  "aborted": true,
+  "completed": false,
+  "stop_reason": "ask_help",
+  "condition": "condition5_grid_only",
+  "task": {
+    "instruction": "Go past the first streetlamp, then turn until you see the black car, then go to the black car, then turn toward the red car and go to the red car. Finally, land in front of the traffic light pole on the right.",
+    "initial_pos": [
+      -7500.0,
+      848.0,
+      396.0,
+      -177.0
+    ],
+    "max_steps": 3000,
+    "max_steps_per_subgoal": 500,
+    "diary_check_interval": 10,
+    "max_corrections": 20,
+    "expected_subgoal_count": 6,
+    "task_id": "streetlamp_to_cars"
+  },
+  "seed": 0,
+  "time_dilation": 10,
+  "env_id": "UnrealTrack-DowntownWest-ContinuousColor-v0",
+  "server_url": "http://127.0.0.1:5007/predict",
+  "drone_cam_id": 5,
+  "diary_mode": "frame",
+  "llm_model": "gpt-4o",
+  "monitor_model": "gpt-5.4",
+  "models": {
+    "ltl_nl_planning": "gpt-4o",
+    "subgoal_converter": "gpt-4o",
+    "grid_only_monitor": "gpt-5.4",
+    "openvla_predict_url": "http://127.0.0.1:5007/predict"
+  },
+  "config": {
+    "max_steps_per_subgoal": 500,
+    "diary_check_interval": 10,
+    "max_corrections": 20,
+    "convergence_thresholds": {
+      "position_delta": 3.0,
+      "yaw_delta": 1.0,
+      "consecutive_steps": 10
+    }
+  },
+  "ltl_plan": {
+    "ltl_nl_formula": "F pi_6 & (!pi_6 U pi_5) & (!pi_5 U pi_4) & (!pi_4 U pi_3) & (!pi_3 U pi_2) & (!pi_2 U pi_1)",
+    "pi_predicates": {
+      "pi_1": "Go past the first streetlamp",
+      "pi_2": "Turn until you see the black car",
+      "pi_3": "Go to the black car",
+      "pi_4": "Turn toward the red car",
+      "pi_5": "Go to the red car",
+      "pi_6": "Land in front of the traffic light pole on the right"
+    }
+  },
+  "subgoal_count": 5,
+  "subgoal_summaries": [
+    {
+      "subgoal": "Go past the first streetlamp",
+      "converted_instruction": "go past the first streetlamp",
+      "total_steps": 110,
+      "stop_reason": "monitor_complete",
+      "corrections_used": 7,
+      "last_completion_pct": 1.0,
+      "peak_completion": 1.0,
+      "vlm_call_count": 19,
+      "vlm_call_records": [
+        {
+          "label": "global_checkpoint",
+          "step": 10,
+          "rtt_s": 2.075,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 1531,
+          "output_tokens": 51
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 20,
+          "rtt_s": 2.272,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 1878,
+          "output_tokens": 55
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 30,
+          "rtt_s": 5.024,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2572,
+          "output_tokens": 59
+        },
+        {
+          "label": "convergence",
+          "step": 30,
+          "rtt_s": 3.695,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 3123,
+          "output_tokens": 101
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 40,
+          "rtt_s": 3.895,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 3185,
+          "output_tokens": 53
+        },
+        {
+          "label": "convergence",
+          "step": 40,
+          "rtt_s": 9.527,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 3766,
+          "output_tokens": 91
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 50,
+          "rtt_s": 4.187,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 3185,
+          "output_tokens": 60
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 60,
+          "rtt_s": 4.38,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 3989,
+          "output_tokens": 60
+        },
+        {
+          "label": "convergence",
+          "step": 60,
+          "rtt_s": 4.394,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 4598,
+          "output_tokens": 91
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 70,
+          "rtt_s": 5.003,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 3989,
+          "output_tokens": 61
+        },
+        {
+          "label": "convergence",
+          "step": 70,
+          "rtt_s": 5.312,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 4622,
+          "output_tokens": 105
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 80,
+          "rtt_s": 5.613,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 3989,
+          "output_tokens": 62
+        },
+        {
+          "label": "convergence",
+          "step": 80,
+          "rtt_s": 5.821,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 4644,
+          "output_tokens": 95
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 90,
+          "rtt_s": 4.798,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 3989,
+          "output_tokens": 63
+        },
+        {
+          "label": "convergence",
+          "step": 90,
+          "rtt_s": 5.907,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 4668,
+          "output_tokens": 94
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 100,
+          "rtt_s": 5.827,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 3989,
+          "output_tokens": 61
+        },
+        {
+          "label": "convergence",
+          "step": 100,
+          "rtt_s": 6.028,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 4689,
+          "output_tokens": 104
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 110,
+          "rtt_s": 5.72,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 3989,
+          "output_tokens": 57
+        },
+        {
+          "label": "convergence",
+          "step": 110,
+          "rtt_s": 6.235,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 4708,
+          "output_tokens": 93
+        },
+        {
+          "label": "subgoal_convert",
+          "subgoal": "Go past the first streetlamp",
+          "rtt_s": 0.657,
+          "model": "gpt-4o-2024-08-06",
+          "input_tokens": 367,
+          "output_tokens": 12
+        }
+      ],
+      "next_origin": [
+        -8076.3934918578825,
+        662.950587597158,
+        993.647045135498,
+        -177.02352937470067
+      ],
+      "parse_failures": 0,
+      "override_history": [
+        {
+          "step": 29,
+          "type": "force_converge",
+          "reasoning": "Stop requested for correction. Reasoning: The streetlamp is still ahead in the distance while a tree trunk is growing to fill the foreground, indicating the drone is drifting toward a likely collision instead of passing the lamp. Raw: {\"complete\":false,\"completion_percentage\":0.41,\"should_stop\":true,\"reasoning\":\"The streetlamp is still ahead in the distance while a tree trunk is growing to fill the foreground, indicating the drone is drifting toward a likely collision instead of passing the lamp.\"}"
+        },
+        {
+          "step": 29,
+          "type": "convergence_command",
+          "old_instruction": "go past the first streetlamp",
+          "new_instruction": "Ascend 0.8 meters",
+          "reasoning": "convergence (stopped_short): The streetlamp is still visible farther down the street and has not been passed, while the tree trunk grows from center to dominating the right foreground in the latest frame. The immediate problem is collision risk with the tree blocking the path, so gaining a bit of altitude is the best single correction before continuing toward the lamp."
+        },
+        {
+          "step": 39,
+          "type": "force_converge",
+          "reasoning": "Stop requested for correction. Reasoning: The streetlamp is still visible ahead and not yet passed, while the nearby tree trunk is rapidly filling the frame and poses an immediate collision risk. Raw: {\"complete\":false,\"completion_percentage\":0.56,\"should_stop\":true,\"reasoning\":\"The streetlamp is still visible ahead and not yet passed, while the nearby tree trunk is rapidly filling the frame and poses an immediate collision risk.\"}"
+        },
+        {
+          "step": 39,
+          "type": "convergence_command",
+          "old_instruction": "Ascend 0.8 meters",
+          "new_instruction": "Turn left 20 degrees",
+          "reasoning": "convergence (stopped_short): The streetlamp is still visible ahead down the sidewalk, so the drone has not yet gone past it. The tree trunk has grown to fill much of the right/center foreground in the latest frames, so the biggest issue is lateral alignment around the obstacle rather than more ascent."
+        },
+        {
+          "step": 59,
+          "type": "force_converge",
+          "reasoning": "Stop requested for correction. Reasoning: The streetlamp remains ahead in the distance while a large tree trunk and branches are filling more of the frame, indicating the drone is drifting into the tree rather than passing the lamp. Raw: {\"complete\":false,\"completion_percentage\":0.61,\"should_stop\":true,\"reasoning\":\"The streetlamp remains ahead in the distance while a large tree trunk and branches are filling more of the frame, indicating the drone is drifting into the tree rather than passing the lamp.\"}"
+        },
+        {
+          "step": 59,
+          "type": "convergence_command",
+          "old_instruction": "Turn left 20 degrees",
+          "new_instruction": "Ascend 0.7 meters",
+          "reasoning": "convergence (stopped_short): The streetlamp is still visible ahead down the street, so the drone has not passed it yet. The tree trunk and low branches dominate the recent frames and are directly in the flight path, so the biggest immediate issue is clearing the tree canopy rather than turning again."
+        },
+        {
+          "step": 69,
+          "type": "force_converge",
+          "reasoning": "Stop requested for correction. Reasoning: The first streetlamp is still visible ahead and not yet passed, while the drone is drifting into the tree canopy/trunk that fills more of the recent frames and poses a collision risk. Raw: {\"complete\":false,\"completion_percentage\":0.74,\"should_stop\":true,\"reasoning\":\"The first streetlamp is still visible ahead and not yet passed, while the drone is drifting into the tree canopy/trunk that fills more of the recent frames and poses a collision risk.\"}"
+        },
+        {
+          "step": 69,
+          "type": "convergence_command",
+          "old_instruction": "Ascend 0.7 meters",
+          "new_instruction": "Turn right 20 degrees",
+          "reasoning": "convergence (stopped_short): The streetlamp is still visible ahead down the street and has not been passed, while the latest frames are dominated by the nearby tree trunk and overhanging branches blocking the current path. Recent ascent corrections have not solved the blockage, so switching axes and turning right is the best small correction to route around the tree and keep the lamp in view."
+        },
+        {
+          "step": 79,
+          "type": "force_converge",
+          "reasoning": "Stop requested for correction. Reasoning: The streetlamp remains visible ahead in the distance while a large tree trunk and branches are filling more of the frame, indicating the drone has not passed the lamp and is drifting into the tree. Raw: {\"complete\":false,\"completion_percentage\":0.84,\"should_stop\":true,\"reasoning\":\"The streetlamp remains visible ahead in the distance while a large tree trunk and branches are filling more of the frame, indicating the drone has not passed the lamp and is drifting into the tree.\"}"
+        },
+        {
+          "step": 79,
+          "type": "convergence_command",
+          "old_instruction": "Turn right 20 degrees",
+          "new_instruction": "Ascend 0.8 meters",
+          "reasoning": "convergence (stopped_short): The streetlamp is still visible ahead down the street, so the drone has not yet gone past it. The latest frames are dominated by the nearby tree trunk and overhanging branches, making the immediate problem obstacle clearance rather than yaw, so a small climb is the best single correction."
+        },
+        {
+          "step": 89,
+          "type": "force_converge",
+          "reasoning": "Stop requested for correction. Reasoning: The streetlamp remains visible ahead down the sidewalk while a large tree trunk and branches are filling more of the frame, indicating the drone has stopped short and is on a collision course with the tree. Raw: {\"complete\":false,\"completion_percentage\":0.91,\"should_stop\":true,\"reasoning\":\"The streetlamp remains visible ahead down the sidewalk while a large tree trunk and branches are filling more of the frame, indicating the drone has stopped short and is on a collision course with the tree.\"}"
+        },
+        {
+          "step": 89,
+          "type": "convergence_command",
+          "old_instruction": "Ascend 0.8 meters",
+          "new_instruction": "Move forward 0.7 meters",
+          "reasoning": "convergence (stopped_short): The streetlamp is still visible ahead down the sidewalk in the later frames, so the drone has not yet gone past it. The recent ascents have lifted the drone into the tree canopy and branches now dominate the view, but the main remaining gap is forward progress beyond the lamp."
+        },
+        {
+          "step": 99,
+          "type": "force_converge",
+          "reasoning": "Stop requested for correction. Reasoning: The first streetlamp remains visible ahead down the sidewalk while the drone has drifted into dense tree branches that now fill much of the frame, creating an immediate collision risk before passing it. Raw: {\"complete\":false,\"completion_percentage\":0.95,\"should_stop\":true,\"reasoning\":\"The first streetlamp remains visible ahead down the sidewalk while the drone has drifted into dense tree branches that now fill much of the frame, creating an immediate collision risk before passing it.\"}"
+        },
+        {
+          "step": 99,
+          "type": "convergence_command",
+          "old_instruction": "Move forward 0.7 meters",
+          "new_instruction": "Ascend 0.6 meters",
+          "reasoning": "convergence (stopped_short): The streetlamp is still visible ahead down the sidewalk in the earlier and middle frames, so the drone has not clearly passed it yet. The latest frames are dominated by close tree trunk and branches overhead, indicating an immediate obstruction above and in front; climbing is the safest single-axis correction to clear the canopy and continue past the lamp."
+        },
+        {
+          "step": 109,
+          "type": "force_converge",
+          "reasoning": "Stop requested for correction. Reasoning: The streetlamp appears slightly behind and left in the later frames, suggesting you have just passed it, but the drone is now entering dense tree branches and risks collision. Raw: {\"complete\":false,\"completion_percentage\":0.96,\"should_stop\":true,\"reasoning\":\"The streetlamp appears slightly behind and left in the later frames, suggesting you have just passed it, but the drone is now entering dense tree branches and risks collision.\"}"
+        }
+      ]
+    },
+    {
+      "subgoal": "Turn until you see the black car",
+      "converted_instruction": "turn",
+      "total_steps": 90,
+      "stop_reason": "monitor_complete",
+      "corrections_used": 2,
+      "last_completion_pct": 1.0,
+      "peak_completion": 1.0,
+      "vlm_call_count": 12,
+      "vlm_call_records": [
+        {
+          "label": "global_checkpoint",
+          "step": 10,
+          "rtt_s": 2.282,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 1532,
+          "output_tokens": 55
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 20,
+          "rtt_s": 2.987,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 1879,
+          "output_tokens": 50
+        },
+        {
+          "label": "convergence",
+          "step": 22,
+          "rtt_s": 3.7,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 3082,
+          "output_tokens": 100
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 30,
+          "rtt_s": 3.192,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2573,
+          "output_tokens": 54
+        },
+        {
+          "label": "convergence",
+          "step": 30,
+          "rtt_s": 4.521,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 3153,
+          "output_tokens": 104
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 40,
+          "rtt_s": 3.691,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 3186,
+          "output_tokens": 59
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 50,
+          "rtt_s": 4.08,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 3186,
+          "output_tokens": 53
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 60,
+          "rtt_s": 4.403,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 3990,
+          "output_tokens": 49
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 70,
+          "rtt_s": 4.906,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 3990,
+          "output_tokens": 54
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 80,
+          "rtt_s": 6.735,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 3990,
+          "output_tokens": 46
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 90,
+          "rtt_s": 4.799,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 3990,
+          "output_tokens": 49
+        },
+        {
+          "label": "convergence",
+          "step": 90,
+          "rtt_s": 5.21,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 4588,
+          "output_tokens": 81
+        },
+        {
+          "label": "subgoal_convert",
+          "subgoal": "Turn until you see the black car",
+          "rtt_s": 0.542,
+          "model": "gpt-4o-2024-08-06",
+          "input_tokens": 368,
+          "output_tokens": 7
+        }
+      ],
+      "next_origin": [
+        -8040.965407116774,
+        647.1554959265201,
+        1784.8627457767725,
+        -162.0823744520819
+      ],
+      "parse_failures": 0,
+      "override_history": [
+        {
+          "step": 21,
+          "type": "convergence_command",
+          "old_instruction": "turn",
+          "new_instruction": "Turn right 20 degrees",
+          "reasoning": "convergence (stopped_short): Across the visible frames the view is dominated by tree branches and a roadway below, and no black car is clearly identifiable anywhere in the frame. Since this is a visual-search subgoal and there is no directional evidence for the car yet, the drone stopped short and should continue a small rightward sweep to search new ground."
+        },
+        {
+          "step": 29,
+          "type": "force_converge",
+          "reasoning": "Stop requested for correction. Reasoning: The black car is not visible in any frame, and the drone is boxed in by dense tree branches overhead and ahead, creating an immediate collision risk. Raw: {\"complete\":false,\"completion_percentage\":0.08,\"should_stop\":true,\"reasoning\":\"The black car is not visible in any frame, and the drone is boxed in by dense tree branches overhead and ahead, creating an immediate collision risk.\"}"
+        },
+        {
+          "step": 29,
+          "type": "convergence_command",
+          "old_instruction": "Turn right 20 degrees",
+          "new_instruction": "Ascend 0.8 meters",
+          "reasoning": "convergence (stopped_short): The black car is not visible in any frame, and the view is heavily blocked by close tree branches spanning the upper and central parts of the scene. Since a recent right turn did not reveal the target and the branches remain an immediate obstruction, gaining altitude is the best single action to clear the canopy and continue the visual search safely."
+        },
+        {
+          "step": 89,
+          "type": "force_converge",
+          "reasoning": "Checkpoint thinks complete, verifying at convergence. Reasoning: A black car is clearly visible in the latest frames near the lower-right street area, so the visual search goal is accomplished. Raw: {\"complete\":true,\"completion_percentage\":1.0,\"should_stop\":false,\"reasoning\":\"A black car is clearly visible in the latest frames near the lower-right street area, so the visual search goal is accomplished.\"}"
+        }
+      ]
+    },
+    {
+      "subgoal": "Go to the black car",
+      "converted_instruction": "go to the black car",
+      "total_steps": 160,
+      "stop_reason": "monitor_complete",
+      "corrections_used": 3,
+      "last_completion_pct": 0.55,
+      "peak_completion": 0.95,
+      "vlm_call_count": 20,
+      "vlm_call_records": [
+        {
+          "label": "global_checkpoint",
+          "step": 10,
+          "rtt_s": 2.081,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 1530,
+          "output_tokens": 49
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 20,
+          "rtt_s": 2.272,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 1877,
+          "output_tokens": 56
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 30,
+          "rtt_s": 2.479,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2571,
+          "output_tokens": 51
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 40,
+          "rtt_s": 3.076,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2571,
+          "output_tokens": 55
+        },
+        {
+          "label": "convergence",
+          "step": 41,
+          "rtt_s": 4.307,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 3693,
+          "output_tokens": 93
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 50,
+          "rtt_s": 3.791,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 3184,
+          "output_tokens": 50
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 60,
+          "rtt_s": 4.092,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 3988,
+          "output_tokens": 58
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 70,
+          "rtt_s": 4.768,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 3988,
+          "output_tokens": 51
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 80,
+          "rtt_s": 5.008,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 3988,
+          "output_tokens": 54
+        },
+        {
+          "label": "convergence",
+          "step": 88,
+          "rtt_s": 5.006,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 4532,
+          "output_tokens": 95
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 90,
+          "rtt_s": 4.587,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 3988,
+          "output_tokens": 58
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 100,
+          "rtt_s": 4.595,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 3988,
+          "output_tokens": 58
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 110,
+          "rtt_s": 4.495,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 3988,
+          "output_tokens": 53
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 120,
+          "rtt_s": 4.798,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 3988,
+          "output_tokens": 53
+        },
+        {
+          "label": "convergence",
+          "step": 122,
+          "rtt_s": 5.005,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 4554,
+          "output_tokens": 100
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 130,
+          "rtt_s": 3.977,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 3988,
+          "output_tokens": 53
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 140,
+          "rtt_s": 5.61,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 3988,
+          "output_tokens": 57
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 150,
+          "rtt_s": 4.597,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 3988,
+          "output_tokens": 55
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 160,
+          "rtt_s": 5.41,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 3988,
+          "output_tokens": 59
+        },
+        {
+          "label": "convergence",
+          "step": 160,
+          "rtt_s": 5.404,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 4619,
+          "output_tokens": 100
+        },
+        {
+          "label": "subgoal_convert",
+          "subgoal": "Go to the black car",
+          "rtt_s": 0.63,
+          "model": "gpt-4o-2024-08-06",
+          "input_tokens": 366,
+          "output_tokens": 11
+        }
+      ],
+      "next_origin": [
+        -9656.710535616125,
+        -333.8158059336107,
+        1027.843154688384,
+        -162.15296257672668
+      ],
+      "parse_failures": 0,
+      "override_history": [
+        {
+          "step": 40,
+          "type": "convergence_command",
+          "old_instruction": "go to the black car",
+          "new_instruction": "Move closer to the black car",
+          "reasoning": "convergence (stopped_short): The black car is clearly visible near the intersection in the middle-right area of the frames, but it remains fairly small and does not fill a large portion of the view. The drone appears to have stopped while still well above and away from the car rather than reaching or passing it."
+        },
+        {
+          "step": 87,
+          "type": "convergence_command",
+          "old_instruction": "Move closer to the black car",
+          "new_instruction": "Move closer to the black car",
+          "reasoning": "convergence (stopped_short): The black car remains clearly visible near the lower middle-left of the latest frames and stays relatively small, so the drone has not yet arrived at it. The view shows only slight lateral drift rather than the car filling the frame or disappearing from an approach-and-pass pattern, indicating it stopped short."
+        },
+        {
+          "step": 121,
+          "type": "convergence_command",
+          "old_instruction": "Move closer to the black car",
+          "new_instruction": "Descend 0.8 meters",
+          "reasoning": "convergence (stopped_short): The black car stays clearly visible near the lower center of the latest frames and does not fill a large portion of the view, so the drone is still above and short of the target rather than having arrived. Forward progress appears limited after repeated 'move closer' corrections, so altitude is now the main bottleneck."
+        },
+        {
+          "step": 159,
+          "type": "force_converge",
+          "reasoning": "Stop requested for correction. Reasoning: The black car remains small and distant near the intersection while tree branches are filling more of the recent frames, indicating the drone is drifting into foliage rather than closing on the car. Raw: {\"complete\":false,\"completion_percentage\":0.58,\"should_stop\":true,\"reasoning\":\"The black car remains small and distant near the intersection while tree branches are filling more of the recent frames, indicating the drone is drifting into foliage rather than closing on the car.\"}"
+        }
+      ]
+    },
+    {
+      "subgoal": "Turn toward the red car",
+      "converted_instruction": "turn toward the red car",
+      "total_steps": 170,
+      "stop_reason": "monitor_complete",
+      "corrections_used": 10,
+      "last_completion_pct": 1.0,
+      "peak_completion": 1.0,
+      "vlm_call_count": 28,
+      "vlm_call_records": [
+        {
+          "label": "global_checkpoint",
+          "step": 10,
+          "rtt_s": 1.87,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 1530,
+          "output_tokens": 44
+        },
+        {
+          "label": "convergence",
+          "step": 16,
+          "rtt_s": 2.987,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2386,
+          "output_tokens": 92
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 20,
+          "rtt_s": 2.782,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2571,
+          "output_tokens": 58
+        },
+        {
+          "label": "convergence",
+          "step": 20,
+          "rtt_s": 3.911,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 3155,
+          "output_tokens": 99
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 30,
+          "rtt_s": 3.393,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2571,
+          "output_tokens": 54
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 40,
+          "rtt_s": 4.619,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 3184,
+          "output_tokens": 60
+        },
+        {
+          "label": "convergence",
+          "step": 40,
+          "rtt_s": 4.416,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 3793,
+          "output_tokens": 108
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 50,
+          "rtt_s": 5.189,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 3184,
+          "output_tokens": 56
+        },
+        {
+          "label": "convergence",
+          "step": 59,
+          "rtt_s": 5.327,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 4575,
+          "output_tokens": 98
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 60,
+          "rtt_s": 4.727,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 3988,
+          "output_tokens": 53
+        },
+        {
+          "label": "convergence",
+          "step": 60,
+          "rtt_s": 5.016,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 4634,
+          "output_tokens": 111
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 70,
+          "rtt_s": 5.825,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 3988,
+          "output_tokens": 66
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 80,
+          "rtt_s": 5.102,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 3988,
+          "output_tokens": 64
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 90,
+          "rtt_s": 5.077,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 3988,
+          "output_tokens": 45
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 100,
+          "rtt_s": 5.292,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 3988,
+          "output_tokens": 47
+        },
+        {
+          "label": "convergence",
+          "step": 105,
+          "rtt_s": 6.633,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 4621,
+          "output_tokens": 106
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 110,
+          "rtt_s": 4.982,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 3988,
+          "output_tokens": 55
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 120,
+          "rtt_s": 4.696,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 3988,
+          "output_tokens": 47
+        },
+        {
+          "label": "convergence",
+          "step": 124,
+          "rtt_s": 5.408,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 4642,
+          "output_tokens": 99
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 130,
+          "rtt_s": 4.998,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 3988,
+          "output_tokens": 62
+        },
+        {
+          "label": "convergence",
+          "step": 130,
+          "rtt_s": 6.126,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 4708,
+          "output_tokens": 106
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 140,
+          "rtt_s": 6.638,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 3988,
+          "output_tokens": 48
+        },
+        {
+          "label": "convergence",
+          "step": 140,
+          "rtt_s": 6.331,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 4714,
+          "output_tokens": 99
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 150,
+          "rtt_s": 4.289,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 3988,
+          "output_tokens": 50
+        },
+        {
+          "label": "convergence",
+          "step": 159,
+          "rtt_s": 5.72,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 4704,
+          "output_tokens": 107
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 160,
+          "rtt_s": 4.898,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 3988,
+          "output_tokens": 51
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 170,
+          "rtt_s": 4.695,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 3988,
+          "output_tokens": 50
+        },
+        {
+          "label": "convergence",
+          "step": 170,
+          "rtt_s": 4.998,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 4757,
+          "output_tokens": 80
+        },
+        {
+          "label": "subgoal_convert",
+          "subgoal": "Turn toward the red car",
+          "rtt_s": 0.561,
+          "model": "gpt-4o-2024-08-06",
+          "input_tokens": 366,
+          "output_tokens": 11
+        }
+      ],
+      "next_origin": [
+        -9648.505726549385,
+        -355.56103945584323,
+        1904.3921365980423,
+        -39.61195869785405
+      ],
+      "parse_failures": 0,
+      "override_history": [
+        {
+          "step": 15,
+          "type": "convergence_command",
+          "old_instruction": "turn toward the red car",
+          "new_instruction": "Turn right 20 degrees",
+          "reasoning": "convergence (stopped_short): The latest frames are dominated by nearby tree branches and leaves, and no red car is identifiable anywhere in view. Since this is a turn-to-search subgoal and the target is not visible, the drone has stopped short and should continue a small rightward sweep to reacquire it."
+        },
+        {
+          "step": 19,
+          "type": "force_converge",
+          "reasoning": "Stop requested for correction. Reasoning: The red car is not visible in any frame, and the drone is pressed into dense branches that fill much of the view, creating an immediate collision/obstruction risk. Raw: {\"complete\":false,\"completion_percentage\":0.06,\"should_stop\":true,\"reasoning\":\"The red car is not visible in any frame, and the drone is pressed into dense branches that fill much of the view, creating an immediate collision/obstruction risk.\"}"
+        },
+        {
+          "step": 19,
+          "type": "convergence_command",
+          "old_instruction": "Turn right 20 degrees",
+          "new_instruction": "Ascend 0.8 meters",
+          "reasoning": "convergence (stopped_short): The red car is still not visible in any frame, and large branches and leaves are pressed close across most of the view, blocking the search direction and posing an immediate obstruction risk. Since the recent right-turn correction did not reveal the target, switching axes to climb above the foliage is the best single action."
+        },
+        {
+          "step": 39,
+          "type": "force_converge",
+          "reasoning": "Stop requested for correction. Reasoning: The red car is not clearly visible in any frame and the drone is pressed into dense tree branches that fill much of the view, creating an immediate collision/entanglement risk. Raw: {\"complete\":false,\"completion_percentage\":0.22,\"should_stop\":true,\"reasoning\":\"The red car is not clearly visible in any frame and the drone is pressed into dense tree branches that fill much of the view, creating an immediate collision/entanglement risk.\"}"
+        },
+        {
+          "step": 39,
+          "type": "convergence_command",
+          "old_instruction": "Ascend 0.8 meters",
+          "new_instruction": "Turn right 20 degrees",
+          "reasoning": "convergence (stopped_short): The red car is still not clearly identifiable in the visible street scene; most frames are dominated by close branches and leaves, though the ascent opened a bit more view over the intersection. Since this is a turn-to-search task and there is no clear directional evidence for the car, a small right turn is the best single action to continue sweeping while avoiding oscillation."
+        },
+        {
+          "step": 58,
+          "type": "convergence_command",
+          "old_instruction": "Turn right 20 degrees",
+          "new_instruction": "Descend 0.8 meters",
+          "reasoning": "convergence (stopped_short): The red car is not clearly visible in the latest frames, and the view is increasingly blocked by dense tree branches and leaves after the recent ascent. Since repeated right turns did not finish the search and altitude now appears to be the main problem, descending should clear the foliage and improve visibility toward the street."
+        },
+        {
+          "step": 59,
+          "type": "force_converge",
+          "reasoning": "Stop requested for correction. Reasoning: The red car is not clearly visible in the recent frames and dense tree branches/leaves dominate the view, creating an immediate obstruction risk while turning. Raw: {\"complete\":false,\"completion_percentage\":0.18,\"should_stop\":true,\"reasoning\":\"The red car is not clearly visible in the recent frames and dense tree branches/leaves dominate the view, creating an immediate obstruction risk while turning.\"}"
+        },
+        {
+          "step": 59,
+          "type": "convergence_command",
+          "old_instruction": "Descend 0.8 meters",
+          "new_instruction": "Ascend 0.8 meters",
+          "reasoning": "convergence (stopped_short): The red car is still not clearly visible in the latest frames; the view is dominated by very close branches and leaves, with only partial glimpses of the street and parked vehicles through the foliage. Recent turn corrections did not improve completion, so the biggest bottleneck is the tree canopy blocking visibility rather than yaw; climbing should clear the obstruction and make the car searchable."
+        },
+        {
+          "step": 104,
+          "type": "convergence_command",
+          "old_instruction": "Ascend 0.8 meters",
+          "new_instruction": "Turn right 20 degrees",
+          "reasoning": "convergence (stopped_short): In the latest frames the red car is still not visible; only a black car and a purple/blue car can be seen near the intersection as the view clears past the tree canopy. The drone has improved its view but has not yet turned enough to bring the red car into frame, so a small continued rightward search is the best next step."
+        },
+        {
+          "step": 123,
+          "type": "convergence_command",
+          "old_instruction": "Turn right 20 degrees",
+          "new_instruction": "Turn right 20 degrees",
+          "reasoning": "convergence (stopped_short): Across the sequence the view yaws right and the car comes into view near the lower right of the latest frames, but it appears white/purple rather than a clearly identifiable red car. The target is likely just farther to the right, so a small right turn is the best single-axis correction to reacquire it."
+        },
+        {
+          "step": 129,
+          "type": "force_converge",
+          "reasoning": "Stop requested for correction. Reasoning: The view keeps turning past the street scene into open sky and rooftops, and no red car is clearly visible in any frame, so the drone appears to have overshot the target direction. Raw: {\"complete\":false,\"completion_percentage\":0.42,\"should_stop\":true,\"reasoning\":\"The view keeps turning past the street scene into open sky and rooftops, and no red car is clearly visible in any frame, so the drone appears to have overshot the target direction.\"}"
+        },
+        {
+          "step": 129,
+          "type": "convergence_command",
+          "old_instruction": "Turn right 20 degrees",
+          "new_instruction": "Turn right 20 degrees",
+          "reasoning": "convergence (overshot): Across the frames the view keeps sweeping rightward from leafy street views to mostly rooftops, parking lot, and open sky, and no red car is clearly identifiable anywhere. Since recent right turns have carried the camera past the street scene without reacquiring the target, the drone appears to have overshot and should continue the rightward search sweep into new ground."
+        },
+        {
+          "step": 139,
+          "type": "force_converge",
+          "reasoning": "Stop requested for correction. Reasoning: The view keeps turning away across the parking lot and rooftops, and no red car is clearly visible in any frame. Raw: {\"complete\":false,\"completion_percentage\":0.08,\"should_stop\":true,\"reasoning\":\"The view keeps turning away across the parking lot and rooftops, and no red car is clearly visible in any frame.\"}"
+        },
+        {
+          "step": 139,
+          "type": "convergence_command",
+          "old_instruction": "Turn right 20 degrees",
+          "new_instruction": "Turn right 20 degrees",
+          "reasoning": "convergence (stopped_short): Across the sequence the camera keeps panning right over rooftops and the parking lot, but no clearly identifiable red car appears in any frame. Since this is a visual search task and recent non-yaw changes did not help, the biggest gap is still orientation, so continue the rightward sweep to acquire the car."
+        },
+        {
+          "step": 158,
+          "type": "convergence_command",
+          "old_instruction": "Turn right 20 degrees",
+          "new_instruction": "Turn right 20 degrees",
+          "reasoning": "convergence (overshot): Across the frames the view keeps panning right, and the only clearly visible cars are a black car and a purple/white vehicle; no red car is identifiable in the latest frames. Since repeated right turns previously reached higher completion and the current view appears to have drifted past the likely bearing, continue the rightward search sweep to reacquire the red car."
+        },
+        {
+          "step": 169,
+          "type": "force_converge",
+          "reasoning": "Stop requested for correction. Reasoning: The view keeps turning away from the street and the red car is not visible in any frame, so the drone is off-track. Raw: {\"complete\":false,\"completion_percentage\":0.06,\"should_stop\":true,\"reasoning\":\"The view keeps turning away from the street and the red car is not visible in any frame, so the drone is off-track.\"}"
+        }
+      ]
+    },
+    {
+      "subgoal": "Go to the red car",
+      "converted_instruction": "approach the red car",
+      "total_steps": 419,
+      "stop_reason": "ask_help",
+      "corrections_used": 20,
+      "last_completion_pct": 0.08,
+      "peak_completion": 0.72,
+      "vlm_call_count": 62,
+      "vlm_call_records": [
+        {
+          "label": "global_checkpoint",
+          "step": 10,
+          "rtt_s": 2.178,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 1530,
+          "output_tokens": 52
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 20,
+          "rtt_s": 2.583,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 1877,
+          "output_tokens": 57
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 30,
+          "rtt_s": 2.926,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2571,
+          "output_tokens": 60
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 40,
+          "rtt_s": 4.105,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2571,
+          "output_tokens": 53
+        },
+        {
+          "label": "convergence",
+          "step": 44,
+          "rtt_s": 4.296,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 3693,
+          "output_tokens": 102
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 50,
+          "rtt_s": 4.192,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 3184,
+          "output_tokens": 58
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 60,
+          "rtt_s": 4.7,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 3988,
+          "output_tokens": 62
+        },
+        {
+          "label": "convergence",
+          "step": 60,
+          "rtt_s": 5.523,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 4576,
+          "output_tokens": 99
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 70,
+          "rtt_s": 5.191,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 3988,
+          "output_tokens": 59
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 80,
+          "rtt_s": 5.401,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 3988,
+          "output_tokens": 61
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 90,
+          "rtt_s": 5.602,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 3988,
+          "output_tokens": 53
+        },
+        {
+          "label": "convergence",
+          "step": 90,
+          "rtt_s": 5.897,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 4590,
+          "output_tokens": 112
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 100,
+          "rtt_s": 4.679,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 3988,
+          "output_tokens": 54
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 110,
+          "rtt_s": 5.192,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 3988,
+          "output_tokens": 56
+        },
+        {
+          "label": "convergence",
+          "step": 110,
+          "rtt_s": 5.399,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 4575,
+          "output_tokens": 99
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 120,
+          "rtt_s": 4.988,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 3988,
+          "output_tokens": 54
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 130,
+          "rtt_s": 4.988,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 3988,
+          "output_tokens": 60
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 140,
+          "rtt_s": 4.483,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 3988,
+          "output_tokens": 51
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 150,
+          "rtt_s": 5.308,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 3988,
+          "output_tokens": 61
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 160,
+          "rtt_s": 5.411,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 3988,
+          "output_tokens": 67
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 170,
+          "rtt_s": 5.822,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 3988,
+          "output_tokens": 62
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 180,
+          "rtt_s": 5.535,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 3988,
+          "output_tokens": 61
+        },
+        {
+          "label": "convergence",
+          "step": 180,
+          "rtt_s": 5.72,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 4642,
+          "output_tokens": 121
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 190,
+          "rtt_s": 5.617,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 3988,
+          "output_tokens": 59
+        },
+        {
+          "label": "convergence",
+          "step": 190,
+          "rtt_s": 6.409,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 4663,
+          "output_tokens": 108
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 200,
+          "rtt_s": 5.203,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 3988,
+          "output_tokens": 56
+        },
+        {
+          "label": "convergence",
+          "step": 200,
+          "rtt_s": 5.922,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 4683,
+          "output_tokens": 105
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 210,
+          "rtt_s": 5.411,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 3988,
+          "output_tokens": 62
+        },
+        {
+          "label": "convergence",
+          "step": 210,
+          "rtt_s": 6.306,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 4710,
+          "output_tokens": 113
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 220,
+          "rtt_s": 5.207,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 3988,
+          "output_tokens": 60
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 230,
+          "rtt_s": 5.819,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 3988,
+          "output_tokens": 64
+        },
+        {
+          "label": "convergence",
+          "step": 237,
+          "rtt_s": 6.746,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 4686,
+          "output_tokens": 113
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 240,
+          "rtt_s": 5.004,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 3988,
+          "output_tokens": 57
+        },
+        {
+          "label": "convergence",
+          "step": 240,
+          "rtt_s": 6.951,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 4749,
+          "output_tokens": 105
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 250,
+          "rtt_s": 6.224,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 3988,
+          "output_tokens": 62
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 260,
+          "rtt_s": 5.517,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 3988,
+          "output_tokens": 59
+        },
+        {
+          "label": "convergence",
+          "step": 260,
+          "rtt_s": 6.536,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 4774,
+          "output_tokens": 110
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 270,
+          "rtt_s": 5.205,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 3988,
+          "output_tokens": 59
+        },
+        {
+          "label": "convergence",
+          "step": 270,
+          "rtt_s": 6.026,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 4797,
+          "output_tokens": 112
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 280,
+          "rtt_s": 5.511,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 3988,
+          "output_tokens": 67
+        },
+        {
+          "label": "convergence",
+          "step": 280,
+          "rtt_s": 6.301,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 4826,
+          "output_tokens": 107
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 290,
+          "rtt_s": 5.518,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 3988,
+          "output_tokens": 60
+        },
+        {
+          "label": "convergence",
+          "step": 290,
+          "rtt_s": 5.92,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 4845,
+          "output_tokens": 113
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 300,
+          "rtt_s": 5.518,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 3988,
+          "output_tokens": 62
+        },
+        {
+          "label": "convergence",
+          "step": 300,
+          "rtt_s": 6.948,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 4870,
+          "output_tokens": 106
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 310,
+          "rtt_s": 5.3,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 3988,
+          "output_tokens": 58
+        },
+        {
+          "label": "convergence",
+          "step": 310,
+          "rtt_s": 6.946,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 4887,
+          "output_tokens": 120
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 320,
+          "rtt_s": 5.312,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 3988,
+          "output_tokens": 63
+        },
+        {
+          "label": "convergence",
+          "step": 320,
+          "rtt_s": 6.323,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 4913,
+          "output_tokens": 104
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 330,
+          "rtt_s": 5.507,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 3988,
+          "output_tokens": 59
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 340,
+          "rtt_s": 6.32,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 3988,
+          "output_tokens": 62
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 350,
+          "rtt_s": 5.094,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 3988,
+          "output_tokens": 51
+        },
+        {
+          "label": "convergence",
+          "step": 350,
+          "rtt_s": 6.332,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 4924,
+          "output_tokens": 110
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 360,
+          "rtt_s": 5.71,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 3988,
+          "output_tokens": 61
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 370,
+          "rtt_s": 7.545,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 3988,
+          "output_tokens": 63
+        },
+        {
+          "label": "convergence",
+          "step": 377,
+          "rtt_s": 6.118,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 4911,
+          "output_tokens": 104
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 380,
+          "rtt_s": 5.192,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 3988,
+          "output_tokens": 57
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 390,
+          "rtt_s": 6.524,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 3988,
+          "output_tokens": 52
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 400,
+          "rtt_s": 5.401,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 3988,
+          "output_tokens": 53
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 410,
+          "rtt_s": 5.195,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 3988,
+          "output_tokens": 56
+        },
+        {
+          "label": "convergence",
+          "step": 410,
+          "rtt_s": 5.81,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 4973,
+          "output_tokens": 103
+        },
+        {
+          "label": "global_checkpoint",
+          "step": 420,
+          "rtt_s": 4.989,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 3988,
+          "output_tokens": 56
+        },
+        {
+          "label": "subgoal_convert",
+          "subgoal": "Go to the red car",
+          "rtt_s": 0.501,
+          "model": "gpt-4o-2024-08-06",
+          "input_tokens": 366,
+          "output_tokens": 11
+        }
+      ],
+      "next_origin": [
+        -9427.146545802158,
+        -307.42015888670034,
+        191.13826468031766,
+        47.02321240919332
+      ],
+      "parse_failures": 0,
+      "override_history": [
+        {
+          "step": 43,
+          "type": "convergence_command",
+          "old_instruction": "approach the red car",
+          "new_instruction": "Turn right 20 degrees",
+          "reasoning": "convergence (stopped_short): The red car is only briefly and partially visible through the foliage in earlier frames and is not clearly visible in the latest frame, while the tree dominates the view. The drone appears to have stopped with the target occluded rather than reached, so a small right turn is the best single action to reacquire the car before moving closer."
+        },
+        {
+          "step": 59,
+          "type": "force_converge",
+          "reasoning": "Stop requested for correction. Reasoning: The red car is only briefly and partially visible behind dense tree foliage in earlier frames and then disappears while the drone closes on the tree, creating a likely collision course and moving off the target. Raw: {\"complete\":false,\"completion_percentage\":0.22,\"should_stop\":true,\"reasoning\":\"The red car is only briefly and partially visible behind dense tree foliage in earlier frames and then disappears while the drone closes on the tree, creating a likely collision course and moving off the target.\"}"
+        },
+        {
+          "step": 59,
+          "type": "convergence_command",
+          "old_instruction": "Turn right 20 degrees",
+          "new_instruction": "Ascend 0.8 meters",
+          "reasoning": "convergence (stopped_short): The red car is still not clearly visible in the latest frames, while a large tree fills the center and foreground and remains the main obstruction. The previous right turn did not improve target visibility, so switching axes to climb above the foliage is the best next step to clear the obstacle and reacquire the car."
+        },
+        {
+          "step": 89,
+          "type": "force_converge",
+          "reasoning": "Stop requested for correction. Reasoning: The red car is not visible in any frame and the drone is drifting upward over rooftops and trees, moving away from the likely target area. Raw: {\"complete\":false,\"completion_percentage\":0.08,\"should_stop\":true,\"reasoning\":\"The red car is not visible in any frame and the drone is drifting upward over rooftops and trees, moving away from the likely target area.\"}"
+        },
+        {
+          "step": 89,
+          "type": "convergence_command",
+          "old_instruction": "Ascend 0.8 meters",
+          "new_instruction": "Turn right 20 degrees",
+          "reasoning": "convergence (stopped_short): Across all nine frames the red car is still not visible; the view is dominated by treetops, rooftops, and sky, with the latest frames showing more open rooftop to the right but no target. Since the last correction was an ascent and that did not reveal the car, the biggest gap is still orientation, so a small right turn is the best next search action."
+        },
+        {
+          "step": 109,
+          "type": "convergence_command",
+          "old_instruction": "Turn right 20 degrees",
+          "new_instruction": "Descend 0.8 meters",
+          "reasoning": "convergence (stopped_short): The frames show the drone high above rooftops and trees, with no clearly identifiable red car visible in the latest views. Recent right-turn corrections and an ascent did not improve acquisition, so switching axes makes sense; descending should bring the parking/road level back into view where the red car is likely located."
+        },
+        {
+          "step": 179,
+          "type": "force_converge",
+          "reasoning": "Stop requested for correction. Reasoning: The red car is only briefly visible low on the left in later frames while dense tree branches increasingly fill the view, indicating the drone is drifting into foliage and losing a clear approach path. Raw: {\"complete\":false,\"completion_percentage\":0.58,\"should_stop\":true,\"reasoning\":\"The red car is only briefly visible low on the left in later frames while dense tree branches increasingly fill the view, indicating the drone is drifting into foliage and losing a clear approach path.\"}"
+        },
+        {
+          "step": 179,
+          "type": "convergence_command",
+          "old_instruction": "Descend 0.8 meters",
+          "new_instruction": "Ascend 0.8 meters",
+          "reasoning": "convergence (stopped_short): The red car is only faintly visible low on the left in some middle/later frames and never grows large; the newest frames are dominated by close tree branches and leaves, so the drone has stopped short and is boxed in by foliage. Since recent turn corrections did not improve completion and vegetation is now the main obstruction, climbing is the best single-axis move to clear the canopy and reopen a path to the car."
+        },
+        {
+          "step": 189,
+          "type": "force_converge",
+          "reasoning": "Stop requested for correction. Reasoning: The red car is only briefly glimpsed low on the left through trees while foliage increasingly fills the view, indicating the drone is drifting into branches and losing a clear approach path. Raw: {\"complete\":false,\"completion_percentage\":0.56,\"should_stop\":true,\"reasoning\":\"The red car is only briefly glimpsed low on the left through trees while foliage increasingly fills the view, indicating the drone is drifting into branches and losing a clear approach path.\"}"
+        },
+        {
+          "step": 189,
+          "type": "convergence_command",
+          "old_instruction": "Ascend 0.8 meters",
+          "new_instruction": "Ascend 0.8 meters",
+          "reasoning": "convergence (stopped_short): The red car is only intermittently visible low on the left in earlier and middle frames, while the latest frames are dominated by nearby tree branches and leaves, so the drone has not reached the car and is getting blocked by foliage. Ascending is the clearest single-axis fix to get above the canopy and reopen a line of sight to the car."
+        },
+        {
+          "step": 199,
+          "type": "force_converge",
+          "reasoning": "Stop requested for correction. Reasoning: The red car is only intermittently visible low on the left and the drone is drifting into dense tree branches that increasingly fill the frame, creating a collision risk. Raw: {\"complete\":false,\"completion_percentage\":0.41,\"should_stop\":true,\"reasoning\":\"The red car is only intermittently visible low on the left and the drone is drifting into dense tree branches that increasingly fill the frame, creating a collision risk.\"}"
+        },
+        {
+          "step": 199,
+          "type": "convergence_command",
+          "old_instruction": "Ascend 0.8 meters",
+          "new_instruction": "Turn left 20 degrees",
+          "reasoning": "convergence (stopped_short): The red car is visible again in the latest frames near the lower left, but it remains small and partly occluded by trees, so the drone has not reached it yet. Dense branches filled several recent frames after repeated ascents, so switching axes and turning left is the best way to re-center the car and avoid pushing deeper into the foliage."
+        },
+        {
+          "step": 209,
+          "type": "force_converge",
+          "reasoning": "Stop requested for correction. Reasoning: The red car is only intermittently visible low on the left through dense tree branches, and the drone appears to be drifting into foliage that fills much of the frame, creating a collision risk. Raw: {\"complete\":false,\"completion_percentage\":0.41,\"should_stop\":true,\"reasoning\":\"The red car is only intermittently visible low on the left through dense tree branches, and the drone appears to be drifting into foliage that fills much of the frame, creating a collision risk.\"}"
+        },
+        {
+          "step": 209,
+          "type": "convergence_command",
+          "old_instruction": "Turn left 20 degrees",
+          "new_instruction": "Turn left 20 degrees",
+          "reasoning": "convergence (stopped_short): The red car is still only partially visible through the trees near the lower left in the latest frames and does not fill much of the view, so the drone has not reached it yet. The main issue now is orientation rather than altitude: foliage blocks the center while the target remains off to the left, so a small left turn should better align the car and avoid pushing deeper into branches."
+        },
+        {
+          "step": 236,
+          "type": "convergence_command",
+          "old_instruction": "Turn left 20 degrees",
+          "new_instruction": "Descend 0.8 meters",
+          "reasoning": "convergence (stopped_short): A red car is intermittently visible near the lower-left/lower-center of several later frames, but it remains small and heavily occluded by tree branches, so the drone has not yet approached it closely enough. The latest views are high above the street canopy, suggesting altitude is the main bottleneck now; descending should improve line of sight and let the drone close the gap."
+        },
+        {
+          "step": 239,
+          "type": "force_converge",
+          "reasoning": "Stop requested for correction. Reasoning: The red car is only partially visible far below through trees while branches fill much of the view, indicating the drone is off-track and at risk of pushing into foliage. Raw: {\"complete\":false,\"completion_percentage\":0.41,\"should_stop\":true,\"reasoning\":\"The red car is only partially visible far below through trees while branches fill much of the view, indicating the drone is off-track and at risk of pushing into foliage.\"}"
+        },
+        {
+          "step": 239,
+          "type": "convergence_command",
+          "old_instruction": "Descend 0.8 meters",
+          "new_instruction": "Descend 0.8 meters",
+          "reasoning": "convergence (stopped_short): The red car is visible in the later frames near the lower center-left, but it remains small and heavily occluded by tree branches, so the drone has not reached it yet. Recent views are clearer after the earlier descent, and the main remaining gap is altitude: the drone is still above the car and looking down through the canopy."
+        },
+        {
+          "step": 259,
+          "type": "force_converge",
+          "reasoning": "Stop requested for correction. Reasoning: The red car is only briefly visible low in the scene and then disappears as the drone drifts into dense tree branches, creating an immediate foliage collision risk and moving off target. Raw: {\"complete\":false,\"completion_percentage\":0.27,\"should_stop\":true,\"reasoning\":\"The red car is only briefly visible low in the scene and then disappears as the drone drifts into dense tree branches, creating an immediate foliage collision risk and moving off target.\"}"
+        },
+        {
+          "step": 259,
+          "type": "convergence_command",
+          "old_instruction": "Descend 0.8 meters",
+          "new_instruction": "Ascend 0.8 meters",
+          "reasoning": "convergence (stopped_short): The red car is only partially visible low in several middle frames and never fills a large portion of the view, while the latest frames are dominated by close tree branches indicating the drone is blocked by foliage rather than at the car. Ascending is the biggest bottleneck now because it should clear the immediate branch collision risk and reopen a line of sight to the car."
+        },
+        {
+          "step": 269,
+          "type": "force_converge",
+          "reasoning": "Stop requested for correction. Reasoning: The red car is only briefly visible low in the scene and then becomes obscured as the drone flies into dense tree branches, creating an immediate collision risk and losing the target. Raw: {\"complete\":false,\"completion_percentage\":0.41,\"should_stop\":true,\"reasoning\":\"The red car is only briefly visible low in the scene and then becomes obscured as the drone flies into dense tree branches, creating an immediate collision risk and losing the target.\"}"
+        },
+        {
+          "step": 269,
+          "type": "convergence_command",
+          "old_instruction": "Ascend 0.8 meters",
+          "new_instruction": "Turn right 20 degrees",
+          "reasoning": "convergence (stopped_short): The red car is only partially visible through the trees in the middle frames and is not reached; the latest frames are dominated by close branches, so the drone is blocked short of the target rather than at it. Since the car is no longer clearly visible and recent altitude changes have not improved completion, a right turn is the best single action to reacquire a clearer line of sight."
+        },
+        {
+          "step": 279,
+          "type": "force_converge",
+          "reasoning": "Stop requested for correction. Reasoning: The red car is only briefly visible through the trees in earlier frames and the latest frames are dominated by close branches, indicating the drone has drifted into foliage and is on a collision course rather than approaching the car. Raw: {\"complete\":false,\"completion_percentage\":0.41,\"should_stop\":true,\"reasoning\":\"The red car is only briefly visible through the trees in earlier frames and the latest frames are dominated by close branches, indicating the drone has drifted into foliage and is on a collision course rather than approaching the car.\"}"
+        },
+        {
+          "step": 279,
+          "type": "convergence_command",
+          "old_instruction": "Turn right 20 degrees",
+          "new_instruction": "Move back from the tree 0.8 meters",
+          "reasoning": "convergence (stopped_short): The red car is only faintly visible low in a few earlier frames, while the latest frames are almost entirely filled with nearby leaves and branches, showing the drone is buried in foliage rather than at the car. Backing away from the tree is the biggest immediate fix because the current view is obstructed and collision risk is high."
+        },
+        {
+          "step": 289,
+          "type": "force_converge",
+          "reasoning": "Stop requested for correction. Reasoning: The red car is only briefly partially visible through the trees early on, and the drone then flies into dense branches that fill the frame, creating an immediate collision/occlusion problem. Raw: {\"complete\":false,\"completion_percentage\":0.28,\"should_stop\":true,\"reasoning\":\"The red car is only briefly partially visible through the trees early on, and the drone then flies into dense branches that fill the frame, creating an immediate collision/occlusion problem.\"}"
+        },
+        {
+          "step": 289,
+          "type": "convergence_command",
+          "old_instruction": "Move back from the tree 0.8 meters",
+          "new_instruction": "Ascend 0.8 meters",
+          "reasoning": "convergence (stopped_short): The red car is only faintly/partially visible low in a few earlier frames, while the latest frames are dominated by close branches and leaves, indicating the drone is blocked by the tree canopy rather than at the car. Since the target is occluded by foliage and the immediate problem is the obstacle directly ahead, climbing is the best single-axis correction to clear the branches."
+        },
+        {
+          "step": 299,
+          "type": "force_converge",
+          "reasoning": "Stop requested for correction. Reasoning: The red car is only briefly and partially visible through the trees while dense branches fill most recent frames, indicating the drone is pushing into foliage and risks collision instead of cleanly approaching the car. Raw: {\"complete\":false,\"completion_percentage\":0.22,\"should_stop\":true,\"reasoning\":\"The red car is only briefly and partially visible through the trees while dense branches fill most recent frames, indicating the drone is pushing into foliage and risks collision instead of cleanly approaching the car.\"}"
+        },
+        {
+          "step": 299,
+          "type": "convergence_command",
+          "old_instruction": "Ascend 0.8 meters",
+          "new_instruction": "Turn right 20 degrees",
+          "reasoning": "convergence (stopped_short): The red car is still only a small, partially occluded patch behind the central tree and foliage, never growing large enough to indicate arrival. The latest frames remain dominated by branches directly ahead, so the drone is stopped short in vegetation; turning right is the best single action to reacquire a clearer line of sight instead of pushing deeper into the leaves."
+        },
+        {
+          "step": 309,
+          "type": "force_converge",
+          "reasoning": "Stop requested for correction. Reasoning: The red car is only briefly and partially visible through foliage in earlier frames and then disappears as the drone moves into dense branches, creating an immediate collision risk with the tree. Raw: {\"complete\":false,\"completion_percentage\":0.18,\"should_stop\":true,\"reasoning\":\"The red car is only briefly and partially visible through foliage in earlier frames and then disappears as the drone moves into dense branches, creating an immediate collision risk with the tree.\"}"
+        },
+        {
+          "step": 309,
+          "type": "convergence_command",
+          "old_instruction": "Turn right 20 degrees",
+          "new_instruction": "Turn right 20 degrees",
+          "reasoning": "convergence (stopped_short): The red car is not reached; it is only faintly glimpsed low through the trees in earlier/middle frames and then lost behind dense foliage, while branches fill much of the view and block the path. Since the target is not visible in the latest frames and recent altitude changes have not improved completion, a rightward search turn is the best single-axis correction to reacquire the car without pushing deeper into the tree."
+        },
+        {
+          "step": 319,
+          "type": "force_converge",
+          "reasoning": "Stop requested for correction. Reasoning: The red car is only faintly visible far below through dense branches while nearby foliage fills much of the view, indicating the drone is obstructed and at risk of colliding with the tree canopy. Raw: {\"complete\":false,\"completion_percentage\":0.18,\"should_stop\":true,\"reasoning\":\"The red car is only faintly visible far below through dense branches while nearby foliage fills much of the view, indicating the drone is obstructed and at risk of colliding with the tree canopy.\"}"
+        },
+        {
+          "step": 319,
+          "type": "convergence_command",
+          "old_instruction": "Turn right 20 degrees",
+          "new_instruction": "Descend 0.8 meters",
+          "reasoning": "convergence (stopped_short): The latest frames show the drone high above the street and tree canopy with the red car only faintly visible far below near the lower left, so it has not reached the car yet. The immediate branch obstruction has cleared, and altitude is now the main gap; descending is the best single-axis move to get closer to the car."
+        },
+        {
+          "step": 349,
+          "type": "force_converge",
+          "reasoning": "Stop requested for correction. Reasoning: The red car is not visible in these frames and the drone appears to be drifting into dense tree branches, creating a likely collision risk. Raw: {\"complete\":false,\"completion_percentage\":0.18,\"should_stop\":true,\"reasoning\":\"The red car is not visible in these frames and the drone appears to be drifting into dense tree branches, creating a likely collision risk.\"}"
+        },
+        {
+          "step": 349,
+          "type": "convergence_command",
+          "old_instruction": "Descend 0.8 meters",
+          "new_instruction": "Turn right 20 degrees",
+          "reasoning": "convergence (stopped_short): The red car is not clearly visible in the latest frames; the view opens from close branches into a plaza with trees and walkways, so the drone has improved clearance but has not reached the target. Since the target is still off-screen and there is no strong leftward evidence, a small right turn is the best single action to continue the search while avoiding the foliage."
+        },
+        {
+          "step": 376,
+          "type": "convergence_command",
+          "old_instruction": "Turn right 20 degrees",
+          "new_instruction": "Descend 0.8 meters",
+          "reasoning": "convergence (stopped_short): The red car is not visible in any of the recent frames; the drone is high above the street looking over treetops and storefront roofs, so it likely needs a lower vantage to reacquire the car. The latest frames show open space below rather than an immediate collision threat, making a small descent the best single-axis correction."
+        },
+        {
+          "step": 409,
+          "type": "force_converge",
+          "reasoning": "Stop requested for correction. Reasoning: The red car is only briefly visible far left in earlier frames and then disappears as the drone yaws right away from it, so it is moving off-target. Raw: {\"complete\":false,\"completion_percentage\":0.09,\"should_stop\":true,\"reasoning\":\"The red car is only briefly visible far left in earlier frames and then disappears as the drone yaws right away from it, so it is moving off-target.\"}"
+        },
+        {
+          "step": 409,
+          "type": "convergence_command",
+          "old_instruction": "Descend 0.8 meters",
+          "new_instruction": "Turn right 20 degrees",
+          "reasoning": "convergence (stopped_short): The red car is not visible in the latest frames, and the view has swept across the plaza to the right with trees and storefronts dominating the scene. Since the target cannot be seen and there is no clear left-side cue in the current frames, the best next step is to continue the rightward search to reacquire the car."
+        },
+        {
+          "step": 419,
+          "type": "force_converge",
+          "reasoning": "Stop requested for correction. Reasoning: The red car is only briefly visible far left in early frames and then disappears as the drone yaws right away from it, so it is moving off-target. Raw: {\"complete\":false,\"completion_percentage\":0.08,\"should_stop\":true,\"reasoning\":\"The red car is only briefly visible far left in early frames and then disappears as the drone yaws right away from it, so it is moving off-target.\"}"
+        }
+      ]
+    }
+  ],
+  "total_steps": 949,
+  "total_vlm_calls": 141,
+  "total_corrections": 42,
+  "total_input_tokens": 548678,
+  "total_output_tokens": 10281,
+  "vlm_call_records": [
+    {
+      "label": "ltl_nl_planning_cached",
+      "rtt_s": 0.0,
+      "model": "gpt-4o",
+      "input_tokens": 2443,
+      "output_tokens": 161
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 10,
+      "rtt_s": 2.075,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1531,
+      "output_tokens": 51
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 20,
+      "rtt_s": 2.272,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1878,
+      "output_tokens": 55
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 30,
+      "rtt_s": 5.024,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2572,
+      "output_tokens": 59
+    },
+    {
+      "label": "convergence",
+      "step": 30,
+      "rtt_s": 3.695,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 3123,
+      "output_tokens": 101
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 40,
+      "rtt_s": 3.895,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 3185,
+      "output_tokens": 53
+    },
+    {
+      "label": "convergence",
+      "step": 40,
+      "rtt_s": 9.527,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 3766,
+      "output_tokens": 91
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 50,
+      "rtt_s": 4.187,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 3185,
+      "output_tokens": 60
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 60,
+      "rtt_s": 4.38,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 3989,
+      "output_tokens": 60
+    },
+    {
+      "label": "convergence",
+      "step": 60,
+      "rtt_s": 4.394,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 4598,
+      "output_tokens": 91
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 70,
+      "rtt_s": 5.003,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 3989,
+      "output_tokens": 61
+    },
+    {
+      "label": "convergence",
+      "step": 70,
+      "rtt_s": 5.312,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 4622,
+      "output_tokens": 105
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 80,
+      "rtt_s": 5.613,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 3989,
+      "output_tokens": 62
+    },
+    {
+      "label": "convergence",
+      "step": 80,
+      "rtt_s": 5.821,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 4644,
+      "output_tokens": 95
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 90,
+      "rtt_s": 4.798,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 3989,
+      "output_tokens": 63
+    },
+    {
+      "label": "convergence",
+      "step": 90,
+      "rtt_s": 5.907,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 4668,
+      "output_tokens": 94
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 100,
+      "rtt_s": 5.827,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 3989,
+      "output_tokens": 61
+    },
+    {
+      "label": "convergence",
+      "step": 100,
+      "rtt_s": 6.028,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 4689,
+      "output_tokens": 104
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 110,
+      "rtt_s": 5.72,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 3989,
+      "output_tokens": 57
+    },
+    {
+      "label": "convergence",
+      "step": 110,
+      "rtt_s": 6.235,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 4708,
+      "output_tokens": 93
+    },
+    {
+      "label": "subgoal_convert",
+      "subgoal": "Go past the first streetlamp",
+      "rtt_s": 0.657,
+      "model": "gpt-4o-2024-08-06",
+      "input_tokens": 367,
+      "output_tokens": 12
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 10,
+      "rtt_s": 2.282,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1532,
+      "output_tokens": 55
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 20,
+      "rtt_s": 2.987,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1879,
+      "output_tokens": 50
+    },
+    {
+      "label": "convergence",
+      "step": 22,
+      "rtt_s": 3.7,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 3082,
+      "output_tokens": 100
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 30,
+      "rtt_s": 3.192,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2573,
+      "output_tokens": 54
+    },
+    {
+      "label": "convergence",
+      "step": 30,
+      "rtt_s": 4.521,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 3153,
+      "output_tokens": 104
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 40,
+      "rtt_s": 3.691,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 3186,
+      "output_tokens": 59
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 50,
+      "rtt_s": 4.08,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 3186,
+      "output_tokens": 53
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 60,
+      "rtt_s": 4.403,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 3990,
+      "output_tokens": 49
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 70,
+      "rtt_s": 4.906,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 3990,
+      "output_tokens": 54
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 80,
+      "rtt_s": 6.735,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 3990,
+      "output_tokens": 46
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 90,
+      "rtt_s": 4.799,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 3990,
+      "output_tokens": 49
+    },
+    {
+      "label": "convergence",
+      "step": 90,
+      "rtt_s": 5.21,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 4588,
+      "output_tokens": 81
+    },
+    {
+      "label": "subgoal_convert",
+      "subgoal": "Turn until you see the black car",
+      "rtt_s": 0.542,
+      "model": "gpt-4o-2024-08-06",
+      "input_tokens": 368,
+      "output_tokens": 7
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 10,
+      "rtt_s": 2.081,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1530,
+      "output_tokens": 49
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 20,
+      "rtt_s": 2.272,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1877,
+      "output_tokens": 56
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 30,
+      "rtt_s": 2.479,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2571,
+      "output_tokens": 51
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 40,
+      "rtt_s": 3.076,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2571,
+      "output_tokens": 55
+    },
+    {
+      "label": "convergence",
+      "step": 41,
+      "rtt_s": 4.307,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 3693,
+      "output_tokens": 93
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 50,
+      "rtt_s": 3.791,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 3184,
+      "output_tokens": 50
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 60,
+      "rtt_s": 4.092,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 3988,
+      "output_tokens": 58
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 70,
+      "rtt_s": 4.768,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 3988,
+      "output_tokens": 51
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 80,
+      "rtt_s": 5.008,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 3988,
+      "output_tokens": 54
+    },
+    {
+      "label": "convergence",
+      "step": 88,
+      "rtt_s": 5.006,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 4532,
+      "output_tokens": 95
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 90,
+      "rtt_s": 4.587,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 3988,
+      "output_tokens": 58
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 100,
+      "rtt_s": 4.595,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 3988,
+      "output_tokens": 58
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 110,
+      "rtt_s": 4.495,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 3988,
+      "output_tokens": 53
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 120,
+      "rtt_s": 4.798,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 3988,
+      "output_tokens": 53
+    },
+    {
+      "label": "convergence",
+      "step": 122,
+      "rtt_s": 5.005,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 4554,
+      "output_tokens": 100
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 130,
+      "rtt_s": 3.977,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 3988,
+      "output_tokens": 53
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 140,
+      "rtt_s": 5.61,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 3988,
+      "output_tokens": 57
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 150,
+      "rtt_s": 4.597,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 3988,
+      "output_tokens": 55
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 160,
+      "rtt_s": 5.41,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 3988,
+      "output_tokens": 59
+    },
+    {
+      "label": "convergence",
+      "step": 160,
+      "rtt_s": 5.404,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 4619,
+      "output_tokens": 100
+    },
+    {
+      "label": "subgoal_convert",
+      "subgoal": "Go to the black car",
+      "rtt_s": 0.63,
+      "model": "gpt-4o-2024-08-06",
+      "input_tokens": 366,
+      "output_tokens": 11
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 10,
+      "rtt_s": 1.87,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1530,
+      "output_tokens": 44
+    },
+    {
+      "label": "convergence",
+      "step": 16,
+      "rtt_s": 2.987,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2386,
+      "output_tokens": 92
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 20,
+      "rtt_s": 2.782,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2571,
+      "output_tokens": 58
+    },
+    {
+      "label": "convergence",
+      "step": 20,
+      "rtt_s": 3.911,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 3155,
+      "output_tokens": 99
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 30,
+      "rtt_s": 3.393,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2571,
+      "output_tokens": 54
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 40,
+      "rtt_s": 4.619,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 3184,
+      "output_tokens": 60
+    },
+    {
+      "label": "convergence",
+      "step": 40,
+      "rtt_s": 4.416,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 3793,
+      "output_tokens": 108
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 50,
+      "rtt_s": 5.189,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 3184,
+      "output_tokens": 56
+    },
+    {
+      "label": "convergence",
+      "step": 59,
+      "rtt_s": 5.327,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 4575,
+      "output_tokens": 98
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 60,
+      "rtt_s": 4.727,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 3988,
+      "output_tokens": 53
+    },
+    {
+      "label": "convergence",
+      "step": 60,
+      "rtt_s": 5.016,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 4634,
+      "output_tokens": 111
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 70,
+      "rtt_s": 5.825,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 3988,
+      "output_tokens": 66
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 80,
+      "rtt_s": 5.102,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 3988,
+      "output_tokens": 64
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 90,
+      "rtt_s": 5.077,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 3988,
+      "output_tokens": 45
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 100,
+      "rtt_s": 5.292,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 3988,
+      "output_tokens": 47
+    },
+    {
+      "label": "convergence",
+      "step": 105,
+      "rtt_s": 6.633,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 4621,
+      "output_tokens": 106
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 110,
+      "rtt_s": 4.982,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 3988,
+      "output_tokens": 55
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 120,
+      "rtt_s": 4.696,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 3988,
+      "output_tokens": 47
+    },
+    {
+      "label": "convergence",
+      "step": 124,
+      "rtt_s": 5.408,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 4642,
+      "output_tokens": 99
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 130,
+      "rtt_s": 4.998,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 3988,
+      "output_tokens": 62
+    },
+    {
+      "label": "convergence",
+      "step": 130,
+      "rtt_s": 6.126,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 4708,
+      "output_tokens": 106
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 140,
+      "rtt_s": 6.638,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 3988,
+      "output_tokens": 48
+    },
+    {
+      "label": "convergence",
+      "step": 140,
+      "rtt_s": 6.331,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 4714,
+      "output_tokens": 99
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 150,
+      "rtt_s": 4.289,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 3988,
+      "output_tokens": 50
+    },
+    {
+      "label": "convergence",
+      "step": 159,
+      "rtt_s": 5.72,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 4704,
+      "output_tokens": 107
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 160,
+      "rtt_s": 4.898,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 3988,
+      "output_tokens": 51
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 170,
+      "rtt_s": 4.695,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 3988,
+      "output_tokens": 50
+    },
+    {
+      "label": "convergence",
+      "step": 170,
+      "rtt_s": 4.998,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 4757,
+      "output_tokens": 80
+    },
+    {
+      "label": "subgoal_convert",
+      "subgoal": "Turn toward the red car",
+      "rtt_s": 0.561,
+      "model": "gpt-4o-2024-08-06",
+      "input_tokens": 366,
+      "output_tokens": 11
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 10,
+      "rtt_s": 2.178,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1530,
+      "output_tokens": 52
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 20,
+      "rtt_s": 2.583,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1877,
+      "output_tokens": 57
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 30,
+      "rtt_s": 2.926,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2571,
+      "output_tokens": 60
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 40,
+      "rtt_s": 4.105,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2571,
+      "output_tokens": 53
+    },
+    {
+      "label": "convergence",
+      "step": 44,
+      "rtt_s": 4.296,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 3693,
+      "output_tokens": 102
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 50,
+      "rtt_s": 4.192,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 3184,
+      "output_tokens": 58
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 60,
+      "rtt_s": 4.7,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 3988,
+      "output_tokens": 62
+    },
+    {
+      "label": "convergence",
+      "step": 60,
+      "rtt_s": 5.523,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 4576,
+      "output_tokens": 99
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 70,
+      "rtt_s": 5.191,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 3988,
+      "output_tokens": 59
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 80,
+      "rtt_s": 5.401,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 3988,
+      "output_tokens": 61
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 90,
+      "rtt_s": 5.602,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 3988,
+      "output_tokens": 53
+    },
+    {
+      "label": "convergence",
+      "step": 90,
+      "rtt_s": 5.897,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 4590,
+      "output_tokens": 112
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 100,
+      "rtt_s": 4.679,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 3988,
+      "output_tokens": 54
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 110,
+      "rtt_s": 5.192,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 3988,
+      "output_tokens": 56
+    },
+    {
+      "label": "convergence",
+      "step": 110,
+      "rtt_s": 5.399,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 4575,
+      "output_tokens": 99
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 120,
+      "rtt_s": 4.988,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 3988,
+      "output_tokens": 54
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 130,
+      "rtt_s": 4.988,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 3988,
+      "output_tokens": 60
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 140,
+      "rtt_s": 4.483,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 3988,
+      "output_tokens": 51
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 150,
+      "rtt_s": 5.308,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 3988,
+      "output_tokens": 61
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 160,
+      "rtt_s": 5.411,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 3988,
+      "output_tokens": 67
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 170,
+      "rtt_s": 5.822,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 3988,
+      "output_tokens": 62
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 180,
+      "rtt_s": 5.535,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 3988,
+      "output_tokens": 61
+    },
+    {
+      "label": "convergence",
+      "step": 180,
+      "rtt_s": 5.72,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 4642,
+      "output_tokens": 121
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 190,
+      "rtt_s": 5.617,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 3988,
+      "output_tokens": 59
+    },
+    {
+      "label": "convergence",
+      "step": 190,
+      "rtt_s": 6.409,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 4663,
+      "output_tokens": 108
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 200,
+      "rtt_s": 5.203,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 3988,
+      "output_tokens": 56
+    },
+    {
+      "label": "convergence",
+      "step": 200,
+      "rtt_s": 5.922,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 4683,
+      "output_tokens": 105
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 210,
+      "rtt_s": 5.411,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 3988,
+      "output_tokens": 62
+    },
+    {
+      "label": "convergence",
+      "step": 210,
+      "rtt_s": 6.306,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 4710,
+      "output_tokens": 113
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 220,
+      "rtt_s": 5.207,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 3988,
+      "output_tokens": 60
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 230,
+      "rtt_s": 5.819,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 3988,
+      "output_tokens": 64
+    },
+    {
+      "label": "convergence",
+      "step": 237,
+      "rtt_s": 6.746,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 4686,
+      "output_tokens": 113
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 240,
+      "rtt_s": 5.004,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 3988,
+      "output_tokens": 57
+    },
+    {
+      "label": "convergence",
+      "step": 240,
+      "rtt_s": 6.951,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 4749,
+      "output_tokens": 105
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 250,
+      "rtt_s": 6.224,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 3988,
+      "output_tokens": 62
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 260,
+      "rtt_s": 5.517,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 3988,
+      "output_tokens": 59
+    },
+    {
+      "label": "convergence",
+      "step": 260,
+      "rtt_s": 6.536,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 4774,
+      "output_tokens": 110
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 270,
+      "rtt_s": 5.205,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 3988,
+      "output_tokens": 59
+    },
+    {
+      "label": "convergence",
+      "step": 270,
+      "rtt_s": 6.026,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 4797,
+      "output_tokens": 112
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 280,
+      "rtt_s": 5.511,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 3988,
+      "output_tokens": 67
+    },
+    {
+      "label": "convergence",
+      "step": 280,
+      "rtt_s": 6.301,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 4826,
+      "output_tokens": 107
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 290,
+      "rtt_s": 5.518,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 3988,
+      "output_tokens": 60
+    },
+    {
+      "label": "convergence",
+      "step": 290,
+      "rtt_s": 5.92,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 4845,
+      "output_tokens": 113
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 300,
+      "rtt_s": 5.518,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 3988,
+      "output_tokens": 62
+    },
+    {
+      "label": "convergence",
+      "step": 300,
+      "rtt_s": 6.948,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 4870,
+      "output_tokens": 106
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 310,
+      "rtt_s": 5.3,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 3988,
+      "output_tokens": 58
+    },
+    {
+      "label": "convergence",
+      "step": 310,
+      "rtt_s": 6.946,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 4887,
+      "output_tokens": 120
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 320,
+      "rtt_s": 5.312,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 3988,
+      "output_tokens": 63
+    },
+    {
+      "label": "convergence",
+      "step": 320,
+      "rtt_s": 6.323,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 4913,
+      "output_tokens": 104
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 330,
+      "rtt_s": 5.507,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 3988,
+      "output_tokens": 59
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 340,
+      "rtt_s": 6.32,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 3988,
+      "output_tokens": 62
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 350,
+      "rtt_s": 5.094,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 3988,
+      "output_tokens": 51
+    },
+    {
+      "label": "convergence",
+      "step": 350,
+      "rtt_s": 6.332,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 4924,
+      "output_tokens": 110
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 360,
+      "rtt_s": 5.71,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 3988,
+      "output_tokens": 61
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 370,
+      "rtt_s": 7.545,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 3988,
+      "output_tokens": 63
+    },
+    {
+      "label": "convergence",
+      "step": 377,
+      "rtt_s": 6.118,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 4911,
+      "output_tokens": 104
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 380,
+      "rtt_s": 5.192,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 3988,
+      "output_tokens": 57
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 390,
+      "rtt_s": 6.524,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 3988,
+      "output_tokens": 52
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 400,
+      "rtt_s": 5.401,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 3988,
+      "output_tokens": 53
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 410,
+      "rtt_s": 5.195,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 3988,
+      "output_tokens": 56
+    },
+    {
+      "label": "convergence",
+      "step": 410,
+      "rtt_s": 5.81,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 4973,
+      "output_tokens": 103
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 420,
+      "rtt_s": 4.989,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 3988,
+      "output_tokens": 56
+    },
+    {
+      "label": "subgoal_convert",
+      "subgoal": "Go to the red car",
+      "rtt_s": 0.501,
+      "model": "gpt-4o-2024-08-06",
+      "input_tokens": 366,
+      "output_tokens": 11
+    }
+  ],
+  "playback_mp4": null,
+  "start_time": "2026-05-07T04:08:23.730428",
+  "end_time": "2026-05-07T04:30:43.500614",
+  "wall_clock_seconds": 1339.77
+}

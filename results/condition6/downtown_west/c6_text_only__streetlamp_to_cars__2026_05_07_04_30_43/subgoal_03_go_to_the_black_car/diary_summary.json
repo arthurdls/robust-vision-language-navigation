@@ -1,0 +1,879 @@
+{
+  "subgoal": "Go to the black car",
+  "converted_instruction": "go to the black car",
+  "diary": [
+    "Steps 0-10 [x: 2.05 m, y: -0.18 m, z: 0.00 m, yaw: 0.0°]: The drone moved slightly forward toward the black car, which appears a bit larger and closer on the right side of the frame.",
+    "Checkpoint 10: completion = 0.34",
+    "Steps 10-20 [x: 3.09 m, y: -0.18 m, z: 0.00 m, yaw: 0.0°]: The drone moved slightly closer to the black car, which shifted farther toward the right edge and appears a bit larger.",
+    "Checkpoint 20: completion = 0.46",
+    "Steps 20-30 [x: 4.57 m, y: -0.23 m, z: 0.00 m, yaw: 0.0°]: The black car shifted slightly farther toward the right edge and appears a bit smaller, indicating the drone moved slightly away or left of it rather than closer.",
+    "Checkpoint 30: completion = 0.39",
+    "[CONVERGENCE @ step 30]: corrective issued (stopped_short, 41% complete) -- \"Turn right 15 degrees\"",
+    "Steps 30-40 [x: 4.58 m, y: -0.22 m, z: 0.00 m, yaw: 20.9°]: The black car remains on the right and appears slightly larger, indicating a small move closer toward it.",
+    "Checkpoint 40: completion = 0.48",
+    "Steps 40-50 [x: 4.58 m, y: -0.20 m, z: 0.00 m, yaw: 47.8°]: The drone moved slightly closer to the black car, which appears a bit larger and more centered in the frame.",
+    "Checkpoint 50: completion = 0.61",
+    "Steps 50-60 [x: 4.58 m, y: -0.19 m, z: 0.00 m, yaw: 77.7°]: The drone shifted slightly right, and the black car remains visible at about the same distance without getting noticeably closer.",
+    "Checkpoint 60: completion = 0.63",
+    "Steps 60-70 [x: 4.56 m, y: -0.17 m, z: 0.00 m, yaw: 89.6°]: The drone shifted slightly right, and the black car remains ahead on the left at about the same distance.",
+    "Checkpoint 70: completion = 0.66",
+    "[CONVERGENCE @ step 73]: corrective issued (stopped_short, 72% complete) -- \"Move closer to the black car\"",
+    "Steps 70-80 [x: 3.92 m, y: -0.08 m, z: 0.00 m, yaw: 89.6°]: The black car remains far ahead near the building, with only a slight rightward shift and no meaningful approach.",
+    "Checkpoint 80: completion = 0.58",
+    "Steps 80-90 [x: 3.84 m, y: -0.08 m, z: 0.00 m, yaw: 89.6°]: The drone moved slightly forward/right, making the car a bit larger and more centered but still far away.",
+    "Checkpoint 90: completion = 0.64",
+    "Steps 90-100 [x: 4.39 m, y: -0.78 m, z: 0.00 m, yaw: 89.6°]: The drone moved slightly forward toward the black car, which remains ahead-left and still far away.",
+    "Checkpoint 100: completion = 0.68",
+    "Steps 100-110 [x: 4.45 m, y: 0.36 m, z: 0.94 m, yaw: 89.6°]: The drone moved slightly forward/right, making the black car ahead-left appear a bit larger and closer.",
+    "Checkpoint 110: completion = 0.72",
+    "Steps 110-120 [x: 3.11 m, y: 1.41 m, z: 1.68 m, yaw: 89.6°]: The drone moved slightly forward/right, making the car a bit larger and more centered, so it is slightly closer to the black car.",
+    "Checkpoint 120: completion = 0.76",
+    "Steps 120-130 [x: 2.20 m, y: 1.90 m, z: 1.87 m, yaw: 92.6°]: The drone moved slightly right/forward, making the black car appear a bit larger and more centered but still far away.",
+    "Checkpoint 130: completion = 0.79",
+    "Steps 130-140 [x: 1.88 m, y: 1.79 m, z: 1.87 m, yaw: 92.6°]: The car remains visible on the left and appears only slightly larger, indicating minimal progress toward it.",
+    "Checkpoint 140: completion = 0.80",
+    "[CONVERGENCE @ step 145]: corrective issued (stopped_short, 81% complete) -- \"Move closer to the black car\"",
+    "Steps 140-150 [x: 1.56 m, y: 2.06 m, z: 1.87 m, yaw: 92.6°]: The black car remains distant on the left and appears only slightly larger, indicating a small forward approach.",
+    "Checkpoint 150: completion = 0.83",
+    "Steps 150-160 [x: 1.17 m, y: 2.30 m, z: 1.87 m, yaw: 92.6°]: The black car remains visible on the left and appears only slightly larger, indicating a small forward approach but it is still some distance away.",
+    "Checkpoint 160: completion = 0.84",
+    "Steps 160-170 [x: 0.26 m, y: 2.34 m, z: 1.87 m, yaw: 92.6°]: The drone moved slightly right/forward, making the black car a bit larger and more centered but still some distance away.",
+    "Checkpoint 170: completion = 0.87",
+    "Steps 170-180 [x: 0.25 m, y: 2.28 m, z: 1.87 m, yaw: 92.6°]: The black car remains visible on the left and appears only slightly larger, indicating a small move closer but still far away.",
+    "Checkpoint 180: completion = 0.86",
+    "Steps 180-190 [x: 0.25 m, y: 2.08 m, z: 1.87 m, yaw: 92.6°]: The drone moved slightly forward and right, making the black car appear a bit larger and more centered.",
+    "Checkpoint 190: completion = 0.89",
+    "[CONVERGENCE @ step 190]: corrective issued (stopped_short, 90% complete) -- \"Move closer to the black car\"",
+    "Steps 190-200 [x: -0.11 m, y: 2.24 m, z: 1.87 m, yaw: 92.6°]: The black car remains visible on the left and appears only slightly larger, indicating a small move closer but still far away.",
+    "Checkpoint 200: completion = 0.90",
+    "Steps 200-210 [x: -0.47 m, y: 2.56 m, z: 1.87 m, yaw: 92.6°]: The black car remains visible on the left and appears only slightly larger, indicating a small move closer but still far away.",
+    "Checkpoint 210: completion = 0.91",
+    "Steps 210-220 [x: -1.86 m, y: 3.44 m, z: 1.87 m, yaw: 92.6°]: The drone moved slightly closer toward the car, which remains visible on the left side and is still far away.",
+    "Checkpoint 220: completion = 0.92",
+    "Steps 220-230 [x: -2.40 m, y: 3.94 m, z: 1.87 m, yaw: 92.6°]: The drone shifted slightly right, but the black car remains distant on the left with little apparent change in proximity.",
+    "Checkpoint 230: completion = 0.91",
+    "[CONVERGENCE @ step 232]: corrective issued (stopped_short, 90% complete) -- \"Move closer to the black car\"",
+    "Steps 230-240 [x: -3.17 m, y: 4.78 m, z: 1.87 m, yaw: 92.6°]: The drone moved slightly right, making the black car on the left a bit more visible but still far away.",
+    "Checkpoint 240: completion = 0.90",
+    "Steps 240-250 [x: -5.23 m, y: 6.09 m, z: 1.87 m, yaw: 92.6°]: The drone shifted slightly right, making the black car on the left a bit more visible but still far away.",
+    "Checkpoint 250: completion = 0.88",
+    "[CONVERGENCE @ step 250]: corrective issued (stopped_short, 82% complete) -- \"Turn left 15 degrees\"",
+    "Steps 250-260 [x: -5.42 m, y: 6.23 m, z: 1.87 m, yaw: 77.7°]: The black car remains far left in view and appears only slightly larger, indicating minimal progress toward it.",
+    "Checkpoint 260: completion = 0.87",
+    "[CONVERGENCE @ step 260]: corrective issued (stopped_short, 85% complete) -- \"Move closer to the black car\"",
+    "Steps 260-270 [x: -6.12 m, y: 6.87 m, z: 1.87 m, yaw: 77.7°]: The view shifted slightly right, making the black car on the left a bit more visible but still distant and partly obscured.",
+    "Checkpoint 270: completion = 0.84",
+    "[CONVERGENCE @ step 270]: corrective issued (stopped_short, 82% complete) -- \"Turn toward the black car\"",
+    "Steps 270-280 [x: -6.30 m, y: 7.05 m, z: 1.87 m, yaw: 77.7°]: The view shifted slightly right, but the black car remains distant and partly obscured on the left with no meaningful approach.",
+    "Checkpoint 280: completion = 0.81",
+    "[CONVERGENCE @ step 280]: corrective issued (stopped_short, 80% complete) -- \"Ascend 0.8 meters\"",
+    "Steps 280-290 [x: -6.31 m, y: 7.06 m, z: 3.66 m, yaw: 77.7°]: The view changed only slightly, with the black car still partially visible behind the tree on the left and not noticeably closer.",
+    "Checkpoint 290: completion = 0.78",
+    "[CONVERGENCE @ step 290]: corrective issued (stopped_short, 79% complete) -- \"Ascend 0.8 meters\"",
+    "Steps 290-300 [x: -6.32 m, y: 7.07 m, z: 5.65 m, yaw: 77.7°]: The drone shifted slightly right/forward, but the black car is still only partially visible at the far left and remains distant.",
+    "Checkpoint 300: completion = 0.76",
+    "[CONVERGENCE @ step 300]: corrective issued (stopped_short, 74% complete) -- \"Ascend 0.8 meters\"",
+    "Steps 300-310 [x: -6.33 m, y: 7.08 m, z: 7.65 m, yaw: 77.7°]: The drone shifted slightly right through the tree canopy, but the black car is still not visible.",
+    "Checkpoint 310: completion = 0.62",
+    "Peak dropoff override (step 310): peak=0.92, current=0.58, treating subgoal as achieved"
+  ],
+  "correction_history": [
+    {
+      "step": 30,
+      "diagnosis": "stopped_short",
+      "completion_pct": 0.41,
+      "instruction": "Turn right 15 degrees"
+    },
+    {
+      "step": 73,
+      "diagnosis": "stopped_short",
+      "completion_pct": 0.72,
+      "instruction": "Move closer to the black car"
+    },
+    {
+      "step": 145,
+      "diagnosis": "stopped_short",
+      "completion_pct": 0.81,
+      "instruction": "Move closer to the black car"
+    },
+    {
+      "step": 190,
+      "diagnosis": "stopped_short",
+      "completion_pct": 0.9,
+      "instruction": "Move closer to the black car"
+    },
+    {
+      "step": 232,
+      "diagnosis": "stopped_short",
+      "completion_pct": 0.9,
+      "instruction": "Move closer to the black car"
+    },
+    {
+      "step": 250,
+      "diagnosis": "stopped_short",
+      "completion_pct": 0.82,
+      "instruction": "Turn left 15 degrees"
+    },
+    {
+      "step": 260,
+      "diagnosis": "stopped_short",
+      "completion_pct": 0.85,
+      "instruction": "Move closer to the black car"
+    },
+    {
+      "step": 270,
+      "diagnosis": "stopped_short",
+      "completion_pct": 0.82,
+      "instruction": "Turn toward the black car"
+    },
+    {
+      "step": 280,
+      "diagnosis": "stopped_short",
+      "completion_pct": 0.8,
+      "instruction": "Ascend 0.8 meters"
+    },
+    {
+      "step": 290,
+      "diagnosis": "stopped_short",
+      "completion_pct": 0.79,
+      "instruction": "Ascend 0.8 meters"
+    },
+    {
+      "step": 300,
+      "diagnosis": "stopped_short",
+      "completion_pct": 0.74,
+      "instruction": "Ascend 0.8 meters"
+    }
+  ],
+  "override_history": [
+    {
+      "step": 29,
+      "type": "force_converge",
+      "reasoning": "Stop requested for correction. Reasoning: The black car was getting larger earlier but now appears slightly smaller and farther toward the right edge, indicating the drone is drifting past/away from it rather than continuing to approach. Raw: {\"complete\":false,\"completion_percentage\":0.39,\"should_stop\":true,\"reasoning\":\"The black car was getting larger earlier but now appears slightly smaller and farther toward the right edge, indicating the drone is drifting past/away from it rather than continuing to approach.\"}"
+    },
+    {
+      "step": 29,
+      "type": "convergence_command",
+      "old_instruction": "go to the black car",
+      "new_instruction": "Turn right 15 degrees",
+      "reasoning": "text-only convergence (stopped_short): The black car is still visible but by steps 20-30 it shifted farther to the right edge and became slightly smaller, which means the drone is no longer closing the distance and has drifted left of the target rather than arriving. A small right turn is the biggest bottleneck now because the car remains in view off to the right; re-centering it should let the next forward motion approach it again."
+    },
+    {
+      "step": 72,
+      "type": "convergence_command",
+      "old_instruction": "Turn right 15 degrees",
+      "new_instruction": "Move closer to the black car",
+      "reasoning": "text-only convergence (stopped_short): The black car is still visible at the end ('ahead on the left at about the same distance') and there is no approach-and-pass pattern showing arrival or that it has dropped out of view because the drone reached it. After the earlier turn correction, progress improved through step 50, but steps 50-70 show mostly yaw/right shift with little distance gain, so the main remaining gap is forward distance rather than orientation."
+    },
+    {
+      "step": 144,
+      "type": "convergence_command",
+      "old_instruction": "Move closer to the black car",
+      "new_instruction": "Move closer to the black car",
+      "reasoning": "text-only convergence (stopped_short): The black car is still visible at step 140 and described as only slightly larger with minimal progress, so the drone has not yet reached it. Since the most recent diary entries show the car remains in view and roughly aligned, the main bottleneck is distance rather than orientation."
+    },
+    {
+      "step": 189,
+      "type": "convergence_command",
+      "old_instruction": "Move closer to the black car",
+      "new_instruction": "Move closer to the black car",
+      "reasoning": "text-only convergence (stopped_short): The black car is still visible and repeatedly described as only slightly larger and still some distance away; there is no approach-and-pass pattern or indication that it filled the frame or disappeared because the drone reached it. Since the most recent entries show continued but incomplete approach with the car more centered, the main remaining gap is distance, so a small forward move toward the black car is the best single correction."
+    },
+    {
+      "step": 231,
+      "type": "convergence_command",
+      "old_instruction": "Move closer to the black car",
+      "new_instruction": "Move closer to the black car",
+      "reasoning": "text-only convergence (stopped_short): The black car is still repeatedly described as visible on the left and still far away, with only slight size increase; there is no approach-and-pass pattern or indication it became large/close or disappeared because the drone reached it. Since the most recent diary entries show the target remains in view with acceptable orientation at yaw 92.6°, the main bottleneck is closing distance rather than turning."
+    },
+    {
+      "step": 249,
+      "type": "force_converge",
+      "reasoning": "Stop requested for correction. Reasoning: The black car is still visible and repeatedly described as far away, and the latest rightward drift made it only more visible rather than closer, indicating the drone is moving laterally/off-track instead of approaching it. Raw: {\"complete\":false,\"completion_percentage\":0.88,\"should_stop\":true,\"reasoning\":\"The black car is still visible and repeatedly described as far away, and the latest rightward drift made it only more visible rather than closer, indicating the drone is moving laterally/off-track instead of approaching it.\"}"
+    },
+    {
+      "step": 249,
+      "type": "convergence_command",
+      "old_instruction": "Move closer to the black car",
+      "new_instruction": "Turn left 15 degrees",
+      "reasoning": "text-only convergence (stopped_short): The black car is still repeatedly described as visible on the left and still far away, never large/close or disappearing as it would on arrival. Since the most recent 'Move closer to the black car' corrections at steps 190 and 232 did not improve completion and the drone drifted to x=-5.23, y=6.09 with yaw 92.6°, the bigger bottleneck is heading rather than more forward motion; a small left turn should re-align the approach."
+    },
+    {
+      "step": 259,
+      "type": "force_converge",
+      "reasoning": "Stop requested for correction. Reasoning: The black car is still visible far to the left and remains distant, while recent displacement shows mostly lateral drift with minimal closing, so the drone is off-track and should be corrected. Raw: {\"complete\":false,\"completion_percentage\":0.87,\"should_stop\":true,\"reasoning\":\"The black car is still visible far to the left and remains distant, while recent displacement shows mostly lateral drift with minimal closing, so the drone is off-track and should be corrected.\"}"
+    },
+    {
+      "step": 259,
+      "type": "convergence_command",
+      "old_instruction": "Turn left 15 degrees",
+      "new_instruction": "Move closer to the black car",
+      "reasoning": "text-only convergence (stopped_short): The black car is still visible and identifiable but remains far away; the latest entry says it is 'far left in view' and only 'slightly larger,' so the approach is not complete. The most recent correction switched axis to yaw and did not improve completion, and the car is already in frame, so the main bottleneck is closing distance rather than further turning."
+    },
+    {
+      "step": 269,
+      "type": "force_converge",
+      "reasoning": "Stop requested for correction. Reasoning: The black car is still visible far left, distant and partly obscured, and the recent displacement trends farther right/away rather than producing a clear approach, so the drone appears off-track. Raw: {\"complete\":false,\"completion_percentage\":0.84,\"should_stop\":true,\"reasoning\":\"The black car is still visible far left, distant and partly obscured, and the recent displacement trends farther right/away rather than producing a clear approach, so the drone appears off-track.\"}"
+    },
+    {
+      "step": 269,
+      "type": "convergence_command",
+      "old_instruction": "Move closer to the black car",
+      "new_instruction": "Turn toward the black car",
+      "reasoning": "text-only convergence (stopped_short): The black car is still visible but remains far left, distant, and partly obscured at the latest entry, so the drone has not yet approached it closely enough to count as arrival. After the most recent convergence marker, repeating \"move closer\" did not improve completion and the displacement drifted farther laterally/off-track (to x -6.12, y 6.87), so the biggest bottleneck is orientation back toward the car rather than more forward motion."
+    },
+    {
+      "step": 279,
+      "type": "force_converge",
+      "reasoning": "Stop requested for correction. Reasoning: The black car is still visible far left, distant and partly obscured, and recent motion has mostly shifted the view laterally/right without meaningful approach, so the drone appears off-track and should be corrected. Raw: {\"complete\": false,\"completion_percentage\": 0.81,\"should_stop\": true,\"reasoning\": \"The black car is still visible far left, distant and partly obscured, and recent motion has mostly shifted the view laterally/right without meaningful approach, so the drone appears off-track and should be corrected.\"}"
+    },
+    {
+      "step": 279,
+      "type": "convergence_command",
+      "old_instruction": "Turn toward the black car",
+      "new_instruction": "Ascend 0.8 meters",
+      "reasoning": "text-only convergence (stopped_short): The black car is still visible but remains distant, far left, and by steps 260-280 is partly obscured with no meaningful approach; repeated 'move closer' corrections after step 232 made progress worse, with displacement drifting to x -6.30 m and y 7.05 m instead of closing in. Since the latest notes suggest obstruction rather than simple yaw error, the biggest bottleneck is likely line-of-sight, so a small ascent is the best single-axis correction."
+    },
+    {
+      "step": 289,
+      "type": "force_converge",
+      "reasoning": "Stop requested for correction. Reasoning: The black car is still distant and partly obscured on the left after recent lateral drift and ascent, so the drone is off-track rather than meaningfully approaching it. Raw: {\"complete\":false,\"completion_percentage\":0.78,\"should_stop\":true,\"reasoning\":\"The black car is still distant and partly obscured on the left after recent lateral drift and ascent, so the drone is off-track rather than meaningfully approaching it.\"}"
+    },
+    {
+      "step": 289,
+      "type": "convergence_command",
+      "old_instruction": "Ascend 0.8 meters",
+      "new_instruction": "Ascend 0.8 meters",
+      "reasoning": "text-only convergence (stopped_short): The black car is still not close: the latest entries say it remains distant and partly obscured behind a tree on the left, and the last ascent changed the view only slightly without approach. Since the most recent correction was already an ascent and the obstruction persists, the biggest bottleneck is still vertical clearance to get a clearer line of sight over the tree."
+    },
+    {
+      "step": 299,
+      "type": "force_converge",
+      "reasoning": "Stop requested for correction. Reasoning: The black car is still distant and only partially visible at the far left behind a tree, while recent motion has mostly increased altitude and drifted laterally without meaningful approach, so the drone is off-track. Raw: {\"complete\": false, \"completion_percentage\": 0.76, \"should_stop\": true, \"reasoning\": \"The black car is still distant and only partially visible at the far left behind a tree, while recent motion has mostly increased altitude and drifted laterally without meaningful approach, so the drone is off-track.\"}"
+    },
+    {
+      "step": 299,
+      "type": "convergence_command",
+      "old_instruction": "Ascend 0.8 meters",
+      "new_instruction": "Ascend 0.8 meters",
+      "reasoning": "text-only convergence (stopped_short): The black car is still not close: at the latest checkpoints it remains distant, only partially visible at the far left, and specifically behind a tree, so the approach subgoal is not complete. Recent corrections to move closer and turn did not improve things, while the last two ascents slightly improved visibility around the obstruction; with the car still blocked and the drone now high but stationary, another small ascent is the best single-axis correction."
+    },
+    {
+      "step": 309,
+      "type": "force_converge",
+      "reasoning": "Stop requested for correction. Reasoning: The black car was previously visible but the drone has drifted laterally and climbed high into the tree canopy until the car is no longer visible, indicating it is off-track rather than approaching the target. Raw: {\"complete\":false,\"completion_percentage\":0.62,\"should_stop\":true,\"reasoning\":\"The black car was previously visible but the drone has drifted laterally and climbed high into the tree canopy until the car is no longer visible, indicating it is off-track rather than approaching the target.\"}"
+    }
+  ],
+  "corrections_used": 11,
+  "last_completion_pct": 0.58,
+  "peak_completion": 0.92,
+  "parse_failures": 0,
+  "vlm_call_count": 74,
+  "vlm_call_records": [
+    {
+      "label": "local_checkpoint",
+      "step": 10,
+      "rtt_s": 2.279,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1736,
+      "output_tokens": 28
+    },
+    {
+      "label": "text_only_global",
+      "step": 10,
+      "rtt_s": 1.843,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1304,
+      "output_tokens": 56
+    },
+    {
+      "label": "local_checkpoint",
+      "step": 20,
+      "rtt_s": 2.162,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1736,
+      "output_tokens": 26
+    },
+    {
+      "label": "text_only_global",
+      "step": 20,
+      "rtt_s": 2.253,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1376,
+      "output_tokens": 47
+    },
+    {
+      "label": "local_checkpoint",
+      "step": 30,
+      "rtt_s": 6.276,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1736,
+      "output_tokens": 33
+    },
+    {
+      "label": "text_only_global",
+      "step": 30,
+      "rtt_s": 1.638,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1455,
+      "output_tokens": 59
+    },
+    {
+      "label": "text_only_convergence",
+      "step": 30,
+      "rtt_s": 2.902,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2075,
+      "output_tokens": 118
+    },
+    {
+      "label": "local_checkpoint",
+      "step": 40,
+      "rtt_s": 1.969,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1736,
+      "output_tokens": 23
+    },
+    {
+      "label": "text_only_global",
+      "step": 40,
+      "rtt_s": 1.843,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1554,
+      "output_tokens": 60
+    },
+    {
+      "label": "local_checkpoint",
+      "step": 50,
+      "rtt_s": 1.649,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1736,
+      "output_tokens": 25
+    },
+    {
+      "label": "text_only_global",
+      "step": 50,
+      "rtt_s": 1.638,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1625,
+      "output_tokens": 62
+    },
+    {
+      "label": "local_checkpoint",
+      "step": 60,
+      "rtt_s": 1.762,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1736,
+      "output_tokens": 25
+    },
+    {
+      "label": "text_only_global",
+      "step": 60,
+      "rtt_s": 2.458,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1696,
+      "output_tokens": 61
+    },
+    {
+      "label": "local_checkpoint",
+      "step": 70,
+      "rtt_s": 7.904,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1736,
+      "output_tokens": 24
+    },
+    {
+      "label": "text_only_global",
+      "step": 70,
+      "rtt_s": 2.458,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1766,
+      "output_tokens": 52
+    },
+    {
+      "label": "text_only_convergence",
+      "step": 73,
+      "rtt_s": 3.301,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2344,
+      "output_tokens": 122
+    },
+    {
+      "label": "local_checkpoint",
+      "step": 80,
+      "rtt_s": 1.963,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1736,
+      "output_tokens": 25
+    },
+    {
+      "label": "text_only_global",
+      "step": 80,
+      "rtt_s": 1.639,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1868,
+      "output_tokens": 61
+    },
+    {
+      "label": "local_checkpoint",
+      "step": 90,
+      "rtt_s": 1.75,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1736,
+      "output_tokens": 24
+    },
+    {
+      "label": "text_only_global",
+      "step": 90,
+      "rtt_s": 1.638,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1938,
+      "output_tokens": 62
+    },
+    {
+      "label": "local_checkpoint",
+      "step": 100,
+      "rtt_s": 2.575,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1736,
+      "output_tokens": 22
+    },
+    {
+      "label": "text_only_global",
+      "step": 100,
+      "rtt_s": 1.843,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2006,
+      "output_tokens": 60
+    },
+    {
+      "label": "local_checkpoint",
+      "step": 110,
+      "rtt_s": 1.966,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1736,
+      "output_tokens": 23
+    },
+    {
+      "label": "text_only_global",
+      "step": 110,
+      "rtt_s": 2.048,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2075,
+      "output_tokens": 57
+    },
+    {
+      "label": "local_checkpoint",
+      "step": 120,
+      "rtt_s": 2.37,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1736,
+      "output_tokens": 30
+    },
+    {
+      "label": "text_only_global",
+      "step": 120,
+      "rtt_s": 1.638,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2151,
+      "output_tokens": 58
+    },
+    {
+      "label": "local_checkpoint",
+      "step": 130,
+      "rtt_s": 1.964,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1736,
+      "output_tokens": 27
+    },
+    {
+      "label": "text_only_global",
+      "step": 130,
+      "rtt_s": 3.072,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2224,
+      "output_tokens": 63
+    },
+    {
+      "label": "local_checkpoint",
+      "step": 140,
+      "rtt_s": 1.753,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1736,
+      "output_tokens": 22
+    },
+    {
+      "label": "text_only_global",
+      "step": 140,
+      "rtt_s": 2.253,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2292,
+      "output_tokens": 57
+    },
+    {
+      "label": "text_only_convergence",
+      "step": 145,
+      "rtt_s": 2.078,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2870,
+      "output_tokens": 92
+    },
+    {
+      "label": "local_checkpoint",
+      "step": 150,
+      "rtt_s": 4.013,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1736,
+      "output_tokens": 23
+    },
+    {
+      "label": "text_only_global",
+      "step": 150,
+      "rtt_s": 2.253,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2392,
+      "output_tokens": 57
+    },
+    {
+      "label": "local_checkpoint",
+      "step": 160,
+      "rtt_s": 3.091,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1736,
+      "output_tokens": 30
+    },
+    {
+      "label": "text_only_global",
+      "step": 160,
+      "rtt_s": 1.842,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2468,
+      "output_tokens": 60
+    },
+    {
+      "label": "local_checkpoint",
+      "step": 170,
+      "rtt_s": 2.579,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1736,
+      "output_tokens": 27
+    },
+    {
+      "label": "text_only_global",
+      "step": 170,
+      "rtt_s": 1.843,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2541,
+      "output_tokens": 59
+    },
+    {
+      "label": "local_checkpoint",
+      "step": 180,
+      "rtt_s": 2.977,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1736,
+      "output_tokens": 27
+    },
+    {
+      "label": "text_only_global",
+      "step": 180,
+      "rtt_s": 2.048,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2614,
+      "output_tokens": 61
+    },
+    {
+      "label": "local_checkpoint",
+      "step": 190,
+      "rtt_s": 1.953,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1736,
+      "output_tokens": 23
+    },
+    {
+      "label": "text_only_global",
+      "step": 190,
+      "rtt_s": 1.843,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2683,
+      "output_tokens": 56
+    },
+    {
+      "label": "text_only_convergence",
+      "step": 190,
+      "rtt_s": 2.796,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 3261,
+      "output_tokens": 116
+    },
+    {
+      "label": "local_checkpoint",
+      "step": 200,
+      "rtt_s": 2.679,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1736,
+      "output_tokens": 27
+    },
+    {
+      "label": "text_only_global",
+      "step": 200,
+      "rtt_s": 1.639,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2787,
+      "output_tokens": 61
+    },
+    {
+      "label": "local_checkpoint",
+      "step": 210,
+      "rtt_s": 2.579,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1736,
+      "output_tokens": 27
+    },
+    {
+      "label": "text_only_global",
+      "step": 210,
+      "rtt_s": 2.05,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2860,
+      "output_tokens": 63
+    },
+    {
+      "label": "local_checkpoint",
+      "step": 220,
+      "rtt_s": 2.592,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1736,
+      "output_tokens": 25
+    },
+    {
+      "label": "text_only_global",
+      "step": 220,
+      "rtt_s": 1.639,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2931,
+      "output_tokens": 58
+    },
+    {
+      "label": "local_checkpoint",
+      "step": 230,
+      "rtt_s": 1.965,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1736,
+      "output_tokens": 25
+    },
+    {
+      "label": "text_only_global",
+      "step": 230,
+      "rtt_s": 1.638,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 3002,
+      "output_tokens": 63
+    },
+    {
+      "label": "text_only_convergence",
+      "step": 232,
+      "rtt_s": 3.001,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 3580,
+      "output_tokens": 115
+    },
+    {
+      "label": "local_checkpoint",
+      "step": 240,
+      "rtt_s": 2.37,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1736,
+      "output_tokens": 25
+    },
+    {
+      "label": "text_only_global",
+      "step": 240,
+      "rtt_s": 1.843,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 3104,
+      "output_tokens": 60
+    },
+    {
+      "label": "local_checkpoint",
+      "step": 250,
+      "rtt_s": 2.682,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1736,
+      "output_tokens": 25
+    },
+    {
+      "label": "text_only_global",
+      "step": 250,
+      "rtt_s": 1.843,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 3175,
+      "output_tokens": 66
+    },
+    {
+      "label": "text_only_convergence",
+      "step": 250,
+      "rtt_s": 3.206,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 3802,
+      "output_tokens": 135
+    },
+    {
+      "label": "local_checkpoint",
+      "step": 260,
+      "rtt_s": 2.684,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1736,
+      "output_tokens": 23
+    },
+    {
+      "label": "text_only_global",
+      "step": 260,
+      "rtt_s": 1.638,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 3274,
+      "output_tokens": 60
+    },
+    {
+      "label": "text_only_convergence",
+      "step": 260,
+      "rtt_s": 2.488,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 3895,
+      "output_tokens": 111
+    },
+    {
+      "label": "local_checkpoint",
+      "step": 270,
+      "rtt_s": 2.982,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1736,
+      "output_tokens": 28
+    },
+    {
+      "label": "text_only_global",
+      "step": 270,
+      "rtt_s": 2.458,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 3379,
+      "output_tokens": 62
+    },
+    {
+      "label": "text_only_convergence",
+      "step": 270,
+      "rtt_s": 3.086,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 4002,
+      "output_tokens": 130
+    },
+    {
+      "label": "local_checkpoint",
+      "step": 280,
+      "rtt_s": 2.274,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1736,
+      "output_tokens": 27
+    },
+    {
+      "label": "text_only_global",
+      "step": 280,
+      "rtt_s": 2.253,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 3482,
+      "output_tokens": 67
+    },
+    {
+      "label": "text_only_convergence",
+      "step": 280,
+      "rtt_s": 2.9,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 4108,
+      "output_tokens": 137
+    },
+    {
+      "label": "local_checkpoint",
+      "step": 290,
+      "rtt_s": 2.248,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1736,
+      "output_tokens": 27
+    },
+    {
+      "label": "text_only_global",
+      "step": 290,
+      "rtt_s": 1.638,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 3587,
+      "output_tokens": 57
+    },
+    {
+      "label": "text_only_convergence",
+      "step": 290,
+      "rtt_s": 3.524,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 4205,
+      "output_tokens": 109
+    },
+    {
+      "label": "local_checkpoint",
+      "step": 300,
+      "rtt_s": 1.976,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1736,
+      "output_tokens": 28
+    },
+    {
+      "label": "text_only_global",
+      "step": 300,
+      "rtt_s": 2.048,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 3693,
+      "output_tokens": 70
+    },
+    {
+      "label": "text_only_convergence",
+      "step": 300,
+      "rtt_s": 2.609,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 4319,
+      "output_tokens": 125
+    },
+    {
+      "label": "local_checkpoint",
+      "step": 310,
+      "rtt_s": 2.08,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1736,
+      "output_tokens": 22
+    },
+    {
+      "label": "text_only_global",
+      "step": 310,
+      "rtt_s": 1.638,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 3793,
+      "output_tokens": 64
+    },
+    {
+      "label": "text_only_convergence",
+      "step": 310,
+      "rtt_s": 2.907,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 4418,
+      "output_tokens": 136
+    }
+  ],
+  "converter_call_records": [
+    {
+      "label": "subgoal_convert",
+      "subgoal": "Go to the black car",
+      "rtt_s": 0.815,
+      "model": "gpt-4o-2024-08-06",
+      "input_tokens": 366,
+      "output_tokens": 11
+    }
+  ],
+  "stop_reason": "monitor_complete",
+  "total_steps": 310,
+  "in_correction_at_end": false
+}

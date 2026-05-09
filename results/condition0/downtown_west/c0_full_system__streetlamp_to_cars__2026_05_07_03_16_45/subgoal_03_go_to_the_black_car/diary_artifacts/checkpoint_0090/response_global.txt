@@ -1,0 +1,1 @@
+{"complete":false,"completion_percentage":0.84,"should_stop":false,"reasoning":"The black car is steadily growing larger and lower in the frame, so the drone is still making correct approach progress and has not reached it yet."}

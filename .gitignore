@@ -25,8 +25,21 @@ weights/OpenVLA-UAV/*
 *.mv
 *.msc
 
-# Results
-results/
+# Results: keep structured records; exclude raw frames and large media.
+# See results/README.md for what is committed and why.
+results/.backup/
+results/.old/
+results/**/frames/
+results/**/_replay_tmp/
+results/**/diary_artifacts/
+# Re-include the C0 sub-goal 3 walkthrough referenced in Appendix A
+!results/condition0/**/subgoal_03_go_to_the_black_car/diary_artifacts/
+!results/condition0/**/subgoal_03_go_to_the_black_car/diary_artifacts/**
+# Exclude raw / uncompressed hardware media; commit compressed versions only
+results/hardware/20260507_*.mp4
+results/hardware/replay_synced.mp4
+results/hardware/replay_synced_2x.mp4
+results/hardware/playback.mp4
 
 # Old / archived code
 .old_code/

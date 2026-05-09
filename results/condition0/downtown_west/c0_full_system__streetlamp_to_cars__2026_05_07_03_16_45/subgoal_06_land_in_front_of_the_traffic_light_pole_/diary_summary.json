@@ -1,0 +1,447 @@
+{
+  "subgoal": "Land in front of the traffic light pole on the right",
+  "converted_instruction": "land in front of the traffic light pole on the right",
+  "diary": [
+    "Steps 0-10 [x: 1.13 m, y: 1.67 m, z: 0.00 m, yaw: 0.0°]: The drone moved slightly right and closer to the parked cars/building, while the right-side traffic light pole stayed ahead and it has not landed in front of it yet.",
+    "Checkpoint 10: completion = 0.31",
+    "Steps 10-20 [x: 1.76 m, y: 2.86 m, z: 0.00 m, yaw: 0.0°]: The drone shifted slightly right toward the building and curb, with the right-side traffic light pole still visible ahead-right and not yet reached for landing.",
+    "Checkpoint 20: completion = 0.39",
+    "Steps 20-30 [x: 2.44 m, y: 3.89 m, z: 0.00 m, yaw: 0.0°]: The drone shifted slightly right/forward, bringing the right-side traffic light pole a bit closer and more centered while still remaining airborne.",
+    "Checkpoint 30: completion = 0.48",
+    "Steps 30-40 [x: 3.19 m, y: 4.34 m, z: 0.00 m, yaw: 0.0°]: The drone shifted slightly right/forward along the building, bringing the right-side traffic light pole a bit more centered and slightly closer while still remaining airborne.",
+    "Checkpoint 40: completion = 0.58",
+    "Steps 40-50 [x: 4.94 m, y: 5.18 m, z: 0.00 m, yaw: 0.0°]: The drone moved slightly forward/right along the building, bringing the right-side traffic light pole a bit closer and more centered but not yet at a landing position in front of it.",
+    "Checkpoint 50: completion = 0.69",
+    "Steps 50-60 [x: 6.00 m, y: 5.93 m, z: -0.00 m, yaw: 0.0°]: The drone shifted slightly right along the building, bringing the right-side traffic light pole a bit closer to the center while staying at about the same distance and altitude.",
+    "Checkpoint 60: completion = 0.76",
+    "Steps 60-70 [x: 6.66 m, y: 6.38 m, z: -0.00 m, yaw: 0.0°]: The drone shifted slightly right, bringing the right-side traffic light pole closer to the center while staying at about the same distance and altitude.",
+    "Checkpoint 70: completion = 0.84",
+    "Steps 70-80 [x: 8.11 m, y: 6.96 m, z: -0.00 m, yaw: -0.0°]: The drone moved slightly forward toward the right-side traffic light pole, which appears a bit larger and more centered, but it is still airborne and not yet landed in front of it.",
+    "Checkpoint 80: completion = 0.90",
+    "Steps 80-90 [x: 8.71 m, y: 6.70 m, z: -0.00 m, yaw: -0.0°]: The drone shifted slightly right, bringing the right-side traffic light pole closer to the center while staying at about the same distance and height.",
+    "Checkpoint 90: completion = 0.94",
+    "Steps 90-100 [x: 8.82 m, y: 6.72 m, z: -0.00 m, yaw: -0.0°]: The drone shifted slightly right, bringing the right-side traffic light pole a bit closer to the center while staying at about the same distance and height.",
+    "Checkpoint 100: completion = 0.96",
+    "Steps 100-110 [x: 9.08 m, y: 6.87 m, z: -0.00 m, yaw: -0.0°]: The drone shifted slightly right, bringing the right-side traffic light pole a bit closer to the center while staying at about the same distance and height.",
+    "Checkpoint 110: completion = 0.97",
+    "Steps 110-120 [x: 11.02 m, y: 5.75 m, z: -0.00 m, yaw: -0.0°]: The drone moved slightly closer and a bit right, bringing the right-side traffic light pole nearer and more centered in front.",
+    "Checkpoint 120: completion = 0.98",
+    "Steps 120-130 [x: 12.32 m, y: 4.93 m, z: -0.00 m, yaw: -0.0°]: The drone shifted slightly right, bringing the right-side traffic light pole closer to the center while staying at about the same distance and height.",
+    "Checkpoint 130: completion = 0.99",
+    "Steps 130-140 [x: 12.50 m, y: 4.95 m, z: -0.00 m, yaw: -0.0°]: The drone shifted slightly right, bringing the right-side traffic light pole closer to the center while staying at about the same distance and altitude.",
+    "Checkpoint 140: completion = 0.99",
+    "Steps 140-150 [x: 13.17 m, y: 4.76 m, z: -0.00 m, yaw: -0.0°]: The drone shifted slightly right, bringing the right-side traffic light pole closer to the center while staying at about the same distance and altitude.",
+    "Checkpoint 150: completion = 0.99",
+    "[CONVERGENCE @ step 157]: corrective issued (stopped_short, 99% complete) -- \"Descend 0.5 meters\"",
+    "Steps 150-160 [x: 13.18 m, y: 4.77 m, z: -0.40 m, yaw: -0.0°]: The drone moved slightly closer and a bit rightward toward the right-side traffic light pole, but it is still airborne and not yet landed in front of it.",
+    "Checkpoint 160: completion = 0.99",
+    "Steps 160-170 [x: 13.19 m, y: 4.78 m, z: -2.40 m, yaw: -0.0°]: The drone shifted slightly right and lower, bringing the right traffic light pole more centrally in front with the ground area ahead more prominent for landing.",
+    "Checkpoint 170: completion = 0.99",
+    "Steps 170-180 [x: 13.20 m, y: 4.80 m, z: -3.39 m, yaw: -0.0°]: The drone moved slightly right and lower, bringing the right-side traffic light pole a bit closer and more centered over the sidewalk area in front of it.",
+    "Checkpoint 180: completion = 0.99",
+    "Steps 180-190 [x: 13.21 m, y: 4.81 m, z: -3.59 m, yaw: -0.0°]: The drone moved slightly forward/right along the sidewalk, bringing it a bit closer and more aligned with the traffic light pole on the right.",
+    "Checkpoint 190: completion = 0.99",
+    "[CONVERGENCE @ step 190]: corrective issued (stopped_short, 99% complete) -- \"Descend 0.5 meters\"",
+    "Steps 190-200 [x: 13.22 m, y: 4.82 m, z: -4.39 m, yaw: -0.0°]: The drone descended to ground level and shifted onto the grass, still near the traffic light pole on the right.",
+    "Checkpoint 200: completion = 1.00"
+  ],
+  "correction_history": [
+    {
+      "step": 157,
+      "diagnosis": "stopped_short",
+      "completion_pct": 0.99,
+      "instruction": "Descend 0.5 meters"
+    },
+    {
+      "step": 190,
+      "diagnosis": "stopped_short",
+      "completion_pct": 0.99,
+      "instruction": "Descend 0.5 meters"
+    }
+  ],
+  "override_history": [
+    {
+      "step": 156,
+      "type": "convergence_command",
+      "old_instruction": "land in front of the traffic light pole on the right",
+      "new_instruction": "Descend 0.5 meters",
+      "reasoning": "convergence (stopped_short): The traffic light pole is directly ahead-right and very close, with the curb island visible at its base, so the drone appears correctly positioned in front of it. However, the diary and frames show it is still airborne at essentially unchanged altitude, so the remaining gap is to land by descending."
+    },
+    {
+      "step": 189,
+      "type": "convergence_command",
+      "old_instruction": "Descend 0.5 meters",
+      "new_instruction": "Descend 0.5 meters",
+      "reasoning": "convergence (stopped_short): The traffic light pole is directly in front-right and very close, with the sidewalk/curb area visible below, but the diary still indicates the drone remains airborne rather than landed. The previous correction improved altitude substantially, so the remaining bottleneck is a small additional descent to touch down in front of the pole."
+    },
+    {
+      "step": 199,
+      "type": "force_converge",
+      "reasoning": "Checkpoint thinks complete, verifying at convergence. Reasoning: The drone has descended to ground level and appears landed on the grass directly in front of the right-side traffic light pole. Raw: {\"complete\":true,\"completion_percentage\":1.0,\"should_stop\":false,\"reasoning\":\"The drone has descended to ground level and appears landed on the grass directly in front of the right-side traffic light pole.\"}"
+    }
+  ],
+  "corrections_used": 2,
+  "last_completion_pct": 1.0,
+  "peak_completion": 1.0,
+  "parse_failures": 0,
+  "vlm_call_count": 43,
+  "vlm_call_records": [
+    {
+      "label": "local_checkpoint",
+      "step": 10,
+      "rtt_s": 1.861,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1742,
+      "output_tokens": 37
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 10,
+      "rtt_s": 1.839,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1882,
+      "output_tokens": 58
+    },
+    {
+      "label": "local_checkpoint",
+      "step": 20,
+      "rtt_s": 2.267,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1742,
+      "output_tokens": 32
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 20,
+      "rtt_s": 2.039,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2307,
+      "output_tokens": 57
+    },
+    {
+      "label": "local_checkpoint",
+      "step": 30,
+      "rtt_s": 1.974,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1742,
+      "output_tokens": 29
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 30,
+      "rtt_s": 2.942,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 3076,
+      "output_tokens": 57
+    },
+    {
+      "label": "local_checkpoint",
+      "step": 40,
+      "rtt_s": 2.982,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1742,
+      "output_tokens": 33
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 40,
+      "rtt_s": 3.257,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 3155,
+      "output_tokens": 59
+    },
+    {
+      "label": "local_checkpoint",
+      "step": 50,
+      "rtt_s": 2.261,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1742,
+      "output_tokens": 38
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 50,
+      "rtt_s": 3.252,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 3852,
+      "output_tokens": 59
+    },
+    {
+      "label": "local_checkpoint",
+      "step": 60,
+      "rtt_s": 2.16,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1742,
+      "output_tokens": 35
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 60,
+      "rtt_s": 3.657,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 3933,
+      "output_tokens": 62
+    },
+    {
+      "label": "local_checkpoint",
+      "step": 70,
+      "rtt_s": 2.164,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1742,
+      "output_tokens": 30
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 70,
+      "rtt_s": 3.853,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 4813,
+      "output_tokens": 60
+    },
+    {
+      "label": "local_checkpoint",
+      "step": 80,
+      "rtt_s": 2.164,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1742,
+      "output_tokens": 39
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 80,
+      "rtt_s": 4.057,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 4898,
+      "output_tokens": 60
+    },
+    {
+      "label": "local_checkpoint",
+      "step": 90,
+      "rtt_s": 2.135,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1742,
+      "output_tokens": 30
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 90,
+      "rtt_s": 5.067,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 4974,
+      "output_tokens": 61
+    },
+    {
+      "label": "local_checkpoint",
+      "step": 100,
+      "rtt_s": 1.849,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1742,
+      "output_tokens": 32
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 100,
+      "rtt_s": 4.461,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 5052,
+      "output_tokens": 57
+    },
+    {
+      "label": "local_checkpoint",
+      "step": 110,
+      "rtt_s": 2.058,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1742,
+      "output_tokens": 32
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 110,
+      "rtt_s": 4.46,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 5130,
+      "output_tokens": 59
+    },
+    {
+      "label": "local_checkpoint",
+      "step": 120,
+      "rtt_s": 2.364,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1742,
+      "output_tokens": 27
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 120,
+      "rtt_s": 4.77,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 5203,
+      "output_tokens": 65
+    },
+    {
+      "label": "local_checkpoint",
+      "step": 130,
+      "rtt_s": 1.862,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1742,
+      "output_tokens": 30
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 130,
+      "rtt_s": 4.256,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 5279,
+      "output_tokens": 59
+    },
+    {
+      "label": "local_checkpoint",
+      "step": 140,
+      "rtt_s": 2.163,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1742,
+      "output_tokens": 30
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 140,
+      "rtt_s": 4.462,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 5355,
+      "output_tokens": 58
+    },
+    {
+      "label": "local_checkpoint",
+      "step": 150,
+      "rtt_s": 2.061,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1742,
+      "output_tokens": 30
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 150,
+      "rtt_s": 4.256,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 5431,
+      "output_tokens": 64
+    },
+    {
+      "label": "convergence",
+      "step": 157,
+      "rtt_s": 6.433,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 6062,
+      "output_tokens": 96
+    },
+    {
+      "label": "local_checkpoint",
+      "step": 160,
+      "rtt_s": 2.062,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1742,
+      "output_tokens": 35
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 160,
+      "rtt_s": 4.249,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 5544,
+      "output_tokens": 56
+    },
+    {
+      "label": "local_checkpoint",
+      "step": 170,
+      "rtt_s": 2.262,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1742,
+      "output_tokens": 31
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 170,
+      "rtt_s": 3.643,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 5621,
+      "output_tokens": 51
+    },
+    {
+      "label": "local_checkpoint",
+      "step": 180,
+      "rtt_s": 2.479,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1742,
+      "output_tokens": 33
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 180,
+      "rtt_s": 4.462,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 5700,
+      "output_tokens": 54
+    },
+    {
+      "label": "local_checkpoint",
+      "step": 190,
+      "rtt_s": 1.862,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1742,
+      "output_tokens": 30
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 190,
+      "rtt_s": 4.053,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 5776,
+      "output_tokens": 54
+    },
+    {
+      "label": "convergence",
+      "step": 190,
+      "rtt_s": 5.517,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 6407,
+      "output_tokens": 100
+    },
+    {
+      "label": "local_checkpoint",
+      "step": 200,
+      "rtt_s": 1.955,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1742,
+      "output_tokens": 25
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 200,
+      "rtt_s": 4.26,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 5879,
+      "output_tokens": 48
+    },
+    {
+      "label": "convergence",
+      "step": 200,
+      "rtt_s": 4.588,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 6541,
+      "output_tokens": 91
+    }
+  ],
+  "converter_call_records": [
+    {
+      "label": "subgoal_convert",
+      "subgoal": "Land in front of the traffic light pole on the right",
+      "rtt_s": 0.746,
+      "model": "gpt-4o-2024-08-06",
+      "input_tokens": 372,
+      "output_tokens": 17
+    }
+  ],
+  "stop_reason": "monitor_complete",
+  "total_steps": 200,
+  "in_correction_at_end": false
+}

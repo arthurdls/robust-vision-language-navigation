@@ -1,0 +1,470 @@
+{
+  "subgoal": "Go past the first streetlamp",
+  "converted_instruction": "go past the first streetlamp",
+  "diary": [
+    "Steps 0-10 [x: 1.74 m, y: 0.01 m, z: 0.00 m, yaw: 0.0°]: The drone moved slightly forward, bringing the first streetlamp a bit closer but not yet past it.",
+    "Checkpoint 10: completion = 0.41",
+    "Steps 10-20 [x: 4.91 m, y: 0.23 m, z: 0.00 m, yaw: 0.0°]: The drone moved slightly forward and right, bringing the first streetlamp more centered and a bit closer, but it has not been passed yet.",
+    "Checkpoint 20: completion = 0.63",
+    "Steps 20-30 [x: 7.37 m, y: 0.73 m, z: 0.00 m, yaw: -0.0°]: The drone moved slightly forward toward the first streetlamp, which remains ahead and has not been passed yet.",
+    "Checkpoint 30: completion = 0.72",
+    "Steps 30-40 [x: 7.97 m, y: 0.76 m, z: 0.00 m, yaw: -0.0°]: The drone moved slightly forward toward the first streetlamp, which remains ahead and has not been passed yet.",
+    "Checkpoint 40: completion = 0.76",
+    "[CONVERGENCE @ step 43]: corrective issued (stopped_short, 82% complete) -- \"Move forward 0.8 meters\"",
+    "Steps 40-50 [x: 9.17 m, y: 0.77 m, z: 0.00 m, yaw: -0.0°]: The drone moved slightly forward toward the first streetlamp, which remains ahead near the center and has not been passed yet.",
+    "Checkpoint 50: completion = 0.86",
+    "Steps 50-60 [x: 11.16 m, y: 0.78 m, z: 0.00 m, yaw: -0.0°]: The drone moved slightly forward toward the first streetlamp, which is still ahead and not yet passed.",
+    "Checkpoint 60: completion = 0.90",
+    "Steps 60-70 [x: 13.16 m, y: 0.79 m, z: 0.00 m, yaw: -0.0°]: The drone moved slightly closer to the first streetlamp, which is still ahead and not yet passed.",
+    "Checkpoint 70: completion = 0.94",
+    "Steps 70-80 [x: 15.15 m, y: 0.81 m, z: 0.00 m, yaw: -0.0°]: The drone moved slightly forward toward the first streetlamp, which remains ahead near the center and has not been passed yet.",
+    "Checkpoint 80: completion = 0.97",
+    "Steps 80-90 [x: 16.95 m, y: 0.82 m, z: 0.00 m, yaw: -0.0°]: The drone moved slightly closer to the first streetlamp, which is now larger and more centered, but it has not been passed yet.",
+    "Checkpoint 90: completion = 0.99",
+    "Steps 90-100 [x: 18.35 m, y: 0.83 m, z: 0.00 m, yaw: -0.0°]: The drone moved slightly forward toward the first streetlamp, which appears a bit larger and more centered, but it has not been passed yet.",
+    "Checkpoint 100: completion = 0.99",
+    "Steps 100-110 [x: 20.40 m, y: 0.84 m, z: 0.00 m, yaw: -0.0°]: The first streetlamp shifted slightly toward the center and appears a bit closer, but the drone has not passed it yet.",
+    "Checkpoint 110: completion = 0.99",
+    "Steps 110-120 [x: 22.39 m, y: 0.85 m, z: 0.00 m, yaw: -0.0°]: The drone moved slightly closer to the first streetlamp, which remains centered ahead and has not been passed yet.",
+    "Checkpoint 120: completion = 0.99",
+    "Steps 120-130 [x: 24.38 m, y: 0.87 m, z: 0.00 m, yaw: -0.0°]: The first streetlamp grew larger and shifted toward the center/right, indicating the drone moved closer but has not passed it yet.",
+    "Checkpoint 130: completion = 0.99",
+    "Steps 130-140 [x: 26.37 m, y: 0.88 m, z: 0.00 m, yaw: -0.0°]: The first streetlamp grew larger and shifted toward the center, indicating the drone moved closer but has not passed it yet.",
+    "Checkpoint 140: completion = 0.99",
+    "Steps 140-150 [x: 27.57 m, y: 0.89 m, z: 0.00 m, yaw: -0.0°]: The first streetlamp grew larger and shifted toward the center, indicating the drone moved closer but has not passed it yet.",
+    "Checkpoint 150: completion = 0.99",
+    "[CONVERGENCE @ step 150]: corrective issued (stopped_short, 99% complete) -- \"Ascend 0.8 meters\"",
+    "Steps 150-160 [x: 27.78 m, y: 0.90 m, z: 0.40 m, yaw: -0.0°]: The first streetlamp shifts toward the center and appears slightly larger, indicating the drone moved closer but has not passed it yet.",
+    "Checkpoint 160: completion = 0.99",
+    "[CONVERGENCE @ step 160]: corrective issued (stopped_short, 99% complete) -- \"Turn right 15 degrees\"",
+    "Steps 160-170 [x: 27.79 m, y: 0.92 m, z: 0.60 m, yaw: 14.9°]: The streetlamp remains directly beside the drone with only a slight lateral shift, so it has not been passed yet.",
+    "Checkpoint 170: completion = 0.99",
+    "[CONVERGENCE @ step 170]: corrective issued (stopped_short, 99% complete) -- \"Move forward 0.6 meters\"",
+    "Steps 170-180 [x: 29.57 m, y: 1.65 m, z: 0.60 m, yaw: 14.9°]: The first streetlamp on the left shifts farther toward the edge and partly out of view, indicating slight forward movement but not yet clearly past it.",
+    "Checkpoint 180: completion = 1.00"
+  ],
+  "correction_history": [
+    {
+      "step": 43,
+      "diagnosis": "stopped_short",
+      "completion_pct": 0.82,
+      "instruction": "Move forward 0.8 meters"
+    },
+    {
+      "step": 150,
+      "diagnosis": "stopped_short",
+      "completion_pct": 0.99,
+      "instruction": "Ascend 0.8 meters"
+    },
+    {
+      "step": 160,
+      "diagnosis": "stopped_short",
+      "completion_pct": 0.99,
+      "instruction": "Turn right 15 degrees"
+    },
+    {
+      "step": 170,
+      "diagnosis": "stopped_short",
+      "completion_pct": 0.99,
+      "instruction": "Move forward 0.6 meters"
+    }
+  ],
+  "override_history": [
+    {
+      "step": 42,
+      "type": "convergence_command",
+      "old_instruction": "go past the first streetlamp",
+      "new_instruction": "Move forward 0.8 meters",
+      "reasoning": "convergence (stopped_short): The first streetlamp is still clearly visible ahead near the center of the latest frames, so the drone has approached it but not yet gone past it. Progress has slowed after nearly 8 meters of forward travel, and a small additional forward move is the main missing action."
+    },
+    {
+      "step": 149,
+      "type": "force_converge",
+      "reasoning": "Stop requested for correction. Reasoning: The first streetlamp now fills much of the frame directly ahead, so the drone is extremely close but has still not clearly moved past it and is on a likely collision course if it continues. Raw: {\"complete\":false,\"completion_percentage\":0.99,\"should_stop\":true,\"reasoning\":\"The first streetlamp now fills much of the frame directly ahead, so the drone is extremely close but has still not clearly moved past it and is on a likely collision course if it continues.\"}"
+    },
+    {
+      "step": 149,
+      "type": "convergence_command",
+      "old_instruction": "Move forward 0.8 meters",
+      "new_instruction": "Ascend 0.8 meters",
+      "reasoning": "convergence (stopped_short): The latest frames show the first streetlamp/traffic-signal pole filling the foreground directly ahead, with the drone extremely close but still not clearly beyond it. A previous forward correction did not improve completion, so the biggest bottleneck is obstacle clearance; ascending is the safest single action to avoid colliding while setting up to pass the lamp."
+    },
+    {
+      "step": 159,
+      "type": "force_converge",
+      "reasoning": "Stop requested for correction. Reasoning: The streetlamp now fills much of the frame directly ahead, so the drone is extremely close but still has not moved past it and is on a near-collision course with the pole. Raw: {\"complete\":false,\"completion_percentage\":0.99,\"should_stop\":true,\"reasoning\":\"The streetlamp now fills much of the frame directly ahead, so the drone is extremely close but still has not moved past it and is on a near-collision course with the pole.\"}"
+    },
+    {
+      "step": 159,
+      "type": "convergence_command",
+      "old_instruction": "Ascend 0.8 meters",
+      "new_instruction": "Turn right 15 degrees",
+      "reasoning": "convergence (stopped_short): The streetlamp is still directly ahead and fills much of the latest frames, so the drone has not yet gone past it; it is extremely close and on a collision course. A small right turn is the safest single-axis correction to sidestep the pole after the previous ascend failed to improve completion."
+    },
+    {
+      "step": 169,
+      "type": "force_converge",
+      "reasoning": "Stop requested for correction. Reasoning: The streetlamp is now extremely close and directly beside the drone, so it has stopped short at the landmark rather than clearly moving past it. Raw: {\"complete\":false,\"completion_percentage\":0.99,\"should_stop\":true,\"reasoning\":\"The streetlamp is now extremely close and directly beside the drone, so it has stopped short at the landmark rather than clearly moving past it.\"}"
+    },
+    {
+      "step": 169,
+      "type": "convergence_command",
+      "old_instruction": "Turn right 15 degrees",
+      "new_instruction": "Move forward 0.6 meters",
+      "reasoning": "convergence (stopped_short): The streetlamp fills the frame and is directly beside the drone, but the latest views still show the pole adjacent rather than clearly behind, so the drone appears to have stopped at the landmark instead of passing it. The previous corrections changed altitude and yaw without improving completion, so the remaining bottleneck is a small forward move to get definitively past the streetlamp."
+    },
+    {
+      "step": 179,
+      "type": "force_converge",
+      "reasoning": "Checkpoint thinks complete, verifying at convergence. Reasoning: The streetlamp moves from centered ahead to the extreme left edge and then mostly out of frame, which is strong evidence the drone has just passed it. Raw: {\"complete\":true,\"completion_percentage\":1.0,\"should_stop\":false,\"reasoning\":\"The streetlamp moves from centered ahead to the extreme left edge and then mostly out of frame, which is strong evidence the drone has just passed it.\"}"
+    }
+  ],
+  "corrections_used": 4,
+  "last_completion_pct": 1.0,
+  "peak_completion": 1.0,
+  "parse_failures": 0,
+  "vlm_call_count": 41,
+  "vlm_call_records": [
+    {
+      "label": "local_checkpoint",
+      "step": 10,
+      "rtt_s": 1.726,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1737,
+      "output_tokens": 23
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 10,
+      "rtt_s": 2.043,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1863,
+      "output_tokens": 54
+    },
+    {
+      "label": "local_checkpoint",
+      "step": 20,
+      "rtt_s": 2.151,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1737,
+      "output_tokens": 31
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 20,
+      "rtt_s": 2.242,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2287,
+      "output_tokens": 47
+    },
+    {
+      "label": "local_checkpoint",
+      "step": 30,
+      "rtt_s": 2.061,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1737,
+      "output_tokens": 24
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 30,
+      "rtt_s": 2.849,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 3051,
+      "output_tokens": 49
+    },
+    {
+      "label": "local_checkpoint",
+      "step": 40,
+      "rtt_s": 2.353,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1737,
+      "output_tokens": 24
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 40,
+      "rtt_s": 2.846,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 3121,
+      "output_tokens": 50
+    },
+    {
+      "label": "convergence",
+      "step": 43,
+      "rtt_s": 3.892,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 4365,
+      "output_tokens": 92
+    },
+    {
+      "label": "local_checkpoint",
+      "step": 50,
+      "rtt_s": 2.061,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1737,
+      "output_tokens": 27
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 50,
+      "rtt_s": 3.86,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 3839,
+      "output_tokens": 50
+    },
+    {
+      "label": "local_checkpoint",
+      "step": 60,
+      "rtt_s": 3.599,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1737,
+      "output_tokens": 23
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 60,
+      "rtt_s": 4.261,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 4712,
+      "output_tokens": 49
+    },
+    {
+      "label": "local_checkpoint",
+      "step": 70,
+      "rtt_s": 2.752,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1737,
+      "output_tokens": 23
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 70,
+      "rtt_s": 4.465,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 4781,
+      "output_tokens": 49
+    },
+    {
+      "label": "local_checkpoint",
+      "step": 80,
+      "rtt_s": 1.758,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1737,
+      "output_tokens": 27
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 80,
+      "rtt_s": 5.279,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 4854,
+      "output_tokens": 53
+    },
+    {
+      "label": "local_checkpoint",
+      "step": 90,
+      "rtt_s": 2.052,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1737,
+      "output_tokens": 30
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 90,
+      "rtt_s": 5.483,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 4930,
+      "output_tokens": 55
+    },
+    {
+      "label": "local_checkpoint",
+      "step": 100,
+      "rtt_s": 1.961,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1737,
+      "output_tokens": 31
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 100,
+      "rtt_s": 4.46,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 5007,
+      "output_tokens": 48
+    },
+    {
+      "label": "local_checkpoint",
+      "step": 110,
+      "rtt_s": 2.378,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1737,
+      "output_tokens": 27
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 110,
+      "rtt_s": 4.667,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 5080,
+      "output_tokens": 53
+    },
+    {
+      "label": "local_checkpoint",
+      "step": 120,
+      "rtt_s": 2.479,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1737,
+      "output_tokens": 25
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 120,
+      "rtt_s": 4.255,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 5151,
+      "output_tokens": 47
+    },
+    {
+      "label": "local_checkpoint",
+      "step": 130,
+      "rtt_s": 1.864,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1737,
+      "output_tokens": 28
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 130,
+      "rtt_s": 4.461,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 5225,
+      "output_tokens": 56
+    },
+    {
+      "label": "local_checkpoint",
+      "step": 140,
+      "rtt_s": 1.659,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1737,
+      "output_tokens": 27
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 140,
+      "rtt_s": 4.666,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 5298,
+      "output_tokens": 53
+    },
+    {
+      "label": "local_checkpoint",
+      "step": 150,
+      "rtt_s": 2.07,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1737,
+      "output_tokens": 27
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 150,
+      "rtt_s": 4.462,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 5371,
+      "output_tokens": 62
+    },
+    {
+      "label": "convergence",
+      "step": 150,
+      "rtt_s": 4.798,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 6047,
+      "output_tokens": 105
+    },
+    {
+      "label": "local_checkpoint",
+      "step": 160,
+      "rtt_s": 1.864,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1737,
+      "output_tokens": 28
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 160,
+      "rtt_s": 5.068,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 5477,
+      "output_tokens": 61
+    },
+    {
+      "label": "convergence",
+      "step": 160,
+      "rtt_s": 5.617,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 6152,
+      "output_tokens": 96
+    },
+    {
+      "label": "local_checkpoint",
+      "step": 170,
+      "rtt_s": 2.47,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1737,
+      "output_tokens": 26
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 170,
+      "rtt_s": 4.464,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 5579,
+      "output_tokens": 52
+    },
+    {
+      "label": "convergence",
+      "step": 170,
+      "rtt_s": 5.412,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 6245,
+      "output_tokens": 110
+    },
+    {
+      "label": "local_checkpoint",
+      "step": 180,
+      "rtt_s": 1.967,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1737,
+      "output_tokens": 32
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 180,
+      "rtt_s": 4.872,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 5689,
+      "output_tokens": 54
+    },
+    {
+      "label": "convergence",
+      "step": 180,
+      "rtt_s": 5.211,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 6357,
+      "output_tokens": 85
+    }
+  ],
+  "converter_call_records": [
+    {
+      "label": "subgoal_convert",
+      "subgoal": "Go past the first streetlamp",
+      "rtt_s": 0.816,
+      "model": "gpt-4o-2024-08-06",
+      "input_tokens": 367,
+      "output_tokens": 12
+    }
+  ],
+  "stop_reason": "monitor_complete",
+  "total_steps": 180,
+  "in_correction_at_end": false
+}

@@ -1,0 +1,1 @@
+{"complete":false,"completion_percentage":0.33,"should_stop":true,"reasoning":"The black car is still ahead-right and only slightly larger after the turn, so the drone is largely drifting laterally instead of approaching the target."}

@@ -1,0 +1,1 @@
+{"complete":false,"completion_percentage":0.97,"should_stop":false,"reasoning":"The drone is still making steady approach progress toward the black car, which is now large in the frame but not yet clearly reached or passed."}

@@ -1,0 +1,536 @@
+{
+  "subgoal": "Move towards the cardboard cutout of person holding a bottle and a glass",
+  "converted_instruction": "move towards the cardboard cutout of person holding a bottle and a glass",
+  "diary": [
+    "Steps ~28 [x: 0.00 m, y: 0.00 m, z: 0.00 m, yaw: 0.0°]: The cardboard cutout remains visible ahead at about the same size and position, with essentially no progress toward it.",
+    "Checkpoint ~28: completion = 0.12",
+    "Steps ~55 [x: 0.00 m, y: 0.00 m, z: 0.00 m, yaw: 0.0°]: The cardboard cutout remains clearly visible ahead near the building, with little to no change in distance or position between frames.",
+    "Checkpoint ~55: completion = 0.18",
+    "Steps ~82 [x: 0.12 m, y: 0.00 m, z: 0.00 m, yaw: 0.0°]: The cardboard cutout stayed in view at about the same size and position, indicating little to no progress toward it.",
+    "Checkpoint ~82: completion = 0.14",
+    "Steps ~109 [x: 0.39 m, y: 0.00 m, z: 0.00 m, yaw: 0.0°]: The cardboard cutout stayed centered and about the same size, indicating essentially no progress toward it.",
+    "Steps ~137 [x: 0.67 m, y: 0.00 m, z: 0.00 m, yaw: 0.0°]: The cardboard cutout remains visible ahead and appears slightly larger and more centered, indicating a small forward approach.",
+    "Checkpoint ~109: completion = 0.20",
+    "Steps ~164 [x: 0.94 m, y: 0.00 m, z: 0.00 m, yaw: 0.0°]: The drone moved slightly closer to the cardboard person, which appears a bit larger and more centered.",
+    "Checkpoint ~137: completion = 0.22",
+    "Steps ~191 [x: 1.21 m, y: 0.00 m, z: 0.00 m, yaw: 0.0°]: The drone moved slightly closer to the cardboard cutout, which appears a bit larger and more centered in view.",
+    "Checkpoint ~164: completion = 0.31",
+    "Steps ~218 [x: 1.48 m, y: 0.00 m, z: 0.00 m, yaw: 0.0°]: The drone made almost no progress; the cardboard cutout remains visible at about the same size and position ahead.",
+    "Checkpoint ~191: completion = 0.29",
+    "Steps ~245 [x: 1.75 m, y: 0.00 m, z: 0.00 m, yaw: 0.0°]: The drone moved slightly closer to the cardboard person, which remains clearly visible ahead near the center-right.",
+    "Checkpoint ~218: completion = 0.34",
+    "Steps ~272 [x: 2.02 m, y: 0.00 m, z: 0.00 m, yaw: 0.0°]: The drone moved slightly forward toward the cardboard person, which remains centered and only a bit larger in view.",
+    "Checkpoint ~245: completion = 0.38",
+    "Steps ~299 [x: 2.29 m, y: 0.00 m, z: 0.00 m, yaw: 0.0°]: The cardboard cutout is slightly larger and more centered, indicating a small forward approach.",
+    "Checkpoint ~272: completion = 0.43",
+    "Steps ~326 [x: 2.56 m, y: 0.00 m, z: 0.00 m, yaw: 0.0°]: The drone moved slightly closer to the cardboard person, which appears a bit larger and more centered ahead.",
+    "Checkpoint ~299: completion = 0.46",
+    "Checkpoint ~326: completion = 0.47",
+    "Steps ~353 [x: 2.83 m, y: 0.00 m, z: 0.00 m, yaw: 0.0°]: The drone moved slightly closer to the cardboard cutout, which appears a bit larger and more centered.",
+    "Steps ~381 [x: 3.11 m, y: 0.00 m, z: 0.00 m, yaw: 0.0°]: The drone moved slightly closer to the cardboard person, which appears a bit larger and more centered in the gap ahead.",
+    "Steps ~408 [x: 3.38 m, y: 0.00 m, z: 0.00 m, yaw: 0.0°]: The drone moved slightly forward, making the cardboard cutout appear a bit larger and more centered.",
+    "Steps ~435 [x: 3.65 m, y: 0.00 m, z: 0.00 m, yaw: 0.0°]: The drone moved slightly closer to the cardboard cutout, which appears a bit larger and more centered.",
+    "Steps ~462 [x: 3.92 m, y: 0.00 m, z: 0.00 m, yaw: 0.0°]: The cardboard cutout remains clearly visible and appears only slightly larger, indicating minimal forward progress toward it."
+  ],
+  "correction_history": [],
+  "override_history": [],
+  "corrections_used": 0,
+  "last_completion_pct": 0.47,
+  "peak_completion": 0.47,
+  "parse_failures": 0,
+  "vlm_calls": 30,
+  "vlm_rtts": [
+    {
+      "label": "local_checkpoint_async",
+      "step": 50,
+      "rtt_s": 2.442,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2110,
+      "output_tokens": 25
+    },
+    {
+      "label": "global_checkpoint_async",
+      "step": 69,
+      "rtt_s": 2.075,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2374,
+      "output_tokens": 51
+    },
+    {
+      "label": "local_checkpoint_async",
+      "step": 78,
+      "rtt_s": 2.585,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2110,
+      "output_tokens": 27
+    },
+    {
+      "label": "global_checkpoint_async",
+      "step": 98,
+      "rtt_s": 2.211,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2434,
+      "output_tokens": 56
+    },
+    {
+      "label": "local_checkpoint_async",
+      "step": 105,
+      "rtt_s": 2.501,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2110,
+      "output_tokens": 26
+    },
+    {
+      "label": "global_checkpoint_async",
+      "step": 129,
+      "rtt_s": 2.616,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 3033,
+      "output_tokens": 55
+    },
+    {
+      "label": "local_checkpoint_async",
+      "step": 144,
+      "rtt_s": 3.853,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2110,
+      "output_tokens": 22
+    },
+    {
+      "label": "local_checkpoint_async",
+      "step": 157,
+      "rtt_s": 2.237,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2110,
+      "output_tokens": 24
+    },
+    {
+      "label": "global_checkpoint_async",
+      "step": 165,
+      "rtt_s": 2.261,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 3099,
+      "output_tokens": 56
+    },
+    {
+      "label": "local_checkpoint_async",
+      "step": 183,
+      "rtt_s": 2.077,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2110,
+      "output_tokens": 22
+    },
+    {
+      "label": "global_checkpoint_async",
+      "step": 185,
+      "rtt_s": 3.142,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 4122,
+      "output_tokens": 58
+    },
+    {
+      "label": "local_checkpoint_async",
+      "step": 215,
+      "rtt_s": 2.613,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2110,
+      "output_tokens": 25
+    },
+    {
+      "label": "global_checkpoint_async",
+      "step": 218,
+      "rtt_s": 3.92,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 4232,
+      "output_tokens": 54
+    },
+    {
+      "label": "local_checkpoint_async",
+      "step": 239,
+      "rtt_s": 2.356,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2110,
+      "output_tokens": 25
+    },
+    {
+      "label": "global_checkpoint_async",
+      "step": 245,
+      "rtt_s": 3.406,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 4312,
+      "output_tokens": 57
+    },
+    {
+      "label": "local_checkpoint_async",
+      "step": 272,
+      "rtt_s": 2.996,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2110,
+      "output_tokens": 23
+    },
+    {
+      "label": "global_checkpoint_async",
+      "step": 282,
+      "rtt_s": 4.696,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 5002,
+      "output_tokens": 56
+    },
+    {
+      "label": "local_checkpoint_async",
+      "step": 296,
+      "rtt_s": 2.56,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2110,
+      "output_tokens": 24
+    },
+    {
+      "label": "global_checkpoint_async",
+      "step": 315,
+      "rtt_s": 4.686,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 5069,
+      "output_tokens": 55
+    },
+    {
+      "label": "local_checkpoint_async",
+      "step": 320,
+      "rtt_s": 2.27,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2110,
+      "output_tokens": 20
+    },
+    {
+      "label": "global_checkpoint_async",
+      "step": 343,
+      "rtt_s": 5.301,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 5137,
+      "output_tokens": 55
+    },
+    {
+      "label": "local_checkpoint_async",
+      "step": 351,
+      "rtt_s": 2.733,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2110,
+      "output_tokens": 23
+    },
+    {
+      "label": "global_checkpoint_async",
+      "step": 360,
+      "rtt_s": 4.358,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 5201,
+      "output_tokens": 54
+    },
+    {
+      "label": "global_checkpoint_async",
+      "step": 397,
+      "rtt_s": 4.991,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 5372,
+      "output_tokens": 54
+    },
+    {
+      "label": "local_checkpoint_async",
+      "step": 402,
+      "rtt_s": 2.318,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2110,
+      "output_tokens": 26
+    },
+    {
+      "label": "local_checkpoint_async",
+      "step": 415,
+      "rtt_s": 6.844,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2110,
+      "output_tokens": 23
+    },
+    {
+      "label": "local_checkpoint_async",
+      "step": 448,
+      "rtt_s": 4.398,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2110,
+      "output_tokens": 22
+    },
+    {
+      "label": "global_checkpoint_async",
+      "step": 455,
+      "rtt_s": 5.846,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 5453,
+      "output_tokens": 58
+    },
+    {
+      "label": "local_checkpoint_async",
+      "step": 456,
+      "rtt_s": 2.269,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2110,
+      "output_tokens": 23
+    },
+    {
+      "label": "local_checkpoint_async",
+      "step": 481,
+      "rtt_s": 2.151,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2110,
+      "output_tokens": 23
+    }
+  ],
+  "llm_call_records": [
+    {
+      "label": "subgoal_convert",
+      "subgoal": "Move towards the cardboard cutout of person holding a bottle and a glass",
+      "rtt_s": 0.694,
+      "model": "gpt-4o-2024-08-06",
+      "input_tokens": 375,
+      "output_tokens": 20
+    },
+    {
+      "label": "local_checkpoint_async",
+      "step": 50,
+      "rtt_s": 2.442,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2110,
+      "output_tokens": 25
+    },
+    {
+      "label": "global_checkpoint_async",
+      "step": 69,
+      "rtt_s": 2.075,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2374,
+      "output_tokens": 51
+    },
+    {
+      "label": "local_checkpoint_async",
+      "step": 78,
+      "rtt_s": 2.585,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2110,
+      "output_tokens": 27
+    },
+    {
+      "label": "global_checkpoint_async",
+      "step": 98,
+      "rtt_s": 2.211,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2434,
+      "output_tokens": 56
+    },
+    {
+      "label": "local_checkpoint_async",
+      "step": 105,
+      "rtt_s": 2.501,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2110,
+      "output_tokens": 26
+    },
+    {
+      "label": "global_checkpoint_async",
+      "step": 129,
+      "rtt_s": 2.616,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 3033,
+      "output_tokens": 55
+    },
+    {
+      "label": "local_checkpoint_async",
+      "step": 144,
+      "rtt_s": 3.853,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2110,
+      "output_tokens": 22
+    },
+    {
+      "label": "local_checkpoint_async",
+      "step": 157,
+      "rtt_s": 2.237,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2110,
+      "output_tokens": 24
+    },
+    {
+      "label": "global_checkpoint_async",
+      "step": 165,
+      "rtt_s": 2.261,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 3099,
+      "output_tokens": 56
+    },
+    {
+      "label": "local_checkpoint_async",
+      "step": 183,
+      "rtt_s": 2.077,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2110,
+      "output_tokens": 22
+    },
+    {
+      "label": "global_checkpoint_async",
+      "step": 185,
+      "rtt_s": 3.142,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 4122,
+      "output_tokens": 58
+    },
+    {
+      "label": "local_checkpoint_async",
+      "step": 215,
+      "rtt_s": 2.613,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2110,
+      "output_tokens": 25
+    },
+    {
+      "label": "global_checkpoint_async",
+      "step": 218,
+      "rtt_s": 3.92,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 4232,
+      "output_tokens": 54
+    },
+    {
+      "label": "local_checkpoint_async",
+      "step": 239,
+      "rtt_s": 2.356,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2110,
+      "output_tokens": 25
+    },
+    {
+      "label": "global_checkpoint_async",
+      "step": 245,
+      "rtt_s": 3.406,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 4312,
+      "output_tokens": 57
+    },
+    {
+      "label": "local_checkpoint_async",
+      "step": 272,
+      "rtt_s": 2.996,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2110,
+      "output_tokens": 23
+    },
+    {
+      "label": "global_checkpoint_async",
+      "step": 282,
+      "rtt_s": 4.696,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 5002,
+      "output_tokens": 56
+    },
+    {
+      "label": "local_checkpoint_async",
+      "step": 296,
+      "rtt_s": 2.56,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2110,
+      "output_tokens": 24
+    },
+    {
+      "label": "global_checkpoint_async",
+      "step": 315,
+      "rtt_s": 4.686,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 5069,
+      "output_tokens": 55
+    },
+    {
+      "label": "local_checkpoint_async",
+      "step": 320,
+      "rtt_s": 2.27,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2110,
+      "output_tokens": 20
+    },
+    {
+      "label": "global_checkpoint_async",
+      "step": 343,
+      "rtt_s": 5.301,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 5137,
+      "output_tokens": 55
+    },
+    {
+      "label": "local_checkpoint_async",
+      "step": 351,
+      "rtt_s": 2.733,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2110,
+      "output_tokens": 23
+    },
+    {
+      "label": "global_checkpoint_async",
+      "step": 360,
+      "rtt_s": 4.358,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 5201,
+      "output_tokens": 54
+    },
+    {
+      "label": "global_checkpoint_async",
+      "step": 397,
+      "rtt_s": 4.991,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 5372,
+      "output_tokens": 54
+    },
+    {
+      "label": "local_checkpoint_async",
+      "step": 402,
+      "rtt_s": 2.318,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2110,
+      "output_tokens": 26
+    },
+    {
+      "label": "local_checkpoint_async",
+      "step": 415,
+      "rtt_s": 6.844,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2110,
+      "output_tokens": 23
+    },
+    {
+      "label": "local_checkpoint_async",
+      "step": 448,
+      "rtt_s": 4.398,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2110,
+      "output_tokens": 22
+    },
+    {
+      "label": "global_checkpoint_async",
+      "step": 455,
+      "rtt_s": 5.846,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 5453,
+      "output_tokens": 58
+    },
+    {
+      "label": "local_checkpoint_async",
+      "step": 456,
+      "rtt_s": 2.269,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2110,
+      "output_tokens": 23
+    },
+    {
+      "label": "local_checkpoint_async",
+      "step": 481,
+      "rtt_s": 2.151,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2110,
+      "output_tokens": 23
+    }
+  ],
+  "stop_reason": "interrupted",
+  "total_steps": 484
+}

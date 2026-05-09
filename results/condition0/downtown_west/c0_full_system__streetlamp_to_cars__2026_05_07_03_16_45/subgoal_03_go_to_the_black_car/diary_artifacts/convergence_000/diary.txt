@@ -1,0 +1,4 @@
+Steps 0-10 [x: 1.57 m, y: 1.27 m, z: 0.00 m, yaw: 0.0°]: The drone moved slightly closer to the black car, which remains ahead-right and still some distance away.
+Checkpoint 10: completion = 0.31
+Steps 10-20 [x: 2.42 m, y: 2.66 m, z: 0.00 m, yaw: 0.0°]: The black car shifted slightly right in the frame and appears about the same size, so there was little to no approach progress.
+Checkpoint 20: completion = 0.29

@@ -1,0 +1,60 @@
+{
+  "subgoal": "Turn toward the red car",
+  "converted_instruction": "turn toward the red car",
+  "diary": [
+    "Steps 0-10 [x: 0.01 m, y: 0.01 m, z: 0.00 m, yaw: 12.0°]: The view shifted slightly right, bringing more of the red car into the bottom-right foreground, but it is still only partially visible.",
+    "Checkpoint 10: completion = 1.00"
+  ],
+  "correction_history": [],
+  "override_history": [
+    {
+      "step": 9,
+      "type": "force_converge",
+      "reasoning": "Checkpoint thinks complete, verifying at convergence. Reasoning: The red car is clearly visible in the frame at the bottom foreground, so the turn-toward subgoal is accomplished. Raw: {\"complete\":true,\"completion_percentage\":1.0,\"should_stop\":false,\"reasoning\":\"The red car is clearly visible in the frame at the bottom foreground, so the turn-toward subgoal is accomplished.\"}"
+    }
+  ],
+  "corrections_used": 0,
+  "last_completion_pct": 1.0,
+  "peak_completion": 1.0,
+  "parse_failures": 0,
+  "vlm_call_count": 3,
+  "vlm_call_records": [
+    {
+      "label": "local_checkpoint",
+      "step": 10,
+      "rtt_s": 2.377,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1736,
+      "output_tokens": 29
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 10,
+      "rtt_s": 2.453,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1868,
+      "output_tokens": 49
+    },
+    {
+      "label": "convergence",
+      "step": 10,
+      "rtt_s": 3.172,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2878,
+      "output_tokens": 84
+    }
+  ],
+  "converter_call_records": [
+    {
+      "label": "subgoal_convert",
+      "subgoal": "Turn toward the red car",
+      "rtt_s": 0.78,
+      "model": "gpt-4o-2024-08-06",
+      "input_tokens": 366,
+      "output_tokens": 11
+    }
+  ],
+  "stop_reason": "monitor_complete",
+  "total_steps": 10,
+  "in_correction_at_end": false
+}

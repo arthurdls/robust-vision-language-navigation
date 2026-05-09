@@ -1,0 +1,227 @@
+{
+  "subgoal": "Go to the black car",
+  "converted_instruction": "go to the black car",
+  "diary": [
+    "Steps 0-10 [x: 1.37 m, y: 0.72 m, z: 0.00 m, yaw: 0.0°]: The drone moved slightly closer to the black car, which appears a bit larger and lower/right in the frame.",
+    "Checkpoint 10: completion = 0.31",
+    "Steps 10-20 [x: 2.47 m, y: 1.63 m, z: 0.00 m, yaw: 0.0°]: The black car shifted slightly right and appears a bit larger, indicating the drone moved a little closer toward it.",
+    "Checkpoint 20: completion = 0.42",
+    "Steps 20-30 [x: 2.85 m, y: 1.97 m, z: 0.00 m, yaw: 3.0°]: The black car is still ahead near the intersection and appears only slightly larger, indicating a small forward approach but not arrival.",
+    "Checkpoint 30: completion = 0.48",
+    "Steps 30-40 [x: 3.62 m, y: 2.60 m, z: 0.00 m, yaw: 3.0°]: The black car remains in view and appears only slightly larger, indicating a small forward approach with no arrival yet.",
+    "Checkpoint 40: completion = 0.56",
+    "[CONVERGENCE @ step 43]: corrective issued (stopped_short, 66% complete) -- \"Move closer to the black car\"",
+    "Steps 40-50 [x: 4.59 m, y: 3.05 m, z: 0.00 m, yaw: 3.0°]: The black car remains visible and appears only slightly larger, indicating a small forward approach but it is still not close.",
+    "Checkpoint 50: completion = 0.61",
+    "Steps 50-60 [x: 7.50 m, y: 5.06 m, z: 0.00 m, yaw: 2.9°]: The black car grew slightly larger and shifted lower/left in view, indicating the drone moved a bit closer to it.",
+    "Checkpoint 60: completion = 0.74",
+    "Steps 60-70 [x: 10.40 m, y: 5.30 m, z: 0.00 m, yaw: 2.9°]: The black car grew larger and shifted lower/right in view, indicating the drone moved closer to it.",
+    "Checkpoint 70: completion = 0.89",
+    "Steps 70-80 [x: 12.67 m, y: 5.59 m, z: 0.00 m, yaw: 3.0°]: The drone moved closer to the black car, which grew larger and shifted toward the bottom-right of the frame.",
+    "Checkpoint 80: completion = 0.96",
+    "Steps 80-90 [x: 13.82 m, y: 5.82 m, z: 0.00 m, yaw: 3.0°]: The black car shifted slightly larger and lower-right in the frame, indicating the drone moved a bit closer to it.",
+    "Checkpoint 90: completion = 1.00"
+  ],
+  "correction_history": [
+    {
+      "step": 43,
+      "diagnosis": "stopped_short",
+      "completion_pct": 0.66,
+      "instruction": "Move closer to the black car"
+    }
+  ],
+  "override_history": [
+    {
+      "step": 42,
+      "type": "convergence_command",
+      "old_instruction": "go to the black car",
+      "new_instruction": "Move closer to the black car",
+      "reasoning": "convergence (stopped_short): The black car is still clearly visible ahead near the intersection and remains relatively small in the frame, so the drone has not yet arrived at it. The diary shows only gradual enlargement over the last segments with no approach-and-pass pattern, indicating it stopped short rather than overshooting."
+    },
+    {
+      "step": 89,
+      "type": "force_converge",
+      "reasoning": "Checkpoint thinks complete, verifying at convergence. Reasoning: The black car has grown to fill a large portion of the lower frame, indicating the drone has reached it. Raw: {\"complete\":true,\"completion_percentage\":1.0,\"should_stop\":false,\"reasoning\":\"The black car has grown to fill a large portion of the lower frame, indicating the drone has reached it.\"}"
+    }
+  ],
+  "corrections_used": 1,
+  "last_completion_pct": 1.0,
+  "peak_completion": 1.0,
+  "parse_failures": 0,
+  "vlm_call_count": 20,
+  "vlm_call_records": [
+    {
+      "label": "local_checkpoint",
+      "step": 10,
+      "rtt_s": 1.98,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1736,
+      "output_tokens": 25
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 10,
+      "rtt_s": 2.043,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1864,
+      "output_tokens": 56
+    },
+    {
+      "label": "local_checkpoint",
+      "step": 20,
+      "rtt_s": 1.96,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1736,
+      "output_tokens": 25
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 20,
+      "rtt_s": 2.445,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2282,
+      "output_tokens": 59
+    },
+    {
+      "label": "local_checkpoint",
+      "step": 30,
+      "rtt_s": 2.059,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1736,
+      "output_tokens": 27
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 30,
+      "rtt_s": 3.057,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 3049,
+      "output_tokens": 61
+    },
+    {
+      "label": "local_checkpoint",
+      "step": 40,
+      "rtt_s": 2.693,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1736,
+      "output_tokens": 25
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 40,
+      "rtt_s": 3.053,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 3120,
+      "output_tokens": 54
+    },
+    {
+      "label": "convergence",
+      "step": 43,
+      "rtt_s": 4.725,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 4364,
+      "output_tokens": 92
+    },
+    {
+      "label": "local_checkpoint",
+      "step": 50,
+      "rtt_s": 2.072,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1736,
+      "output_tokens": 26
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 50,
+      "rtt_s": 3.652,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 3836,
+      "output_tokens": 58
+    },
+    {
+      "label": "local_checkpoint",
+      "step": 60,
+      "rtt_s": 1.869,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1736,
+      "output_tokens": 27
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 60,
+      "rtt_s": 3.857,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 4713,
+      "output_tokens": 50
+    },
+    {
+      "label": "local_checkpoint",
+      "step": 70,
+      "rtt_s": 1.963,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1736,
+      "output_tokens": 23
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 70,
+      "rtt_s": 4.056,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 4782,
+      "output_tokens": 58
+    },
+    {
+      "label": "local_checkpoint",
+      "step": 80,
+      "rtt_s": 3.095,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1736,
+      "output_tokens": 25
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 80,
+      "rtt_s": 5.28,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 4853,
+      "output_tokens": 63
+    },
+    {
+      "label": "local_checkpoint",
+      "step": 90,
+      "rtt_s": 2.283,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1736,
+      "output_tokens": 26
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 90,
+      "rtt_s": 4.665,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 4925,
+      "output_tokens": 46
+    },
+    {
+      "label": "convergence",
+      "step": 90,
+      "rtt_s": 5.928,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 5585,
+      "output_tokens": 93
+    }
+  ],
+  "converter_call_records": [
+    {
+      "label": "subgoal_convert",
+      "subgoal": "Go to the black car",
+      "rtt_s": 0.72,
+      "model": "gpt-4o-2024-08-06",
+      "input_tokens": 366,
+      "output_tokens": 11
+    }
+  ],
+  "stop_reason": "monitor_complete",
+  "total_steps": 90,
+  "in_correction_at_end": false
+}

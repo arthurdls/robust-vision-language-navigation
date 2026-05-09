@@ -1,0 +1,173 @@
+{
+  "subgoal": "Turn until you see the black car",
+  "converted_instruction": "turn",
+  "diary": [
+    "Checkpoint 10: completion = 0.08",
+    "Checkpoint 20: completion = 0.18",
+    "[CONVERGENCE @ step 22]: corrective issued (stopped_short, 24% complete) -- \"Turn right 20 degrees\"",
+    "Checkpoint 30: completion = 0.08",
+    "[CONVERGENCE @ step 30]: corrective issued (stopped_short, 18% complete) -- \"Ascend 0.8 meters\"",
+    "Checkpoint 40: completion = 0.24",
+    "Checkpoint 50: completion = 0.31",
+    "Checkpoint 60: completion = 0.58",
+    "Checkpoint 70: completion = 0.66",
+    "Checkpoint 80: completion = 0.78",
+    "Checkpoint 90: completion = 1.00"
+  ],
+  "correction_history": [
+    {
+      "step": 22,
+      "diagnosis": "stopped_short",
+      "completion_pct": 0.24,
+      "instruction": "Turn right 20 degrees"
+    },
+    {
+      "step": 30,
+      "diagnosis": "stopped_short",
+      "completion_pct": 0.18,
+      "instruction": "Ascend 0.8 meters"
+    }
+  ],
+  "override_history": [
+    {
+      "step": 21,
+      "type": "convergence_command",
+      "old_instruction": "turn",
+      "new_instruction": "Turn right 20 degrees",
+      "reasoning": "convergence (stopped_short): Across the visible frames the view is dominated by tree branches and a roadway below, and no black car is clearly identifiable anywhere in the frame. Since this is a visual-search subgoal and there is no directional evidence for the car yet, the drone stopped short and should continue a small rightward sweep to search new ground."
+    },
+    {
+      "step": 29,
+      "type": "force_converge",
+      "reasoning": "Stop requested for correction. Reasoning: The black car is not visible in any frame, and the drone is boxed in by dense tree branches overhead and ahead, creating an immediate collision risk. Raw: {\"complete\":false,\"completion_percentage\":0.08,\"should_stop\":true,\"reasoning\":\"The black car is not visible in any frame, and the drone is boxed in by dense tree branches overhead and ahead, creating an immediate collision risk.\"}"
+    },
+    {
+      "step": 29,
+      "type": "convergence_command",
+      "old_instruction": "Turn right 20 degrees",
+      "new_instruction": "Ascend 0.8 meters",
+      "reasoning": "convergence (stopped_short): The black car is not visible in any frame, and the view is heavily blocked by close tree branches spanning the upper and central parts of the scene. Since a recent right turn did not reveal the target and the branches remain an immediate obstruction, gaining altitude is the best single action to clear the canopy and continue the visual search safely."
+    },
+    {
+      "step": 89,
+      "type": "force_converge",
+      "reasoning": "Checkpoint thinks complete, verifying at convergence. Reasoning: A black car is clearly visible in the latest frames near the lower-right street area, so the visual search goal is accomplished. Raw: {\"complete\":true,\"completion_percentage\":1.0,\"should_stop\":false,\"reasoning\":\"A black car is clearly visible in the latest frames near the lower-right street area, so the visual search goal is accomplished.\"}"
+    }
+  ],
+  "corrections_used": 2,
+  "last_completion_pct": 1.0,
+  "peak_completion": 1.0,
+  "parse_failures": 0,
+  "vlm_call_count": 12,
+  "vlm_call_records": [
+    {
+      "label": "global_checkpoint",
+      "step": 10,
+      "rtt_s": 2.282,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1532,
+      "output_tokens": 55
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 20,
+      "rtt_s": 2.987,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 1879,
+      "output_tokens": 50
+    },
+    {
+      "label": "convergence",
+      "step": 22,
+      "rtt_s": 3.7,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 3082,
+      "output_tokens": 100
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 30,
+      "rtt_s": 3.192,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2573,
+      "output_tokens": 54
+    },
+    {
+      "label": "convergence",
+      "step": 30,
+      "rtt_s": 4.521,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 3153,
+      "output_tokens": 104
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 40,
+      "rtt_s": 3.691,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 3186,
+      "output_tokens": 59
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 50,
+      "rtt_s": 4.08,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 3186,
+      "output_tokens": 53
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 60,
+      "rtt_s": 4.403,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 3990,
+      "output_tokens": 49
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 70,
+      "rtt_s": 4.906,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 3990,
+      "output_tokens": 54
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 80,
+      "rtt_s": 6.735,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 3990,
+      "output_tokens": 46
+    },
+    {
+      "label": "global_checkpoint",
+      "step": 90,
+      "rtt_s": 4.799,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 3990,
+      "output_tokens": 49
+    },
+    {
+      "label": "convergence",
+      "step": 90,
+      "rtt_s": 5.21,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 4588,
+      "output_tokens": 81
+    }
+  ],
+  "converter_call_records": [
+    {
+      "label": "subgoal_convert",
+      "subgoal": "Turn until you see the black car",
+      "rtt_s": 0.542,
+      "model": "gpt-4o-2024-08-06",
+      "input_tokens": 368,
+      "output_tokens": 7
+    }
+  ],
+  "stop_reason": "monitor_complete",
+  "total_steps": 90,
+  "in_correction_at_end": false
+}

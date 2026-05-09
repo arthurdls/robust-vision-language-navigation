@@ -1,0 +1,265 @@
+{
+  "aborted": false,
+  "completed": true,
+  "stop_reason": "",
+  "condition": "condition3_open_loop",
+  "diary_mode": "frame",
+  "task": {
+    "instruction": "Go past the first streetlamp, then turn until you see the black car, then go to the black car, then turn toward the red car and go to the red car. Finally, land in front of the traffic light pole on the right.",
+    "initial_pos": [
+      -7500.0,
+      848.0,
+      396.0,
+      -177.0
+    ],
+    "max_steps": 3000,
+    "max_steps_per_subgoal": 500,
+    "diary_check_interval": 10,
+    "max_corrections": 20,
+    "expected_subgoal_count": 6,
+    "task_id": "streetlamp_to_cars"
+  },
+  "seed": 0,
+  "time_dilation": 10,
+  "env_id": "UnrealTrack-DowntownWest-ContinuousColor-v0",
+  "server_url": "http://127.0.0.1:5007/predict",
+  "drone_cam_id": 5,
+  "llm_model": "gpt-4o",
+  "models": {
+    "ltl_nl_planning": "gpt-4o",
+    "subgoal_converter": "gpt-4o",
+    "openvla_predict_url": "http://127.0.0.1:5007/predict"
+  },
+  "config": {
+    "max_steps_per_subgoal": 500,
+    "convergence_thresholds": {
+      "position_delta": 3.0,
+      "yaw_delta": 1.0,
+      "consecutive_steps": 10
+    }
+  },
+  "ltl_plan": {
+    "ltl_nl_formula": "F pi_6 & (!pi_6 U pi_5) & (!pi_5 U pi_4) & (!pi_4 U pi_3) & (!pi_3 U pi_2) & (!pi_2 U pi_1)",
+    "pi_predicates": {
+      "pi_1": "Go past the first streetlamp",
+      "pi_2": "Turn until you see the black car",
+      "pi_3": "Go to the black car",
+      "pi_4": "Turn toward the red car",
+      "pi_5": "Go to the red car",
+      "pi_6": "Land in front of the traffic light pole on the right"
+    }
+  },
+  "subgoal_count": 6,
+  "subgoal_summaries": [
+    {
+      "subgoal": "Go past the first streetlamp",
+      "converted_instruction": "go past the first streetlamp",
+      "total_steps": 101,
+      "stop_reason": "convergence",
+      "corrections_used": 0,
+      "vlm_call_count": 0,
+      "vlm_call_records": [
+        {
+          "label": "subgoal_convert",
+          "subgoal": "Go past the first streetlamp",
+          "rtt_s": 1.167,
+          "model": "gpt-4o-2024-08-06",
+          "input_tokens": 367,
+          "output_tokens": 12
+        }
+      ],
+      "next_origin": [
+        -9265.10068889129,
+        563.3081080748955,
+        396.0,
+        -177.0
+      ]
+    },
+    {
+      "subgoal": "Turn until you see the black car",
+      "converted_instruction": "turn",
+      "total_steps": 21,
+      "stop_reason": "convergence",
+      "corrections_used": 0,
+      "vlm_call_count": 0,
+      "vlm_call_records": [
+        {
+          "label": "subgoal_convert",
+          "subgoal": "Turn until you see the black car",
+          "rtt_s": 0.479,
+          "model": "gpt-4o-2024-08-06",
+          "input_tokens": 368,
+          "output_tokens": 7
+        }
+      ],
+      "next_origin": [
+        -9427.00004203556,
+        549.6277329165687,
+        396.3137255012989,
+        -174.01176897278756
+      ]
+    },
+    {
+      "subgoal": "Go to the black car",
+      "converted_instruction": "go to the black car",
+      "total_steps": 51,
+      "stop_reason": "convergence",
+      "corrections_used": 0,
+      "vlm_call_count": 0,
+      "vlm_call_records": [
+        {
+          "label": "subgoal_convert",
+          "subgoal": "Go to the black car",
+          "rtt_s": 0.798,
+          "model": "gpt-4o-2024-08-06",
+          "input_tokens": 366,
+          "output_tokens": 11
+        }
+      ],
+      "next_origin": [
+        -10131.89506436732,
+        886.8422892214702,
+        405.56862834095955,
+        -174.0117689722448
+      ]
+    },
+    {
+      "subgoal": "Turn toward the red car",
+      "converted_instruction": "turn toward the red car",
+      "total_steps": 37,
+      "stop_reason": "convergence",
+      "corrections_used": 0,
+      "vlm_call_count": 0,
+      "vlm_call_records": [
+        {
+          "label": "subgoal_convert",
+          "subgoal": "Turn toward the red car",
+          "rtt_s": 0.995,
+          "model": "gpt-4o-2024-08-06",
+          "input_tokens": 366,
+          "output_tokens": 11
+        }
+      ],
+      "next_origin": [
+        -10131.878347975633,
+        853.0160457264507,
+        426.27450945973396,
+        -150.01180757797167
+      ]
+    },
+    {
+      "subgoal": "Go to the red car",
+      "converted_instruction": "approach the red car",
+      "total_steps": 36,
+      "stop_reason": "convergence",
+      "corrections_used": 0,
+      "vlm_call_count": 0,
+      "vlm_call_records": [
+        {
+          "label": "subgoal_convert",
+          "subgoal": "Go to the red car",
+          "rtt_s": 0.796,
+          "model": "gpt-4o-2024-08-06",
+          "input_tokens": 366,
+          "output_tokens": 11
+        }
+      ],
+      "next_origin": [
+        -10217.647990029167,
+        857.7841670139264,
+        426.27450945973396,
+        -150.01180757797167
+      ]
+    },
+    {
+      "subgoal": "Land in front of the traffic light pole on the right",
+      "converted_instruction": "land in front of the traffic light pole on the right",
+      "total_steps": 35,
+      "stop_reason": "convergence",
+      "corrections_used": 0,
+      "vlm_call_count": 0,
+      "vlm_call_records": [
+        {
+          "label": "subgoal_convert",
+          "subgoal": "Land in front of the traffic light pole on the right",
+          "rtt_s": 1.105,
+          "model": "gpt-4o-2024-08-06",
+          "input_tokens": 372,
+          "output_tokens": 17
+        }
+      ],
+      "next_origin": [
+        -10226.475763808814,
+        847.8526199099059,
+        34.11764910817146,
+        -150.01180757797167
+      ]
+    }
+  ],
+  "total_steps": 281,
+  "total_vlm_calls": 0,
+  "total_corrections": 0,
+  "total_input_tokens": 4648,
+  "total_output_tokens": 230,
+  "vlm_call_records": [
+    {
+      "label": "ltl_nl_planning_cached",
+      "rtt_s": 0.0,
+      "model": "gpt-4o",
+      "input_tokens": 2443,
+      "output_tokens": 161
+    },
+    {
+      "label": "subgoal_convert",
+      "subgoal": "Go past the first streetlamp",
+      "rtt_s": 1.167,
+      "model": "gpt-4o-2024-08-06",
+      "input_tokens": 367,
+      "output_tokens": 12
+    },
+    {
+      "label": "subgoal_convert",
+      "subgoal": "Turn until you see the black car",
+      "rtt_s": 0.479,
+      "model": "gpt-4o-2024-08-06",
+      "input_tokens": 368,
+      "output_tokens": 7
+    },
+    {
+      "label": "subgoal_convert",
+      "subgoal": "Go to the black car",
+      "rtt_s": 0.798,
+      "model": "gpt-4o-2024-08-06",
+      "input_tokens": 366,
+      "output_tokens": 11
+    },
+    {
+      "label": "subgoal_convert",
+      "subgoal": "Turn toward the red car",
+      "rtt_s": 0.995,
+      "model": "gpt-4o-2024-08-06",
+      "input_tokens": 366,
+      "output_tokens": 11
+    },
+    {
+      "label": "subgoal_convert",
+      "subgoal": "Go to the red car",
+      "rtt_s": 0.796,
+      "model": "gpt-4o-2024-08-06",
+      "input_tokens": 366,
+      "output_tokens": 11
+    },
+    {
+      "label": "subgoal_convert",
+      "subgoal": "Land in front of the traffic light pole on the right",
+      "rtt_s": 1.105,
+      "model": "gpt-4o-2024-08-06",
+      "input_tokens": 372,
+      "output_tokens": 17
+    }
+  ],
+  "playback_mp4": null,
+  "start_time": "2026-05-07T01:41:14.944670",
+  "end_time": "2026-05-07T01:43:46.652871",
+  "wall_clock_seconds": 151.71
+}

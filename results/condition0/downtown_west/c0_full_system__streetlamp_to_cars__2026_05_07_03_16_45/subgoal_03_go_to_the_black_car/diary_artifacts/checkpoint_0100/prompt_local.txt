@@ -1,0 +1,4 @@
+The subgoal is: Go to the black car
+
+What changed between these two consecutive frames relative to this subgoal?
+Answer in ONE short sentence with only the key facts that directly bear on the subgoal.

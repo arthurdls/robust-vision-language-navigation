@@ -1,0 +1,559 @@
+{
+  "subgoal": "Turn in the direction pointed at by that arrow till you see a cardboard cutout of person holding a bottle and a glass",
+  "converted_instruction": "turn in the direction pointed at by that arrow",
+  "diary": [
+    "Steps ~27 [x: 0.00 m, y: 0.00 m, z: 0.00 m, yaw: 0.0°]: The view yawed slightly right along the arrows, but the cardboard cutout person holding a bottle and glass is still not visible.",
+    "Steps ~54 [x: 0.00 m, y: 0.00 m, z: 0.00 m, yaw: 0.0°]: The view shifted slightly right following the arrows, but the cardboard cutout person holding a bottle and glass is still not visible.",
+    "Checkpoint ~27: completion = 0.18",
+    "Checkpoint ~54: completion = 0.18",
+    "Steps ~81 [x: 0.00 m, y: 0.00 m, z: 0.00 m, yaw: 0.0°]: The view shifted slightly right while still showing only the arrow signs on the brick wall, and the cardboard cutout is not yet visible.",
+    "Steps ~108 [x: 0.00 m, y: 0.00 m, z: 0.00 m, yaw: 2.0°]: The view shifted slightly right following the arrow, but the cardboard cutout person holding a bottle and glass is still not visible.",
+    "Checkpoint ~81: completion = 0.24",
+    "Checkpoint ~108: completion = 0.21",
+    "Steps ~135 [x: 0.00 m, y: 0.00 m, z: 0.00 m, yaw: 4.0°]: The view shifted slightly right while the arrow still points right, and the cardboard cutout is still not visible.",
+    "Steps ~162 [x: 0.00 m, y: 0.00 m, z: 0.00 m, yaw: 6.0°]: The view yawed slightly right following the arrows, but the cardboard cutout is still not visible.",
+    "Checkpoint ~135: completion = 0.27",
+    "Checkpoint ~162: completion = 0.27",
+    "Steps ~189 [x: 0.00 m, y: 0.00 m, z: 0.00 m, yaw: 8.0°]: The view shifted slightly right along the arrow’s direction, but the cardboard cutout is still not visible.",
+    "Steps ~216 [x: 0.00 m, y: 0.00 m, z: 0.00 m, yaw: 10.1°]: The drone yawed slightly right along the arrow direction, but the cardboard cutout is still not clearly visible.",
+    "Checkpoint ~189: completion = 0.30",
+    "Steps ~243 [x: 0.00 m, y: 0.00 m, z: 0.00 m, yaw: 12.1°]: The view turned right in the arrow’s direction, and the cardboard cutout person holding a bottle and glass came into view on the far right.",
+    "Steps ~270 [x: 0.00 m, y: 0.00 m, z: 0.00 m, yaw: 14.1°]: After turning right, the cardboard cutout person holding a bottle and glass has come into view on the right side of the frame.",
+    "Steps ~297 [x: 0.00 m, y: 0.00 m, z: 0.00 m, yaw: 16.1°]: The drone turned slightly right, bringing the cardboard cutout more clearly into view on the right side.",
+    "Steps ~324 [x: 0.00 m, y: 0.00 m, z: 0.00 m, yaw: 17.4°]: The drone yawed slightly right, bringing the cardboard cutout a bit more into view on the right while it remains clearly visible.",
+    "Steps ~351 [x: 0.00 m, y: 0.00 m, z: 0.00 m, yaw: 17.4°]: The view yawed slightly right, bringing the cardboard cutout a bit more into view on the right while it remains clearly visible.",
+    "Steps ~378 [x: 0.00 m, y: 0.00 m, z: 0.00 m, yaw: 17.4°]: After a slight rightward turn, the cardboard cutout remains clearly visible near the center-right, so the search target is already in view.",
+    "Checkpoint ~216: completion = 0.34",
+    "Checkpoint ~243: completion = 1.00",
+    "Checkpoint ~270: completion = 1.00",
+    "Checkpoint ~297: completion = 1.00",
+    "Checkpoint ~324: completion = 1.00",
+    "Steps ~405 [x: 0.00 m, y: 0.00 m, z: 0.00 m, yaw: 17.4°]: The view shifted slightly right, keeping the cardboard person visible near the center-right, so the target is already in sight.",
+    "Checkpoint ~351: completion = 1.00",
+    "Checkpoint ~378: completion = 1.00",
+    "Checkpoint ~405: completion = 1.00"
+  ],
+  "correction_history": [],
+  "override_history": [
+    {
+      "step": 413,
+      "type": "force_converge",
+      "reasoning": "Checkpoint thinks complete, verifying at convergence. Reasoning: The cardboard cutout holding a bottle and glass is now clearly visible on the right side of the frame, which satisfies the visual-search turn goal. Raw: {\"complete\":true,\"completion_percentage\":1.0,\"should_stop\":false,\"reasoning\":\"The cardboard cutout holding a bottle and glass is now clearly visible on the right side of the frame, which satisfies the visual-search turn goal.\",\"drive_action\":\"stop\"}"
+    }
+  ],
+  "corrections_used": 0,
+  "last_completion_pct": 1.0,
+  "peak_completion": 1.0,
+  "parse_failures": 0,
+  "vlm_calls": 31,
+  "vlm_rtts": [
+    {
+      "label": "local_checkpoint_async",
+      "step": 53,
+      "rtt_s": 2.89,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2120,
+      "output_tokens": 29
+    },
+    {
+      "label": "local_checkpoint_async",
+      "step": 74,
+      "rtt_s": 2.149,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2120,
+      "output_tokens": 28
+    },
+    {
+      "label": "global_checkpoint_async",
+      "step": 81,
+      "rtt_s": 3.043,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2388,
+      "output_tokens": 54
+    },
+    {
+      "label": "global_checkpoint_async",
+      "step": 97,
+      "rtt_s": 2.545,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2449,
+      "output_tokens": 57
+    },
+    {
+      "label": "local_checkpoint_async",
+      "step": 102,
+      "rtt_s": 2.349,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2120,
+      "output_tokens": 30
+    },
+    {
+      "label": "local_checkpoint_async",
+      "step": 128,
+      "rtt_s": 2.182,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2120,
+      "output_tokens": 28
+    },
+    {
+      "label": "global_checkpoint_async",
+      "step": 129,
+      "rtt_s": 2.992,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 3052,
+      "output_tokens": 54
+    },
+    {
+      "label": "global_checkpoint_async",
+      "step": 153,
+      "rtt_s": 2.796,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 3124,
+      "output_tokens": 67
+    },
+    {
+      "label": "local_checkpoint_async",
+      "step": 156,
+      "rtt_s": 2.319,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2120,
+      "output_tokens": 25
+    },
+    {
+      "label": "local_checkpoint_async",
+      "step": 181,
+      "rtt_s": 2.136,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2120,
+      "output_tokens": 23
+    },
+    {
+      "label": "global_checkpoint_async",
+      "step": 182,
+      "rtt_s": 2.872,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 4203,
+      "output_tokens": 52
+    },
+    {
+      "label": "global_checkpoint_async",
+      "step": 211,
+      "rtt_s": 3.335,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 4270,
+      "output_tokens": 63
+    },
+    {
+      "label": "local_checkpoint_async",
+      "step": 212,
+      "rtt_s": 2.548,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2120,
+      "output_tokens": 24
+    },
+    {
+      "label": "local_checkpoint_async",
+      "step": 238,
+      "rtt_s": 2.414,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2120,
+      "output_tokens": 25
+    },
+    {
+      "label": "global_checkpoint_async",
+      "step": 246,
+      "rtt_s": 3.834,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 4338,
+      "output_tokens": 55
+    },
+    {
+      "label": "local_checkpoint_async",
+      "step": 271,
+      "rtt_s": 3.156,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2120,
+      "output_tokens": 32
+    },
+    {
+      "label": "local_checkpoint_async",
+      "step": 290,
+      "rtt_s": 2.251,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2120,
+      "output_tokens": 29
+    },
+    {
+      "label": "global_checkpoint_async",
+      "step": 313,
+      "rtt_s": 4.653,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 5104,
+      "output_tokens": 57
+    },
+    {
+      "label": "local_checkpoint_async",
+      "step": 318,
+      "rtt_s": 2.378,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2120,
+      "output_tokens": 23
+    },
+    {
+      "label": "global_checkpoint_async",
+      "step": 333,
+      "rtt_s": 4.747,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 5112,
+      "output_tokens": 58
+    },
+    {
+      "label": "local_checkpoint_async",
+      "step": 347,
+      "rtt_s": 2.61,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2120,
+      "output_tokens": 29
+    },
+    {
+      "label": "global_checkpoint_async",
+      "step": 359,
+      "rtt_s": 4.496,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 5233,
+      "output_tokens": 57
+    },
+    {
+      "label": "local_checkpoint_async",
+      "step": 371,
+      "rtt_s": 2.292,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2120,
+      "output_tokens": 29
+    },
+    {
+      "label": "global_checkpoint_async",
+      "step": 395,
+      "rtt_s": 5.228,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 5399,
+      "output_tokens": 56
+    },
+    {
+      "label": "local_checkpoint_async",
+      "step": 400,
+      "rtt_s": 2.409,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2120,
+      "output_tokens": 31
+    },
+    {
+      "label": "global_checkpoint_async",
+      "step": 408,
+      "rtt_s": 19.047,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 4982,
+      "output_tokens": 58
+    },
+    {
+      "label": "global_checkpoint_async",
+      "step": 413,
+      "rtt_s": 5.069,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 5461,
+      "output_tokens": 57
+    },
+    {
+      "label": "local_checkpoint_async",
+      "step": 413,
+      "rtt_s": 2.504,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2120,
+      "output_tokens": 27
+    },
+    {
+      "label": "global_checkpoint_async",
+      "step": 413,
+      "rtt_s": 5.728,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 5525,
+      "output_tokens": 54
+    },
+    {
+      "label": "convergence_async",
+      "step": 413,
+      "rtt_s": 7.216,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 6131,
+      "output_tokens": 90
+    },
+    {
+      "label": "global_checkpoint_async",
+      "step": 413,
+      "rtt_s": 6.086,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 5585,
+      "output_tokens": 54
+    }
+  ],
+  "llm_call_records": [
+    {
+      "label": "subgoal_convert",
+      "subgoal": "Turn in the direction pointed at by that arrow till you see a cardboard cutout of person holding a bottle and a glass",
+      "rtt_s": 0.718,
+      "model": "gpt-4o-2024-08-06",
+      "input_tokens": 385,
+      "output_tokens": 15
+    },
+    {
+      "label": "local_checkpoint_async",
+      "step": 53,
+      "rtt_s": 2.89,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2120,
+      "output_tokens": 29
+    },
+    {
+      "label": "local_checkpoint_async",
+      "step": 74,
+      "rtt_s": 2.149,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2120,
+      "output_tokens": 28
+    },
+    {
+      "label": "global_checkpoint_async",
+      "step": 81,
+      "rtt_s": 3.043,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2388,
+      "output_tokens": 54
+    },
+    {
+      "label": "global_checkpoint_async",
+      "step": 97,
+      "rtt_s": 2.545,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2449,
+      "output_tokens": 57
+    },
+    {
+      "label": "local_checkpoint_async",
+      "step": 102,
+      "rtt_s": 2.349,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2120,
+      "output_tokens": 30
+    },
+    {
+      "label": "local_checkpoint_async",
+      "step": 128,
+      "rtt_s": 2.182,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2120,
+      "output_tokens": 28
+    },
+    {
+      "label": "global_checkpoint_async",
+      "step": 129,
+      "rtt_s": 2.992,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 3052,
+      "output_tokens": 54
+    },
+    {
+      "label": "global_checkpoint_async",
+      "step": 153,
+      "rtt_s": 2.796,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 3124,
+      "output_tokens": 67
+    },
+    {
+      "label": "local_checkpoint_async",
+      "step": 156,
+      "rtt_s": 2.319,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2120,
+      "output_tokens": 25
+    },
+    {
+      "label": "local_checkpoint_async",
+      "step": 181,
+      "rtt_s": 2.136,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2120,
+      "output_tokens": 23
+    },
+    {
+      "label": "global_checkpoint_async",
+      "step": 182,
+      "rtt_s": 2.872,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 4203,
+      "output_tokens": 52
+    },
+    {
+      "label": "global_checkpoint_async",
+      "step": 211,
+      "rtt_s": 3.335,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 4270,
+      "output_tokens": 63
+    },
+    {
+      "label": "local_checkpoint_async",
+      "step": 212,
+      "rtt_s": 2.548,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2120,
+      "output_tokens": 24
+    },
+    {
+      "label": "local_checkpoint_async",
+      "step": 238,
+      "rtt_s": 2.414,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2120,
+      "output_tokens": 25
+    },
+    {
+      "label": "global_checkpoint_async",
+      "step": 246,
+      "rtt_s": 3.834,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 4338,
+      "output_tokens": 55
+    },
+    {
+      "label": "local_checkpoint_async",
+      "step": 271,
+      "rtt_s": 3.156,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2120,
+      "output_tokens": 32
+    },
+    {
+      "label": "local_checkpoint_async",
+      "step": 290,
+      "rtt_s": 2.251,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2120,
+      "output_tokens": 29
+    },
+    {
+      "label": "global_checkpoint_async",
+      "step": 313,
+      "rtt_s": 4.653,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 5104,
+      "output_tokens": 57
+    },
+    {
+      "label": "local_checkpoint_async",
+      "step": 318,
+      "rtt_s": 2.378,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2120,
+      "output_tokens": 23
+    },
+    {
+      "label": "global_checkpoint_async",
+      "step": 333,
+      "rtt_s": 4.747,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 5112,
+      "output_tokens": 58
+    },
+    {
+      "label": "local_checkpoint_async",
+      "step": 347,
+      "rtt_s": 2.61,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2120,
+      "output_tokens": 29
+    },
+    {
+      "label": "global_checkpoint_async",
+      "step": 359,
+      "rtt_s": 4.496,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 5233,
+      "output_tokens": 57
+    },
+    {
+      "label": "local_checkpoint_async",
+      "step": 371,
+      "rtt_s": 2.292,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2120,
+      "output_tokens": 29
+    },
+    {
+      "label": "global_checkpoint_async",
+      "step": 395,
+      "rtt_s": 5.228,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 5399,
+      "output_tokens": 56
+    },
+    {
+      "label": "local_checkpoint_async",
+      "step": 400,
+      "rtt_s": 2.409,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2120,
+      "output_tokens": 31
+    },
+    {
+      "label": "global_checkpoint_async",
+      "step": 408,
+      "rtt_s": 19.047,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 4982,
+      "output_tokens": 58
+    },
+    {
+      "label": "global_checkpoint_async",
+      "step": 413,
+      "rtt_s": 5.069,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 5461,
+      "output_tokens": 57
+    },
+    {
+      "label": "local_checkpoint_async",
+      "step": 413,
+      "rtt_s": 2.504,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2120,
+      "output_tokens": 27
+    },
+    {
+      "label": "global_checkpoint_async",
+      "step": 413,
+      "rtt_s": 5.728,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 5525,
+      "output_tokens": 54
+    },
+    {
+      "label": "convergence_async",
+      "step": 413,
+      "rtt_s": 7.216,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 6131,
+      "output_tokens": 90
+    },
+    {
+      "label": "global_checkpoint_async",
+      "step": 413,
+      "rtt_s": 6.086,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 5585,
+      "output_tokens": 54
+    }
+  ],
+  "stop_reason": "monitor_complete",
+  "total_steps": 413
+}

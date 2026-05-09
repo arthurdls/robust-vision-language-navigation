@@ -1,0 +1,3156 @@
+{
+  "task": {
+    "instruction": "look to your left for a wooden plank that is of the colors of the Ukraine flag, once you find it turn to the right until you see the red arrow that is on top of the windows, turn in the direction pointed at by that arrow till you see a cardboard cutout of person holding a bottle and a glass, then move towards them",
+    "initial_pos": [
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ],
+    "max_steps_per_subgoal": 500,
+    "diary_check_interval": 10,
+    "max_corrections": 20
+  },
+  "llm_model": "gpt-4o",
+  "monitor_model": "gpt-5.4",
+  "models": {
+    "ltl_nl_planning": "gpt-4o",
+    "subgoal_converter": "gpt-4o",
+    "goal_adherence_monitor": "gpt-5.4",
+    "openvla_predict_url": "http://127.0.0.1:5007/predict"
+  },
+  "ltl_plan": {
+    "ltl_nl_formula": "F pi_4 & (!pi_4 U pi_3) & (!pi_3 U pi_2) & (!pi_2 U pi_1)",
+    "pi_predicates": {
+      "pi_1": "Look to your left for a wooden plank that is of the colors of the Ukraine flag",
+      "pi_2": "Turn to the right until you see the red arrow that is on top of the windows",
+      "pi_3": "Turn in the direction pointed at by that arrow till you see a cardboard cutout of person holding a bottle and a glass",
+      "pi_4": "Move towards the cardboard cutout of person holding a bottle and a glass"
+    }
+  },
+  "subgoal_count": 4,
+  "subgoal_summaries": [
+    {
+      "subgoal": "Look to your left for a wooden plank that is of the colors of the Ukraine flag",
+      "converted_instruction": "look to your left",
+      "total_steps": 446,
+      "stop_reason": "monitor_complete",
+      "corrections_used": 0,
+      "last_completion_pct": 1.0,
+      "peak_completion": 1.0,
+      "vlm_calls": 35,
+      "vlm_rtts": [
+        {
+          "label": "local_checkpoint_async",
+          "step": 47,
+          "rtt_s": 2.167,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2113,
+          "output_tokens": 27
+        },
+        {
+          "label": "global_checkpoint_async",
+          "step": 63,
+          "rtt_s": 1.78,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2379,
+          "output_tokens": 63
+        },
+        {
+          "label": "local_checkpoint_async",
+          "step": 73,
+          "rtt_s": 2.037,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2113,
+          "output_tokens": 28
+        },
+        {
+          "label": "global_checkpoint_async",
+          "step": 94,
+          "rtt_s": 2.399,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2440,
+          "output_tokens": 56
+        },
+        {
+          "label": "local_checkpoint_async",
+          "step": 101,
+          "rtt_s": 2.106,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2113,
+          "output_tokens": 23
+        },
+        {
+          "label": "global_checkpoint_async",
+          "step": 123,
+          "rtt_s": 2.546,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 3036,
+          "output_tokens": 57
+        },
+        {
+          "label": "local_checkpoint_async",
+          "step": 131,
+          "rtt_s": 2.464,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2113,
+          "output_tokens": 25
+        },
+        {
+          "label": "local_checkpoint_async",
+          "step": 159,
+          "rtt_s": 2.603,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2113,
+          "output_tokens": 25
+        },
+        {
+          "label": "global_checkpoint_async",
+          "step": 179,
+          "rtt_s": 5.36,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 4115,
+          "output_tokens": 57
+        },
+        {
+          "label": "local_checkpoint_async",
+          "step": 184,
+          "rtt_s": 2.439,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2113,
+          "output_tokens": 23
+        },
+        {
+          "label": "global_checkpoint_async",
+          "step": 191,
+          "rtt_s": 3.598,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 4184,
+          "output_tokens": 58
+        },
+        {
+          "label": "global_checkpoint_async",
+          "step": 209,
+          "rtt_s": 2.753,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 4240,
+          "output_tokens": 57
+        },
+        {
+          "label": "local_checkpoint_async",
+          "step": 213,
+          "rtt_s": 2.647,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2113,
+          "output_tokens": 26
+        },
+        {
+          "label": "local_checkpoint_async",
+          "step": 238,
+          "rtt_s": 2.433,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2113,
+          "output_tokens": 23
+        },
+        {
+          "label": "global_checkpoint_async",
+          "step": 241,
+          "rtt_s": 3.151,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 4310,
+          "output_tokens": 61
+        },
+        {
+          "label": "local_checkpoint_async",
+          "step": 262,
+          "rtt_s": 2.115,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2113,
+          "output_tokens": 24
+        },
+        {
+          "label": "global_checkpoint_async",
+          "step": 277,
+          "rtt_s": 4.309,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 5020,
+          "output_tokens": 56
+        },
+        {
+          "label": "local_checkpoint_async",
+          "step": 293,
+          "rtt_s": 2.501,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2113,
+          "output_tokens": 22
+        },
+        {
+          "label": "global_checkpoint_async",
+          "step": 299,
+          "rtt_s": 4.117,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 5088,
+          "output_tokens": 68
+        },
+        {
+          "label": "local_checkpoint_async",
+          "step": 314,
+          "rtt_s": 1.873,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2113,
+          "output_tokens": 21
+        },
+        {
+          "label": "global_checkpoint_async",
+          "step": 333,
+          "rtt_s": 4.449,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 5143,
+          "output_tokens": 55
+        },
+        {
+          "label": "local_checkpoint_async",
+          "step": 348,
+          "rtt_s": 2.671,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2113,
+          "output_tokens": 24
+        },
+        {
+          "label": "global_checkpoint_async",
+          "step": 351,
+          "rtt_s": 4.127,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 5208,
+          "output_tokens": 56
+        },
+        {
+          "label": "local_checkpoint_async",
+          "step": 371,
+          "rtt_s": 2.183,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2113,
+          "output_tokens": 23
+        },
+        {
+          "label": "global_checkpoint_async",
+          "step": 392,
+          "rtt_s": 4.843,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 5380,
+          "output_tokens": 57
+        },
+        {
+          "label": "local_checkpoint_async",
+          "step": 400,
+          "rtt_s": 2.507,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2113,
+          "output_tokens": 21
+        },
+        {
+          "label": "global_checkpoint_async",
+          "step": 418,
+          "rtt_s": 5.253,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 5447,
+          "output_tokens": 62
+        },
+        {
+          "label": "local_checkpoint_async",
+          "step": 425,
+          "rtt_s": 2.299,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2113,
+          "output_tokens": 23
+        },
+        {
+          "label": "global_checkpoint_async",
+          "step": 446,
+          "rtt_s": 5.058,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 5512,
+          "output_tokens": 56
+        },
+        {
+          "label": "local_checkpoint_async",
+          "step": 446,
+          "rtt_s": 2.849,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2113,
+          "output_tokens": 25
+        },
+        {
+          "label": "global_checkpoint_async",
+          "step": 446,
+          "rtt_s": 5.411,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 5579,
+          "output_tokens": 53
+        },
+        {
+          "label": "global_checkpoint_async",
+          "step": 446,
+          "rtt_s": 5.52,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 5648,
+          "output_tokens": 54
+        },
+        {
+          "label": "convergence_async",
+          "step": 446,
+          "rtt_s": 6.721,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 6184,
+          "output_tokens": 81
+        },
+        {
+          "label": "local_checkpoint_async",
+          "step": 446,
+          "rtt_s": 2.778,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2113,
+          "output_tokens": 28
+        },
+        {
+          "label": "global_checkpoint_async",
+          "step": 446,
+          "rtt_s": 6.395,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 5742,
+          "output_tokens": 54
+        }
+      ],
+      "llm_call_records": [
+        {
+          "label": "subgoal_convert",
+          "subgoal": "Look to your left for a wooden plank that is of the colors of the Ukraine flag",
+          "rtt_s": 0.709,
+          "model": "gpt-4o-2024-08-06",
+          "input_tokens": 378,
+          "output_tokens": 10
+        },
+        {
+          "label": "local_checkpoint_async",
+          "step": 47,
+          "rtt_s": 2.167,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2113,
+          "output_tokens": 27
+        },
+        {
+          "label": "global_checkpoint_async",
+          "step": 63,
+          "rtt_s": 1.78,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2379,
+          "output_tokens": 63
+        },
+        {
+          "label": "local_checkpoint_async",
+          "step": 73,
+          "rtt_s": 2.037,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2113,
+          "output_tokens": 28
+        },
+        {
+          "label": "global_checkpoint_async",
+          "step": 94,
+          "rtt_s": 2.399,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2440,
+          "output_tokens": 56
+        },
+        {
+          "label": "local_checkpoint_async",
+          "step": 101,
+          "rtt_s": 2.106,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2113,
+          "output_tokens": 23
+        },
+        {
+          "label": "global_checkpoint_async",
+          "step": 123,
+          "rtt_s": 2.546,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 3036,
+          "output_tokens": 57
+        },
+        {
+          "label": "local_checkpoint_async",
+          "step": 131,
+          "rtt_s": 2.464,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2113,
+          "output_tokens": 25
+        },
+        {
+          "label": "local_checkpoint_async",
+          "step": 159,
+          "rtt_s": 2.603,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2113,
+          "output_tokens": 25
+        },
+        {
+          "label": "global_checkpoint_async",
+          "step": 179,
+          "rtt_s": 5.36,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 4115,
+          "output_tokens": 57
+        },
+        {
+          "label": "local_checkpoint_async",
+          "step": 184,
+          "rtt_s": 2.439,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2113,
+          "output_tokens": 23
+        },
+        {
+          "label": "global_checkpoint_async",
+          "step": 191,
+          "rtt_s": 3.598,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 4184,
+          "output_tokens": 58
+        },
+        {
+          "label": "global_checkpoint_async",
+          "step": 209,
+          "rtt_s": 2.753,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 4240,
+          "output_tokens": 57
+        },
+        {
+          "label": "local_checkpoint_async",
+          "step": 213,
+          "rtt_s": 2.647,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2113,
+          "output_tokens": 26
+        },
+        {
+          "label": "local_checkpoint_async",
+          "step": 238,
+          "rtt_s": 2.433,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2113,
+          "output_tokens": 23
+        },
+        {
+          "label": "global_checkpoint_async",
+          "step": 241,
+          "rtt_s": 3.151,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 4310,
+          "output_tokens": 61
+        },
+        {
+          "label": "local_checkpoint_async",
+          "step": 262,
+          "rtt_s": 2.115,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2113,
+          "output_tokens": 24
+        },
+        {
+          "label": "global_checkpoint_async",
+          "step": 277,
+          "rtt_s": 4.309,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 5020,
+          "output_tokens": 56
+        },
+        {
+          "label": "local_checkpoint_async",
+          "step": 293,
+          "rtt_s": 2.501,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2113,
+          "output_tokens": 22
+        },
+        {
+          "label": "global_checkpoint_async",
+          "step": 299,
+          "rtt_s": 4.117,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 5088,
+          "output_tokens": 68
+        },
+        {
+          "label": "local_checkpoint_async",
+          "step": 314,
+          "rtt_s": 1.873,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2113,
+          "output_tokens": 21
+        },
+        {
+          "label": "global_checkpoint_async",
+          "step": 333,
+          "rtt_s": 4.449,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 5143,
+          "output_tokens": 55
+        },
+        {
+          "label": "local_checkpoint_async",
+          "step": 348,
+          "rtt_s": 2.671,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2113,
+          "output_tokens": 24
+        },
+        {
+          "label": "global_checkpoint_async",
+          "step": 351,
+          "rtt_s": 4.127,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 5208,
+          "output_tokens": 56
+        },
+        {
+          "label": "local_checkpoint_async",
+          "step": 371,
+          "rtt_s": 2.183,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2113,
+          "output_tokens": 23
+        },
+        {
+          "label": "global_checkpoint_async",
+          "step": 392,
+          "rtt_s": 4.843,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 5380,
+          "output_tokens": 57
+        },
+        {
+          "label": "local_checkpoint_async",
+          "step": 400,
+          "rtt_s": 2.507,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2113,
+          "output_tokens": 21
+        },
+        {
+          "label": "global_checkpoint_async",
+          "step": 418,
+          "rtt_s": 5.253,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 5447,
+          "output_tokens": 62
+        },
+        {
+          "label": "local_checkpoint_async",
+          "step": 425,
+          "rtt_s": 2.299,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2113,
+          "output_tokens": 23
+        },
+        {
+          "label": "global_checkpoint_async",
+          "step": 446,
+          "rtt_s": 5.058,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 5512,
+          "output_tokens": 56
+        },
+        {
+          "label": "local_checkpoint_async",
+          "step": 446,
+          "rtt_s": 2.849,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2113,
+          "output_tokens": 25
+        },
+        {
+          "label": "global_checkpoint_async",
+          "step": 446,
+          "rtt_s": 5.411,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 5579,
+          "output_tokens": 53
+        },
+        {
+          "label": "global_checkpoint_async",
+          "step": 446,
+          "rtt_s": 5.52,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 5648,
+          "output_tokens": 54
+        },
+        {
+          "label": "convergence_async",
+          "step": 446,
+          "rtt_s": 6.721,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 6184,
+          "output_tokens": 81
+        }
+      ],
+      "next_origin": [
+        0.0,
+        0.0,
+        0.0,
+        -28.725000799340762
+      ],
+      "replan_instruction": "",
+      "new_subgoal_override": ""
+    },
+    {
+      "subgoal": "Turn to the right until you see the red arrow that is on top of the windows",
+      "converted_instruction": "turn to the right",
+      "total_steps": 366,
+      "stop_reason": "monitor_complete",
+      "corrections_used": 0,
+      "last_completion_pct": 1.0,
+      "peak_completion": 1.0,
+      "vlm_calls": 27,
+      "vlm_rtts": [
+        {
+          "label": "local_checkpoint_async",
+          "step": 48,
+          "rtt_s": 2.332,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2113,
+          "output_tokens": 28
+        },
+        {
+          "label": "local_checkpoint_async",
+          "step": 72,
+          "rtt_s": 1.93,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2113,
+          "output_tokens": 25
+        },
+        {
+          "label": "global_checkpoint_async",
+          "step": 72,
+          "rtt_s": 2.673,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2380,
+          "output_tokens": 65
+        },
+        {
+          "label": "global_checkpoint_async",
+          "step": 92,
+          "rtt_s": 2.243,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2438,
+          "output_tokens": 65
+        },
+        {
+          "label": "local_checkpoint_async",
+          "step": 104,
+          "rtt_s": 2.452,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2113,
+          "output_tokens": 28
+        },
+        {
+          "label": "local_checkpoint_async",
+          "step": 128,
+          "rtt_s": 2.219,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2113,
+          "output_tokens": 30
+        },
+        {
+          "label": "global_checkpoint_async",
+          "step": 141,
+          "rtt_s": 4.108,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 3039,
+          "output_tokens": 62
+        },
+        {
+          "label": "global_checkpoint_async",
+          "step": 160,
+          "rtt_s": 3.501,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 3113,
+          "output_tokens": 62
+        },
+        {
+          "label": "local_checkpoint_async",
+          "step": 165,
+          "rtt_s": 3.349,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2113,
+          "output_tokens": 26
+        },
+        {
+          "label": "local_checkpoint_async",
+          "step": 184,
+          "rtt_s": 2.465,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2113,
+          "output_tokens": 26
+        },
+        {
+          "label": "global_checkpoint_async",
+          "step": 195,
+          "rtt_s": 3.282,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 4182,
+          "output_tokens": 55
+        },
+        {
+          "label": "local_checkpoint_async",
+          "step": 211,
+          "rtt_s": 2.418,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2113,
+          "output_tokens": 26
+        },
+        {
+          "label": "global_checkpoint_async",
+          "step": 213,
+          "rtt_s": 3.157,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 4204,
+          "output_tokens": 56
+        },
+        {
+          "label": "local_checkpoint_async",
+          "step": 236,
+          "rtt_s": 2.188,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2113,
+          "output_tokens": 26
+        },
+        {
+          "label": "global_checkpoint_async",
+          "step": 248,
+          "rtt_s": 4.111,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 4322,
+          "output_tokens": 61
+        },
+        {
+          "label": "local_checkpoint_async",
+          "step": 263,
+          "rtt_s": 2.193,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2113,
+          "output_tokens": 26
+        },
+        {
+          "label": "global_checkpoint_async",
+          "step": 278,
+          "rtt_s": 4.732,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 5035,
+          "output_tokens": 55
+        },
+        {
+          "label": "local_checkpoint_async",
+          "step": 291,
+          "rtt_s": 2.339,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2113,
+          "output_tokens": 25
+        },
+        {
+          "label": "local_checkpoint_async",
+          "step": 322,
+          "rtt_s": 2.828,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2113,
+          "output_tokens": 27
+        },
+        {
+          "label": "global_checkpoint_async",
+          "step": 325,
+          "rtt_s": 6.99,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 5094,
+          "output_tokens": 56
+        },
+        {
+          "label": "global_checkpoint_async",
+          "step": 334,
+          "rtt_s": 4.752,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 5163,
+          "output_tokens": 62
+        },
+        {
+          "label": "local_checkpoint_async",
+          "step": 345,
+          "rtt_s": 2.383,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2113,
+          "output_tokens": 24
+        },
+        {
+          "label": "global_checkpoint_async",
+          "step": 366,
+          "rtt_s": 4.813,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 5234,
+          "output_tokens": 55
+        },
+        {
+          "label": "local_checkpoint_async",
+          "step": 366,
+          "rtt_s": 2.687,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2113,
+          "output_tokens": 27
+        },
+        {
+          "label": "global_checkpoint_async",
+          "step": 366,
+          "rtt_s": 5.822,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 5395,
+          "output_tokens": 54
+        },
+        {
+          "label": "global_checkpoint_async",
+          "step": 366,
+          "rtt_s": 5.268,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 5477,
+          "output_tokens": 54
+        },
+        {
+          "label": "convergence_async",
+          "step": 366,
+          "rtt_s": 7.524,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 6010,
+          "output_tokens": 78
+        }
+      ],
+      "llm_call_records": [
+        {
+          "label": "subgoal_convert",
+          "subgoal": "Turn to the right until you see the red arrow that is on top of the windows",
+          "rtt_s": 0.815,
+          "model": "gpt-4o-2024-08-06",
+          "input_tokens": 378,
+          "output_tokens": 10
+        },
+        {
+          "label": "local_checkpoint_async",
+          "step": 48,
+          "rtt_s": 2.332,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2113,
+          "output_tokens": 28
+        },
+        {
+          "label": "local_checkpoint_async",
+          "step": 72,
+          "rtt_s": 1.93,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2113,
+          "output_tokens": 25
+        },
+        {
+          "label": "global_checkpoint_async",
+          "step": 72,
+          "rtt_s": 2.673,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2380,
+          "output_tokens": 65
+        },
+        {
+          "label": "global_checkpoint_async",
+          "step": 92,
+          "rtt_s": 2.243,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2438,
+          "output_tokens": 65
+        },
+        {
+          "label": "local_checkpoint_async",
+          "step": 104,
+          "rtt_s": 2.452,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2113,
+          "output_tokens": 28
+        },
+        {
+          "label": "local_checkpoint_async",
+          "step": 128,
+          "rtt_s": 2.219,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2113,
+          "output_tokens": 30
+        },
+        {
+          "label": "global_checkpoint_async",
+          "step": 141,
+          "rtt_s": 4.108,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 3039,
+          "output_tokens": 62
+        },
+        {
+          "label": "global_checkpoint_async",
+          "step": 160,
+          "rtt_s": 3.501,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 3113,
+          "output_tokens": 62
+        },
+        {
+          "label": "local_checkpoint_async",
+          "step": 165,
+          "rtt_s": 3.349,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2113,
+          "output_tokens": 26
+        },
+        {
+          "label": "local_checkpoint_async",
+          "step": 184,
+          "rtt_s": 2.465,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2113,
+          "output_tokens": 26
+        },
+        {
+          "label": "global_checkpoint_async",
+          "step": 195,
+          "rtt_s": 3.282,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 4182,
+          "output_tokens": 55
+        },
+        {
+          "label": "local_checkpoint_async",
+          "step": 211,
+          "rtt_s": 2.418,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2113,
+          "output_tokens": 26
+        },
+        {
+          "label": "global_checkpoint_async",
+          "step": 213,
+          "rtt_s": 3.157,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 4204,
+          "output_tokens": 56
+        },
+        {
+          "label": "local_checkpoint_async",
+          "step": 236,
+          "rtt_s": 2.188,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2113,
+          "output_tokens": 26
+        },
+        {
+          "label": "global_checkpoint_async",
+          "step": 248,
+          "rtt_s": 4.111,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 4322,
+          "output_tokens": 61
+        },
+        {
+          "label": "local_checkpoint_async",
+          "step": 263,
+          "rtt_s": 2.193,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2113,
+          "output_tokens": 26
+        },
+        {
+          "label": "global_checkpoint_async",
+          "step": 278,
+          "rtt_s": 4.732,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 5035,
+          "output_tokens": 55
+        },
+        {
+          "label": "local_checkpoint_async",
+          "step": 291,
+          "rtt_s": 2.339,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2113,
+          "output_tokens": 25
+        },
+        {
+          "label": "local_checkpoint_async",
+          "step": 322,
+          "rtt_s": 2.828,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2113,
+          "output_tokens": 27
+        },
+        {
+          "label": "global_checkpoint_async",
+          "step": 325,
+          "rtt_s": 6.99,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 5094,
+          "output_tokens": 56
+        },
+        {
+          "label": "global_checkpoint_async",
+          "step": 334,
+          "rtt_s": 4.752,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 5163,
+          "output_tokens": 62
+        },
+        {
+          "label": "local_checkpoint_async",
+          "step": 345,
+          "rtt_s": 2.383,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2113,
+          "output_tokens": 24
+        },
+        {
+          "label": "global_checkpoint_async",
+          "step": 366,
+          "rtt_s": 4.813,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 5234,
+          "output_tokens": 55
+        },
+        {
+          "label": "local_checkpoint_async",
+          "step": 366,
+          "rtt_s": 2.687,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2113,
+          "output_tokens": 27
+        },
+        {
+          "label": "global_checkpoint_async",
+          "step": 366,
+          "rtt_s": 5.822,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 5395,
+          "output_tokens": 54
+        },
+        {
+          "label": "global_checkpoint_async",
+          "step": 366,
+          "rtt_s": 5.268,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 5477,
+          "output_tokens": 54
+        },
+        {
+          "label": "convergence_async",
+          "step": 366,
+          "rtt_s": 7.524,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 6010,
+          "output_tokens": 78
+        }
+      ],
+      "next_origin": [
+        0.0,
+        0.0,
+        0.0,
+        -6.675000185747592
+      ],
+      "replan_instruction": "",
+      "new_subgoal_override": ""
+    },
+    {
+      "subgoal": "Turn in the direction pointed at by that arrow till you see a cardboard cutout of person holding a bottle and a glass",
+      "converted_instruction": "turn in the direction pointed at by that arrow",
+      "total_steps": 413,
+      "stop_reason": "monitor_complete",
+      "corrections_used": 0,
+      "last_completion_pct": 1.0,
+      "peak_completion": 1.0,
+      "vlm_calls": 31,
+      "vlm_rtts": [
+        {
+          "label": "local_checkpoint_async",
+          "step": 53,
+          "rtt_s": 2.89,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2120,
+          "output_tokens": 29
+        },
+        {
+          "label": "local_checkpoint_async",
+          "step": 74,
+          "rtt_s": 2.149,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2120,
+          "output_tokens": 28
+        },
+        {
+          "label": "global_checkpoint_async",
+          "step": 81,
+          "rtt_s": 3.043,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2388,
+          "output_tokens": 54
+        },
+        {
+          "label": "global_checkpoint_async",
+          "step": 97,
+          "rtt_s": 2.545,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2449,
+          "output_tokens": 57
+        },
+        {
+          "label": "local_checkpoint_async",
+          "step": 102,
+          "rtt_s": 2.349,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2120,
+          "output_tokens": 30
+        },
+        {
+          "label": "local_checkpoint_async",
+          "step": 128,
+          "rtt_s": 2.182,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2120,
+          "output_tokens": 28
+        },
+        {
+          "label": "global_checkpoint_async",
+          "step": 129,
+          "rtt_s": 2.992,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 3052,
+          "output_tokens": 54
+        },
+        {
+          "label": "global_checkpoint_async",
+          "step": 153,
+          "rtt_s": 2.796,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 3124,
+          "output_tokens": 67
+        },
+        {
+          "label": "local_checkpoint_async",
+          "step": 156,
+          "rtt_s": 2.319,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2120,
+          "output_tokens": 25
+        },
+        {
+          "label": "local_checkpoint_async",
+          "step": 181,
+          "rtt_s": 2.136,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2120,
+          "output_tokens": 23
+        },
+        {
+          "label": "global_checkpoint_async",
+          "step": 182,
+          "rtt_s": 2.872,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 4203,
+          "output_tokens": 52
+        },
+        {
+          "label": "global_checkpoint_async",
+          "step": 211,
+          "rtt_s": 3.335,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 4270,
+          "output_tokens": 63
+        },
+        {
+          "label": "local_checkpoint_async",
+          "step": 212,
+          "rtt_s": 2.548,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2120,
+          "output_tokens": 24
+        },
+        {
+          "label": "local_checkpoint_async",
+          "step": 238,
+          "rtt_s": 2.414,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2120,
+          "output_tokens": 25
+        },
+        {
+          "label": "global_checkpoint_async",
+          "step": 246,
+          "rtt_s": 3.834,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 4338,
+          "output_tokens": 55
+        },
+        {
+          "label": "local_checkpoint_async",
+          "step": 271,
+          "rtt_s": 3.156,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2120,
+          "output_tokens": 32
+        },
+        {
+          "label": "local_checkpoint_async",
+          "step": 290,
+          "rtt_s": 2.251,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2120,
+          "output_tokens": 29
+        },
+        {
+          "label": "global_checkpoint_async",
+          "step": 313,
+          "rtt_s": 4.653,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 5104,
+          "output_tokens": 57
+        },
+        {
+          "label": "local_checkpoint_async",
+          "step": 318,
+          "rtt_s": 2.378,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2120,
+          "output_tokens": 23
+        },
+        {
+          "label": "global_checkpoint_async",
+          "step": 333,
+          "rtt_s": 4.747,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 5112,
+          "output_tokens": 58
+        },
+        {
+          "label": "local_checkpoint_async",
+          "step": 347,
+          "rtt_s": 2.61,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2120,
+          "output_tokens": 29
+        },
+        {
+          "label": "global_checkpoint_async",
+          "step": 359,
+          "rtt_s": 4.496,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 5233,
+          "output_tokens": 57
+        },
+        {
+          "label": "local_checkpoint_async",
+          "step": 371,
+          "rtt_s": 2.292,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2120,
+          "output_tokens": 29
+        },
+        {
+          "label": "global_checkpoint_async",
+          "step": 395,
+          "rtt_s": 5.228,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 5399,
+          "output_tokens": 56
+        },
+        {
+          "label": "local_checkpoint_async",
+          "step": 400,
+          "rtt_s": 2.409,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2120,
+          "output_tokens": 31
+        },
+        {
+          "label": "global_checkpoint_async",
+          "step": 408,
+          "rtt_s": 19.047,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 4982,
+          "output_tokens": 58
+        },
+        {
+          "label": "global_checkpoint_async",
+          "step": 413,
+          "rtt_s": 5.069,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 5461,
+          "output_tokens": 57
+        },
+        {
+          "label": "local_checkpoint_async",
+          "step": 413,
+          "rtt_s": 2.504,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2120,
+          "output_tokens": 27
+        },
+        {
+          "label": "global_checkpoint_async",
+          "step": 413,
+          "rtt_s": 5.728,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 5525,
+          "output_tokens": 54
+        },
+        {
+          "label": "convergence_async",
+          "step": 413,
+          "rtt_s": 7.216,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 6131,
+          "output_tokens": 90
+        },
+        {
+          "label": "global_checkpoint_async",
+          "step": 413,
+          "rtt_s": 6.086,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 5585,
+          "output_tokens": 54
+        }
+      ],
+      "llm_call_records": [
+        {
+          "label": "subgoal_convert",
+          "subgoal": "Turn in the direction pointed at by that arrow till you see a cardboard cutout of person holding a bottle and a glass",
+          "rtt_s": 0.718,
+          "model": "gpt-4o-2024-08-06",
+          "input_tokens": 385,
+          "output_tokens": 15
+        },
+        {
+          "label": "local_checkpoint_async",
+          "step": 53,
+          "rtt_s": 2.89,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2120,
+          "output_tokens": 29
+        },
+        {
+          "label": "local_checkpoint_async",
+          "step": 74,
+          "rtt_s": 2.149,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2120,
+          "output_tokens": 28
+        },
+        {
+          "label": "global_checkpoint_async",
+          "step": 81,
+          "rtt_s": 3.043,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2388,
+          "output_tokens": 54
+        },
+        {
+          "label": "global_checkpoint_async",
+          "step": 97,
+          "rtt_s": 2.545,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2449,
+          "output_tokens": 57
+        },
+        {
+          "label": "local_checkpoint_async",
+          "step": 102,
+          "rtt_s": 2.349,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2120,
+          "output_tokens": 30
+        },
+        {
+          "label": "local_checkpoint_async",
+          "step": 128,
+          "rtt_s": 2.182,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2120,
+          "output_tokens": 28
+        },
+        {
+          "label": "global_checkpoint_async",
+          "step": 129,
+          "rtt_s": 2.992,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 3052,
+          "output_tokens": 54
+        },
+        {
+          "label": "global_checkpoint_async",
+          "step": 153,
+          "rtt_s": 2.796,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 3124,
+          "output_tokens": 67
+        },
+        {
+          "label": "local_checkpoint_async",
+          "step": 156,
+          "rtt_s": 2.319,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2120,
+          "output_tokens": 25
+        },
+        {
+          "label": "local_checkpoint_async",
+          "step": 181,
+          "rtt_s": 2.136,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2120,
+          "output_tokens": 23
+        },
+        {
+          "label": "global_checkpoint_async",
+          "step": 182,
+          "rtt_s": 2.872,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 4203,
+          "output_tokens": 52
+        },
+        {
+          "label": "global_checkpoint_async",
+          "step": 211,
+          "rtt_s": 3.335,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 4270,
+          "output_tokens": 63
+        },
+        {
+          "label": "local_checkpoint_async",
+          "step": 212,
+          "rtt_s": 2.548,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2120,
+          "output_tokens": 24
+        },
+        {
+          "label": "local_checkpoint_async",
+          "step": 238,
+          "rtt_s": 2.414,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2120,
+          "output_tokens": 25
+        },
+        {
+          "label": "global_checkpoint_async",
+          "step": 246,
+          "rtt_s": 3.834,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 4338,
+          "output_tokens": 55
+        },
+        {
+          "label": "local_checkpoint_async",
+          "step": 271,
+          "rtt_s": 3.156,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2120,
+          "output_tokens": 32
+        },
+        {
+          "label": "local_checkpoint_async",
+          "step": 290,
+          "rtt_s": 2.251,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2120,
+          "output_tokens": 29
+        },
+        {
+          "label": "global_checkpoint_async",
+          "step": 313,
+          "rtt_s": 4.653,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 5104,
+          "output_tokens": 57
+        },
+        {
+          "label": "local_checkpoint_async",
+          "step": 318,
+          "rtt_s": 2.378,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2120,
+          "output_tokens": 23
+        },
+        {
+          "label": "global_checkpoint_async",
+          "step": 333,
+          "rtt_s": 4.747,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 5112,
+          "output_tokens": 58
+        },
+        {
+          "label": "local_checkpoint_async",
+          "step": 347,
+          "rtt_s": 2.61,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2120,
+          "output_tokens": 29
+        },
+        {
+          "label": "global_checkpoint_async",
+          "step": 359,
+          "rtt_s": 4.496,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 5233,
+          "output_tokens": 57
+        },
+        {
+          "label": "local_checkpoint_async",
+          "step": 371,
+          "rtt_s": 2.292,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2120,
+          "output_tokens": 29
+        },
+        {
+          "label": "global_checkpoint_async",
+          "step": 395,
+          "rtt_s": 5.228,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 5399,
+          "output_tokens": 56
+        },
+        {
+          "label": "local_checkpoint_async",
+          "step": 400,
+          "rtt_s": 2.409,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2120,
+          "output_tokens": 31
+        },
+        {
+          "label": "global_checkpoint_async",
+          "step": 408,
+          "rtt_s": 19.047,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 4982,
+          "output_tokens": 58
+        },
+        {
+          "label": "global_checkpoint_async",
+          "step": 413,
+          "rtt_s": 5.069,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 5461,
+          "output_tokens": 57
+        },
+        {
+          "label": "local_checkpoint_async",
+          "step": 413,
+          "rtt_s": 2.504,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2120,
+          "output_tokens": 27
+        },
+        {
+          "label": "global_checkpoint_async",
+          "step": 413,
+          "rtt_s": 5.728,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 5525,
+          "output_tokens": 54
+        },
+        {
+          "label": "convergence_async",
+          "step": 413,
+          "rtt_s": 7.216,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 6131,
+          "output_tokens": 90
+        },
+        {
+          "label": "global_checkpoint_async",
+          "step": 413,
+          "rtt_s": 6.086,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 5585,
+          "output_tokens": 54
+        }
+      ],
+      "next_origin": [
+        0.0,
+        0.0,
+        0.0,
+        11.100000308885665
+      ],
+      "replan_instruction": "",
+      "new_subgoal_override": ""
+    },
+    {
+      "subgoal": "Move towards the cardboard cutout of person holding a bottle and a glass",
+      "converted_instruction": "move towards the cardboard cutout of person holding a bottle and a glass",
+      "total_steps": 484,
+      "stop_reason": "interrupted",
+      "corrections_used": 0,
+      "last_completion_pct": 0.47,
+      "peak_completion": 0.47,
+      "vlm_calls": 34,
+      "vlm_rtts": [
+        {
+          "label": "local_checkpoint_async",
+          "step": 50,
+          "rtt_s": 2.442,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2110,
+          "output_tokens": 25
+        },
+        {
+          "label": "global_checkpoint_async",
+          "step": 69,
+          "rtt_s": 2.075,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2374,
+          "output_tokens": 51
+        },
+        {
+          "label": "local_checkpoint_async",
+          "step": 78,
+          "rtt_s": 2.585,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2110,
+          "output_tokens": 27
+        },
+        {
+          "label": "global_checkpoint_async",
+          "step": 98,
+          "rtt_s": 2.211,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2434,
+          "output_tokens": 56
+        },
+        {
+          "label": "local_checkpoint_async",
+          "step": 105,
+          "rtt_s": 2.501,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2110,
+          "output_tokens": 26
+        },
+        {
+          "label": "global_checkpoint_async",
+          "step": 129,
+          "rtt_s": 2.616,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 3033,
+          "output_tokens": 55
+        },
+        {
+          "label": "local_checkpoint_async",
+          "step": 144,
+          "rtt_s": 3.853,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2110,
+          "output_tokens": 22
+        },
+        {
+          "label": "local_checkpoint_async",
+          "step": 157,
+          "rtt_s": 2.237,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2110,
+          "output_tokens": 24
+        },
+        {
+          "label": "global_checkpoint_async",
+          "step": 165,
+          "rtt_s": 2.261,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 3099,
+          "output_tokens": 56
+        },
+        {
+          "label": "local_checkpoint_async",
+          "step": 183,
+          "rtt_s": 2.077,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2110,
+          "output_tokens": 22
+        },
+        {
+          "label": "global_checkpoint_async",
+          "step": 185,
+          "rtt_s": 3.142,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 4122,
+          "output_tokens": 58
+        },
+        {
+          "label": "local_checkpoint_async",
+          "step": 215,
+          "rtt_s": 2.613,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2110,
+          "output_tokens": 25
+        },
+        {
+          "label": "global_checkpoint_async",
+          "step": 218,
+          "rtt_s": 3.92,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 4232,
+          "output_tokens": 54
+        },
+        {
+          "label": "local_checkpoint_async",
+          "step": 239,
+          "rtt_s": 2.356,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2110,
+          "output_tokens": 25
+        },
+        {
+          "label": "global_checkpoint_async",
+          "step": 245,
+          "rtt_s": 3.406,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 4312,
+          "output_tokens": 57
+        },
+        {
+          "label": "local_checkpoint_async",
+          "step": 272,
+          "rtt_s": 2.996,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2110,
+          "output_tokens": 23
+        },
+        {
+          "label": "global_checkpoint_async",
+          "step": 282,
+          "rtt_s": 4.696,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 5002,
+          "output_tokens": 56
+        },
+        {
+          "label": "local_checkpoint_async",
+          "step": 296,
+          "rtt_s": 2.56,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2110,
+          "output_tokens": 24
+        },
+        {
+          "label": "global_checkpoint_async",
+          "step": 315,
+          "rtt_s": 4.686,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 5069,
+          "output_tokens": 55
+        },
+        {
+          "label": "local_checkpoint_async",
+          "step": 320,
+          "rtt_s": 2.27,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2110,
+          "output_tokens": 20
+        },
+        {
+          "label": "global_checkpoint_async",
+          "step": 343,
+          "rtt_s": 5.301,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 5137,
+          "output_tokens": 55
+        },
+        {
+          "label": "local_checkpoint_async",
+          "step": 351,
+          "rtt_s": 2.733,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2110,
+          "output_tokens": 23
+        },
+        {
+          "label": "global_checkpoint_async",
+          "step": 360,
+          "rtt_s": 4.358,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 5201,
+          "output_tokens": 54
+        },
+        {
+          "label": "global_checkpoint_async",
+          "step": 397,
+          "rtt_s": 4.991,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 5372,
+          "output_tokens": 54
+        },
+        {
+          "label": "local_checkpoint_async",
+          "step": 402,
+          "rtt_s": 2.318,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2110,
+          "output_tokens": 26
+        },
+        {
+          "label": "local_checkpoint_async",
+          "step": 415,
+          "rtt_s": 6.844,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2110,
+          "output_tokens": 23
+        },
+        {
+          "label": "local_checkpoint_async",
+          "step": 448,
+          "rtt_s": 4.398,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2110,
+          "output_tokens": 22
+        },
+        {
+          "label": "global_checkpoint_async",
+          "step": 455,
+          "rtt_s": 5.846,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 5453,
+          "output_tokens": 58
+        },
+        {
+          "label": "local_checkpoint_async",
+          "step": 456,
+          "rtt_s": 2.269,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2110,
+          "output_tokens": 23
+        },
+        {
+          "label": "local_checkpoint_async",
+          "step": 481,
+          "rtt_s": 2.151,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2110,
+          "output_tokens": 23
+        },
+        {
+          "label": "global_checkpoint_async",
+          "step": 484,
+          "rtt_s": 5.696,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 5460,
+          "output_tokens": 55
+        },
+        {
+          "label": "global_checkpoint_async",
+          "step": 484,
+          "rtt_s": 11.659,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 5439,
+          "output_tokens": 54
+        },
+        {
+          "label": "global_checkpoint_async",
+          "step": 484,
+          "rtt_s": 7.96,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 5687,
+          "output_tokens": 56
+        },
+        {
+          "label": "global_checkpoint_async",
+          "step": 484,
+          "rtt_s": 23.132,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 5576,
+          "output_tokens": 57
+        }
+      ],
+      "llm_call_records": [
+        {
+          "label": "subgoal_convert",
+          "subgoal": "Move towards the cardboard cutout of person holding a bottle and a glass",
+          "rtt_s": 0.694,
+          "model": "gpt-4o-2024-08-06",
+          "input_tokens": 375,
+          "output_tokens": 20
+        },
+        {
+          "label": "local_checkpoint_async",
+          "step": 50,
+          "rtt_s": 2.442,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2110,
+          "output_tokens": 25
+        },
+        {
+          "label": "global_checkpoint_async",
+          "step": 69,
+          "rtt_s": 2.075,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2374,
+          "output_tokens": 51
+        },
+        {
+          "label": "local_checkpoint_async",
+          "step": 78,
+          "rtt_s": 2.585,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2110,
+          "output_tokens": 27
+        },
+        {
+          "label": "global_checkpoint_async",
+          "step": 98,
+          "rtt_s": 2.211,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2434,
+          "output_tokens": 56
+        },
+        {
+          "label": "local_checkpoint_async",
+          "step": 105,
+          "rtt_s": 2.501,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2110,
+          "output_tokens": 26
+        },
+        {
+          "label": "global_checkpoint_async",
+          "step": 129,
+          "rtt_s": 2.616,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 3033,
+          "output_tokens": 55
+        },
+        {
+          "label": "local_checkpoint_async",
+          "step": 144,
+          "rtt_s": 3.853,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2110,
+          "output_tokens": 22
+        },
+        {
+          "label": "local_checkpoint_async",
+          "step": 157,
+          "rtt_s": 2.237,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2110,
+          "output_tokens": 24
+        },
+        {
+          "label": "global_checkpoint_async",
+          "step": 165,
+          "rtt_s": 2.261,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 3099,
+          "output_tokens": 56
+        },
+        {
+          "label": "local_checkpoint_async",
+          "step": 183,
+          "rtt_s": 2.077,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2110,
+          "output_tokens": 22
+        },
+        {
+          "label": "global_checkpoint_async",
+          "step": 185,
+          "rtt_s": 3.142,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 4122,
+          "output_tokens": 58
+        },
+        {
+          "label": "local_checkpoint_async",
+          "step": 215,
+          "rtt_s": 2.613,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2110,
+          "output_tokens": 25
+        },
+        {
+          "label": "global_checkpoint_async",
+          "step": 218,
+          "rtt_s": 3.92,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 4232,
+          "output_tokens": 54
+        },
+        {
+          "label": "local_checkpoint_async",
+          "step": 239,
+          "rtt_s": 2.356,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2110,
+          "output_tokens": 25
+        },
+        {
+          "label": "global_checkpoint_async",
+          "step": 245,
+          "rtt_s": 3.406,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 4312,
+          "output_tokens": 57
+        },
+        {
+          "label": "local_checkpoint_async",
+          "step": 272,
+          "rtt_s": 2.996,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2110,
+          "output_tokens": 23
+        },
+        {
+          "label": "global_checkpoint_async",
+          "step": 282,
+          "rtt_s": 4.696,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 5002,
+          "output_tokens": 56
+        },
+        {
+          "label": "local_checkpoint_async",
+          "step": 296,
+          "rtt_s": 2.56,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2110,
+          "output_tokens": 24
+        },
+        {
+          "label": "global_checkpoint_async",
+          "step": 315,
+          "rtt_s": 4.686,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 5069,
+          "output_tokens": 55
+        },
+        {
+          "label": "local_checkpoint_async",
+          "step": 320,
+          "rtt_s": 2.27,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2110,
+          "output_tokens": 20
+        },
+        {
+          "label": "global_checkpoint_async",
+          "step": 343,
+          "rtt_s": 5.301,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 5137,
+          "output_tokens": 55
+        },
+        {
+          "label": "local_checkpoint_async",
+          "step": 351,
+          "rtt_s": 2.733,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2110,
+          "output_tokens": 23
+        },
+        {
+          "label": "global_checkpoint_async",
+          "step": 360,
+          "rtt_s": 4.358,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 5201,
+          "output_tokens": 54
+        },
+        {
+          "label": "global_checkpoint_async",
+          "step": 397,
+          "rtt_s": 4.991,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 5372,
+          "output_tokens": 54
+        },
+        {
+          "label": "local_checkpoint_async",
+          "step": 402,
+          "rtt_s": 2.318,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2110,
+          "output_tokens": 26
+        },
+        {
+          "label": "local_checkpoint_async",
+          "step": 415,
+          "rtt_s": 6.844,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2110,
+          "output_tokens": 23
+        },
+        {
+          "label": "local_checkpoint_async",
+          "step": 448,
+          "rtt_s": 4.398,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2110,
+          "output_tokens": 22
+        },
+        {
+          "label": "global_checkpoint_async",
+          "step": 455,
+          "rtt_s": 5.846,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 5453,
+          "output_tokens": 58
+        },
+        {
+          "label": "local_checkpoint_async",
+          "step": 456,
+          "rtt_s": 2.269,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2110,
+          "output_tokens": 23
+        },
+        {
+          "label": "local_checkpoint_async",
+          "step": 481,
+          "rtt_s": 2.151,
+          "model": "gpt-5.4-2026-03-05",
+          "input_tokens": 2110,
+          "output_tokens": 23
+        }
+      ],
+      "next_origin": [
+        415.0,
+        0.0,
+        0.0,
+        11.100000308885665
+      ],
+      "replan_instruction": "",
+      "new_subgoal_override": ""
+    }
+  ],
+  "total_steps": 1709,
+  "total_vlm_calls": 127,
+  "all_llm_call_records": [
+    {
+      "label": "ltl_nl_planning",
+      "rtt_s": 1.596,
+      "model": "gpt-4o-2024-08-06",
+      "input_tokens": 2462,
+      "output_tokens": 158,
+      "cached_tokens": 2048
+    },
+    {
+      "label": "subgoal_convert",
+      "subgoal": "Look to your left for a wooden plank that is of the colors of the Ukraine flag",
+      "rtt_s": 0.709,
+      "model": "gpt-4o-2024-08-06",
+      "input_tokens": 378,
+      "output_tokens": 10
+    },
+    {
+      "label": "local_checkpoint_async",
+      "step": 47,
+      "rtt_s": 2.167,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2113,
+      "output_tokens": 27
+    },
+    {
+      "label": "global_checkpoint_async",
+      "step": 63,
+      "rtt_s": 1.78,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2379,
+      "output_tokens": 63
+    },
+    {
+      "label": "local_checkpoint_async",
+      "step": 73,
+      "rtt_s": 2.037,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2113,
+      "output_tokens": 28
+    },
+    {
+      "label": "global_checkpoint_async",
+      "step": 94,
+      "rtt_s": 2.399,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2440,
+      "output_tokens": 56
+    },
+    {
+      "label": "local_checkpoint_async",
+      "step": 101,
+      "rtt_s": 2.106,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2113,
+      "output_tokens": 23
+    },
+    {
+      "label": "global_checkpoint_async",
+      "step": 123,
+      "rtt_s": 2.546,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 3036,
+      "output_tokens": 57
+    },
+    {
+      "label": "local_checkpoint_async",
+      "step": 131,
+      "rtt_s": 2.464,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2113,
+      "output_tokens": 25
+    },
+    {
+      "label": "local_checkpoint_async",
+      "step": 159,
+      "rtt_s": 2.603,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2113,
+      "output_tokens": 25
+    },
+    {
+      "label": "global_checkpoint_async",
+      "step": 179,
+      "rtt_s": 5.36,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 4115,
+      "output_tokens": 57
+    },
+    {
+      "label": "local_checkpoint_async",
+      "step": 184,
+      "rtt_s": 2.439,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2113,
+      "output_tokens": 23
+    },
+    {
+      "label": "global_checkpoint_async",
+      "step": 191,
+      "rtt_s": 3.598,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 4184,
+      "output_tokens": 58
+    },
+    {
+      "label": "global_checkpoint_async",
+      "step": 209,
+      "rtt_s": 2.753,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 4240,
+      "output_tokens": 57
+    },
+    {
+      "label": "local_checkpoint_async",
+      "step": 213,
+      "rtt_s": 2.647,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2113,
+      "output_tokens": 26
+    },
+    {
+      "label": "local_checkpoint_async",
+      "step": 238,
+      "rtt_s": 2.433,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2113,
+      "output_tokens": 23
+    },
+    {
+      "label": "global_checkpoint_async",
+      "step": 241,
+      "rtt_s": 3.151,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 4310,
+      "output_tokens": 61
+    },
+    {
+      "label": "local_checkpoint_async",
+      "step": 262,
+      "rtt_s": 2.115,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2113,
+      "output_tokens": 24
+    },
+    {
+      "label": "global_checkpoint_async",
+      "step": 277,
+      "rtt_s": 4.309,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 5020,
+      "output_tokens": 56
+    },
+    {
+      "label": "local_checkpoint_async",
+      "step": 293,
+      "rtt_s": 2.501,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2113,
+      "output_tokens": 22
+    },
+    {
+      "label": "global_checkpoint_async",
+      "step": 299,
+      "rtt_s": 4.117,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 5088,
+      "output_tokens": 68
+    },
+    {
+      "label": "local_checkpoint_async",
+      "step": 314,
+      "rtt_s": 1.873,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2113,
+      "output_tokens": 21
+    },
+    {
+      "label": "global_checkpoint_async",
+      "step": 333,
+      "rtt_s": 4.449,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 5143,
+      "output_tokens": 55
+    },
+    {
+      "label": "local_checkpoint_async",
+      "step": 348,
+      "rtt_s": 2.671,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2113,
+      "output_tokens": 24
+    },
+    {
+      "label": "global_checkpoint_async",
+      "step": 351,
+      "rtt_s": 4.127,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 5208,
+      "output_tokens": 56
+    },
+    {
+      "label": "local_checkpoint_async",
+      "step": 371,
+      "rtt_s": 2.183,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2113,
+      "output_tokens": 23
+    },
+    {
+      "label": "global_checkpoint_async",
+      "step": 392,
+      "rtt_s": 4.843,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 5380,
+      "output_tokens": 57
+    },
+    {
+      "label": "local_checkpoint_async",
+      "step": 400,
+      "rtt_s": 2.507,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2113,
+      "output_tokens": 21
+    },
+    {
+      "label": "global_checkpoint_async",
+      "step": 418,
+      "rtt_s": 5.253,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 5447,
+      "output_tokens": 62
+    },
+    {
+      "label": "local_checkpoint_async",
+      "step": 425,
+      "rtt_s": 2.299,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2113,
+      "output_tokens": 23
+    },
+    {
+      "label": "global_checkpoint_async",
+      "step": 446,
+      "rtt_s": 5.058,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 5512,
+      "output_tokens": 56
+    },
+    {
+      "label": "local_checkpoint_async",
+      "step": 446,
+      "rtt_s": 2.849,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2113,
+      "output_tokens": 25
+    },
+    {
+      "label": "global_checkpoint_async",
+      "step": 446,
+      "rtt_s": 5.411,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 5579,
+      "output_tokens": 53
+    },
+    {
+      "label": "global_checkpoint_async",
+      "step": 446,
+      "rtt_s": 5.52,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 5648,
+      "output_tokens": 54
+    },
+    {
+      "label": "convergence_async",
+      "step": 446,
+      "rtt_s": 6.721,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 6184,
+      "output_tokens": 81
+    },
+    {
+      "label": "subgoal_convert",
+      "subgoal": "Turn to the right until you see the red arrow that is on top of the windows",
+      "rtt_s": 0.815,
+      "model": "gpt-4o-2024-08-06",
+      "input_tokens": 378,
+      "output_tokens": 10
+    },
+    {
+      "label": "local_checkpoint_async",
+      "step": 48,
+      "rtt_s": 2.332,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2113,
+      "output_tokens": 28
+    },
+    {
+      "label": "local_checkpoint_async",
+      "step": 72,
+      "rtt_s": 1.93,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2113,
+      "output_tokens": 25
+    },
+    {
+      "label": "global_checkpoint_async",
+      "step": 72,
+      "rtt_s": 2.673,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2380,
+      "output_tokens": 65
+    },
+    {
+      "label": "global_checkpoint_async",
+      "step": 92,
+      "rtt_s": 2.243,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2438,
+      "output_tokens": 65
+    },
+    {
+      "label": "local_checkpoint_async",
+      "step": 104,
+      "rtt_s": 2.452,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2113,
+      "output_tokens": 28
+    },
+    {
+      "label": "local_checkpoint_async",
+      "step": 128,
+      "rtt_s": 2.219,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2113,
+      "output_tokens": 30
+    },
+    {
+      "label": "global_checkpoint_async",
+      "step": 141,
+      "rtt_s": 4.108,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 3039,
+      "output_tokens": 62
+    },
+    {
+      "label": "global_checkpoint_async",
+      "step": 160,
+      "rtt_s": 3.501,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 3113,
+      "output_tokens": 62
+    },
+    {
+      "label": "local_checkpoint_async",
+      "step": 165,
+      "rtt_s": 3.349,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2113,
+      "output_tokens": 26
+    },
+    {
+      "label": "local_checkpoint_async",
+      "step": 184,
+      "rtt_s": 2.465,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2113,
+      "output_tokens": 26
+    },
+    {
+      "label": "global_checkpoint_async",
+      "step": 195,
+      "rtt_s": 3.282,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 4182,
+      "output_tokens": 55
+    },
+    {
+      "label": "local_checkpoint_async",
+      "step": 211,
+      "rtt_s": 2.418,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2113,
+      "output_tokens": 26
+    },
+    {
+      "label": "global_checkpoint_async",
+      "step": 213,
+      "rtt_s": 3.157,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 4204,
+      "output_tokens": 56
+    },
+    {
+      "label": "local_checkpoint_async",
+      "step": 236,
+      "rtt_s": 2.188,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2113,
+      "output_tokens": 26
+    },
+    {
+      "label": "global_checkpoint_async",
+      "step": 248,
+      "rtt_s": 4.111,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 4322,
+      "output_tokens": 61
+    },
+    {
+      "label": "local_checkpoint_async",
+      "step": 263,
+      "rtt_s": 2.193,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2113,
+      "output_tokens": 26
+    },
+    {
+      "label": "global_checkpoint_async",
+      "step": 278,
+      "rtt_s": 4.732,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 5035,
+      "output_tokens": 55
+    },
+    {
+      "label": "local_checkpoint_async",
+      "step": 291,
+      "rtt_s": 2.339,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2113,
+      "output_tokens": 25
+    },
+    {
+      "label": "local_checkpoint_async",
+      "step": 322,
+      "rtt_s": 2.828,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2113,
+      "output_tokens": 27
+    },
+    {
+      "label": "global_checkpoint_async",
+      "step": 325,
+      "rtt_s": 6.99,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 5094,
+      "output_tokens": 56
+    },
+    {
+      "label": "global_checkpoint_async",
+      "step": 334,
+      "rtt_s": 4.752,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 5163,
+      "output_tokens": 62
+    },
+    {
+      "label": "local_checkpoint_async",
+      "step": 345,
+      "rtt_s": 2.383,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2113,
+      "output_tokens": 24
+    },
+    {
+      "label": "global_checkpoint_async",
+      "step": 366,
+      "rtt_s": 4.813,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 5234,
+      "output_tokens": 55
+    },
+    {
+      "label": "local_checkpoint_async",
+      "step": 366,
+      "rtt_s": 2.687,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2113,
+      "output_tokens": 27
+    },
+    {
+      "label": "global_checkpoint_async",
+      "step": 366,
+      "rtt_s": 5.822,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 5395,
+      "output_tokens": 54
+    },
+    {
+      "label": "global_checkpoint_async",
+      "step": 366,
+      "rtt_s": 5.268,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 5477,
+      "output_tokens": 54
+    },
+    {
+      "label": "convergence_async",
+      "step": 366,
+      "rtt_s": 7.524,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 6010,
+      "output_tokens": 78
+    },
+    {
+      "label": "subgoal_convert",
+      "subgoal": "Turn in the direction pointed at by that arrow till you see a cardboard cutout of person holding a bottle and a glass",
+      "rtt_s": 0.718,
+      "model": "gpt-4o-2024-08-06",
+      "input_tokens": 385,
+      "output_tokens": 15
+    },
+    {
+      "label": "local_checkpoint_async",
+      "step": 53,
+      "rtt_s": 2.89,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2120,
+      "output_tokens": 29
+    },
+    {
+      "label": "local_checkpoint_async",
+      "step": 74,
+      "rtt_s": 2.149,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2120,
+      "output_tokens": 28
+    },
+    {
+      "label": "global_checkpoint_async",
+      "step": 81,
+      "rtt_s": 3.043,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2388,
+      "output_tokens": 54
+    },
+    {
+      "label": "global_checkpoint_async",
+      "step": 97,
+      "rtt_s": 2.545,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2449,
+      "output_tokens": 57
+    },
+    {
+      "label": "local_checkpoint_async",
+      "step": 102,
+      "rtt_s": 2.349,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2120,
+      "output_tokens": 30
+    },
+    {
+      "label": "local_checkpoint_async",
+      "step": 128,
+      "rtt_s": 2.182,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2120,
+      "output_tokens": 28
+    },
+    {
+      "label": "global_checkpoint_async",
+      "step": 129,
+      "rtt_s": 2.992,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 3052,
+      "output_tokens": 54
+    },
+    {
+      "label": "global_checkpoint_async",
+      "step": 153,
+      "rtt_s": 2.796,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 3124,
+      "output_tokens": 67
+    },
+    {
+      "label": "local_checkpoint_async",
+      "step": 156,
+      "rtt_s": 2.319,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2120,
+      "output_tokens": 25
+    },
+    {
+      "label": "local_checkpoint_async",
+      "step": 181,
+      "rtt_s": 2.136,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2120,
+      "output_tokens": 23
+    },
+    {
+      "label": "global_checkpoint_async",
+      "step": 182,
+      "rtt_s": 2.872,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 4203,
+      "output_tokens": 52
+    },
+    {
+      "label": "global_checkpoint_async",
+      "step": 211,
+      "rtt_s": 3.335,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 4270,
+      "output_tokens": 63
+    },
+    {
+      "label": "local_checkpoint_async",
+      "step": 212,
+      "rtt_s": 2.548,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2120,
+      "output_tokens": 24
+    },
+    {
+      "label": "local_checkpoint_async",
+      "step": 238,
+      "rtt_s": 2.414,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2120,
+      "output_tokens": 25
+    },
+    {
+      "label": "global_checkpoint_async",
+      "step": 246,
+      "rtt_s": 3.834,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 4338,
+      "output_tokens": 55
+    },
+    {
+      "label": "local_checkpoint_async",
+      "step": 271,
+      "rtt_s": 3.156,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2120,
+      "output_tokens": 32
+    },
+    {
+      "label": "local_checkpoint_async",
+      "step": 290,
+      "rtt_s": 2.251,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2120,
+      "output_tokens": 29
+    },
+    {
+      "label": "global_checkpoint_async",
+      "step": 313,
+      "rtt_s": 4.653,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 5104,
+      "output_tokens": 57
+    },
+    {
+      "label": "local_checkpoint_async",
+      "step": 318,
+      "rtt_s": 2.378,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2120,
+      "output_tokens": 23
+    },
+    {
+      "label": "global_checkpoint_async",
+      "step": 333,
+      "rtt_s": 4.747,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 5112,
+      "output_tokens": 58
+    },
+    {
+      "label": "local_checkpoint_async",
+      "step": 347,
+      "rtt_s": 2.61,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2120,
+      "output_tokens": 29
+    },
+    {
+      "label": "global_checkpoint_async",
+      "step": 359,
+      "rtt_s": 4.496,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 5233,
+      "output_tokens": 57
+    },
+    {
+      "label": "local_checkpoint_async",
+      "step": 371,
+      "rtt_s": 2.292,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2120,
+      "output_tokens": 29
+    },
+    {
+      "label": "global_checkpoint_async",
+      "step": 395,
+      "rtt_s": 5.228,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 5399,
+      "output_tokens": 56
+    },
+    {
+      "label": "local_checkpoint_async",
+      "step": 400,
+      "rtt_s": 2.409,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2120,
+      "output_tokens": 31
+    },
+    {
+      "label": "global_checkpoint_async",
+      "step": 408,
+      "rtt_s": 19.047,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 4982,
+      "output_tokens": 58
+    },
+    {
+      "label": "global_checkpoint_async",
+      "step": 413,
+      "rtt_s": 5.069,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 5461,
+      "output_tokens": 57
+    },
+    {
+      "label": "local_checkpoint_async",
+      "step": 413,
+      "rtt_s": 2.504,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2120,
+      "output_tokens": 27
+    },
+    {
+      "label": "global_checkpoint_async",
+      "step": 413,
+      "rtt_s": 5.728,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 5525,
+      "output_tokens": 54
+    },
+    {
+      "label": "convergence_async",
+      "step": 413,
+      "rtt_s": 7.216,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 6131,
+      "output_tokens": 90
+    },
+    {
+      "label": "global_checkpoint_async",
+      "step": 413,
+      "rtt_s": 6.086,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 5585,
+      "output_tokens": 54
+    },
+    {
+      "label": "subgoal_convert",
+      "subgoal": "Move towards the cardboard cutout of person holding a bottle and a glass",
+      "rtt_s": 0.694,
+      "model": "gpt-4o-2024-08-06",
+      "input_tokens": 375,
+      "output_tokens": 20
+    },
+    {
+      "label": "local_checkpoint_async",
+      "step": 50,
+      "rtt_s": 2.442,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2110,
+      "output_tokens": 25
+    },
+    {
+      "label": "global_checkpoint_async",
+      "step": 69,
+      "rtt_s": 2.075,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2374,
+      "output_tokens": 51
+    },
+    {
+      "label": "local_checkpoint_async",
+      "step": 78,
+      "rtt_s": 2.585,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2110,
+      "output_tokens": 27
+    },
+    {
+      "label": "global_checkpoint_async",
+      "step": 98,
+      "rtt_s": 2.211,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2434,
+      "output_tokens": 56
+    },
+    {
+      "label": "local_checkpoint_async",
+      "step": 105,
+      "rtt_s": 2.501,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2110,
+      "output_tokens": 26
+    },
+    {
+      "label": "global_checkpoint_async",
+      "step": 129,
+      "rtt_s": 2.616,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 3033,
+      "output_tokens": 55
+    },
+    {
+      "label": "local_checkpoint_async",
+      "step": 144,
+      "rtt_s": 3.853,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2110,
+      "output_tokens": 22
+    },
+    {
+      "label": "local_checkpoint_async",
+      "step": 157,
+      "rtt_s": 2.237,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2110,
+      "output_tokens": 24
+    },
+    {
+      "label": "global_checkpoint_async",
+      "step": 165,
+      "rtt_s": 2.261,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 3099,
+      "output_tokens": 56
+    },
+    {
+      "label": "local_checkpoint_async",
+      "step": 183,
+      "rtt_s": 2.077,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2110,
+      "output_tokens": 22
+    },
+    {
+      "label": "global_checkpoint_async",
+      "step": 185,
+      "rtt_s": 3.142,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 4122,
+      "output_tokens": 58
+    },
+    {
+      "label": "local_checkpoint_async",
+      "step": 215,
+      "rtt_s": 2.613,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2110,
+      "output_tokens": 25
+    },
+    {
+      "label": "global_checkpoint_async",
+      "step": 218,
+      "rtt_s": 3.92,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 4232,
+      "output_tokens": 54
+    },
+    {
+      "label": "local_checkpoint_async",
+      "step": 239,
+      "rtt_s": 2.356,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2110,
+      "output_tokens": 25
+    },
+    {
+      "label": "global_checkpoint_async",
+      "step": 245,
+      "rtt_s": 3.406,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 4312,
+      "output_tokens": 57
+    },
+    {
+      "label": "local_checkpoint_async",
+      "step": 272,
+      "rtt_s": 2.996,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2110,
+      "output_tokens": 23
+    },
+    {
+      "label": "global_checkpoint_async",
+      "step": 282,
+      "rtt_s": 4.696,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 5002,
+      "output_tokens": 56
+    },
+    {
+      "label": "local_checkpoint_async",
+      "step": 296,
+      "rtt_s": 2.56,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2110,
+      "output_tokens": 24
+    },
+    {
+      "label": "global_checkpoint_async",
+      "step": 315,
+      "rtt_s": 4.686,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 5069,
+      "output_tokens": 55
+    },
+    {
+      "label": "local_checkpoint_async",
+      "step": 320,
+      "rtt_s": 2.27,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2110,
+      "output_tokens": 20
+    },
+    {
+      "label": "global_checkpoint_async",
+      "step": 343,
+      "rtt_s": 5.301,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 5137,
+      "output_tokens": 55
+    },
+    {
+      "label": "local_checkpoint_async",
+      "step": 351,
+      "rtt_s": 2.733,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2110,
+      "output_tokens": 23
+    },
+    {
+      "label": "global_checkpoint_async",
+      "step": 360,
+      "rtt_s": 4.358,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 5201,
+      "output_tokens": 54
+    },
+    {
+      "label": "global_checkpoint_async",
+      "step": 397,
+      "rtt_s": 4.991,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 5372,
+      "output_tokens": 54
+    },
+    {
+      "label": "local_checkpoint_async",
+      "step": 402,
+      "rtt_s": 2.318,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2110,
+      "output_tokens": 26
+    },
+    {
+      "label": "local_checkpoint_async",
+      "step": 415,
+      "rtt_s": 6.844,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2110,
+      "output_tokens": 23
+    },
+    {
+      "label": "local_checkpoint_async",
+      "step": 448,
+      "rtt_s": 4.398,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2110,
+      "output_tokens": 22
+    },
+    {
+      "label": "global_checkpoint_async",
+      "step": 455,
+      "rtt_s": 5.846,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 5453,
+      "output_tokens": 58
+    },
+    {
+      "label": "local_checkpoint_async",
+      "step": 456,
+      "rtt_s": 2.269,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2110,
+      "output_tokens": 23
+    },
+    {
+      "label": "local_checkpoint_async",
+      "step": 481,
+      "rtt_s": 2.151,
+      "model": "gpt-5.4-2026-03-05",
+      "input_tokens": 2110,
+      "output_tokens": 23
+    }
+  ],
+  "total_input_tokens": 400120,
+  "total_output_tokens": 5264,
+  "total_corrections": 0,
+  "pose_source": "dead_reckoning",
+  "start_time": "2026-05-07T13:53:20.070506",
+  "end_time": "2026-05-07T13:57:29.401017"
+}
