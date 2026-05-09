@@ -156,6 +156,23 @@ def composite_final(
     subprocess.run(cmd, check=True)
 
 
+def build_2x_from_1x(input_mp4: Path, out_path: Path, ffmpeg: str) -> None:
+    """Produce a 2x-speed copy of input_mp4 at out_path using ffmpeg setpts.
+
+    Halves presentation timestamps and re-encodes at 30 fps. No audio.
+    """
+    cmd = [
+        ffmpeg, "-y",
+        "-i", str(input_mp4),
+        "-vf", "setpts=PTS/2",
+        "-r", "30",
+        "-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", "20",
+        "-an",
+        str(out_path),
+    ]
+    subprocess.run(cmd, check=True)
+
+
 def build(results_dir: Path, out_path: Path) -> None:
     results_dir = results_dir.resolve()
     tmp_dir = results_dir / "_replay_tmp"
@@ -211,6 +228,10 @@ def build(results_dir: Path, out_path: Path) -> None:
         onboard_first_t=tl.onboard_first_t,
         ffmpeg=ffmpeg,
     )
+
+    # 6. Derive a 2x-speed copy from the 1x output for compact viewing.
+    out_2x_path = out_path.with_name(out_path.stem + "_2x" + out_path.suffix)
+    build_2x_from_1x(out_path, out_2x_path, ffmpeg)
 
 
 def main():

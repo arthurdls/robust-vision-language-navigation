@@ -28,7 +28,9 @@ def main():
     results_dir = Path(args.results)
     out_path = Path(args.out) if args.out else results_dir / "replay_synced.mp4"
     composite.build(results_dir, out_path)
+    out_2x_path = out_path.with_name(out_path.stem + "_2x" + out_path.suffix)
     print(f"wrote {out_path}")
+    print(f"wrote {out_2x_path}")
 
 
 if __name__ == "__main__":
