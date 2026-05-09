@@ -320,5 +320,161 @@ def main():
         )
 
 
+def slug_for_subgoal_text(text: str, max_len: int = 12) -> str:
+    """Derive a short snake_case slug from the converted instruction.
+
+    Example: "Look to your left for ..." -> "look_left"
+             "Move towards ..."          -> "move_towards"
+    """
+    import re
+    words = re.findall(r"[a-zA-Z]+", text.lower())
+    if not words:
+        return "step"
+    if len(words) >= 2 and len(words[0]) + 1 + len(words[1]) <= max_len:
+        return f"{words[0]}_{words[1]}"
+    return words[0][:max_len]
+
+
+def _format_bar_time(t: float, total: float) -> str:
+    def fmt(x):
+        m, s = divmod(max(0.0, x), 60)
+        return f"{int(m):02d}:{int(s):02d}"
+    return f"{fmt(t)} / {fmt(total)}"
+
+
+def _diary_lines_to_entries(lines: List[str]) -> list:
+    """Convert raw diary.txt lines into structured entries for the JS template."""
+    entries = []
+    for ln in lines:
+        if ln.startswith("Checkpoint"):
+            entries.append({"kind": "checkpoint", "text": ln})
+        else:
+            entries.append({"kind": "step", "text": ln})
+    return entries
+
+
+def _global_chips(resp: dict) -> list:
+    chips = [
+        {"label": f"complete: {str(resp.get('complete')).lower()}", "kind": ""},
+        {"label": f"completion: {resp.get('completion_percentage', 0):.2f}", "kind": "ok"},
+        {"label": f"should_stop: {str(resp.get('should_stop')).lower()}", "kind": "bad" if resp.get('should_stop') else ""},
+        {"label": f"drive: {resp.get('drive_action', 'stop')}", "kind": "warn"},
+    ]
+    return chips
+
+
+def _conv_chips(resp: dict, subgoal_index: int) -> list:
+    diag = resp.get("diagnosis") or ("complete" if resp.get("complete") else "stopped_short")
+    corrective = resp.get("corrective_instruction") or "null"
+    return [
+        {"label": f"verdict: {diag}", "kind": "ok" if diag == "complete" else "warn"},
+        {"label": f"corrective: {corrective}", "kind": "" if corrective == "null" else "warn"},
+        {"label": f"completion: {resp.get('completion_percentage', 0):.2f}", "kind": "ok"},
+        {"label": f"subgoal: {subgoal_index}", "kind": ""},
+    ]
+
+
+def state_at(tl: Timeline, t: float) -> dict:
+    """Return the dict to feed window.hydrate() at time t (seconds since t0)."""
+    # Active subgoal: latest frame at or before t.
+    active_sg = 1
+    for fr in tl.frames:
+        if fr.t > t:
+            break
+        active_sg = fr.subgoal_index
+
+    sg_text = tl.subgoal_texts[active_sg] if 0 <= active_sg < len(tl.subgoal_texts) else ""
+    sg_slug = slug_for_subgoal_text(sg_text)
+
+    # Latest local checkpoint where t_local <= t.
+    # tl.checkpoints is sorted by t_local, so a simple ordered scan works.
+    latest_local = None
+    for c in tl.checkpoints:
+        if c.t_local <= t:
+            latest_local = c
+        else:
+            break
+
+    # Latest global checkpoint where t_global <= t AND a real response exists.
+    # Synthetic checkpoints (in the interrupted subgoal 4) have empty
+    # response_global_json={}; skip those.
+    # Use max-tracker (no break) because tl.checkpoints is sorted by t_local,
+    # not t_global, so ordering is not guaranteed.
+    latest_global = None
+    for c in tl.checkpoints:
+        if c.t_global <= t and c.response_global_json:
+            if latest_global is None or c.t_global > latest_global.t_global:
+                latest_global = c
+
+    # Diary state: latest checkpoint with t_diary <= t.
+    # Same max-tracker pattern for the same reason.
+    latest_diary = None
+    for c in tl.checkpoints:
+        if c.t_diary <= t:
+            if latest_diary is None or c.t_diary > latest_diary.t_diary:
+                latest_diary = c
+
+    # Sticky-latest convergence across all subgoals.
+    # tl.convergences is sorted by t, so ordered scan is fine.
+    latest_conv = None
+    for cv in tl.convergences:
+        if cv.t <= t:
+            latest_conv = cv
+        else:
+            break
+
+    # Topbar completion + drive: from latest_global.
+    completion = 0.0
+    drive = "stop"
+    if latest_global is not None:
+        completion = float(latest_global.response_global_json.get("completion_percentage", 0))
+        drive = latest_global.response_global_json.get("drive_action", "stop")
+
+    state = {
+        "bar_time": _format_bar_time(t, tl.duration_s),
+        "subgoal_index": active_sg,
+        "subgoal_total": max(1, len(tl.subgoal_texts) - 1),
+        "subgoal_slug": sg_slug,
+        "subgoal_text": sg_text,
+        "completion": completion,
+        "drive": drive,
+
+        "local_image": str(latest_local.grid_local_path) if latest_local else None,
+        "local_reasoning": latest_local.response_local_text if latest_local else None,
+
+        "global_image": str(latest_global.grid_global_path) if latest_global else None,
+        "global_reasoning": latest_global.response_global_json.get("reasoning") if latest_global else None,
+        "global_chips": _global_chips(latest_global.response_global_json) if latest_global else [],
+
+        "diary_entries": _diary_lines_to_entries(latest_diary.diary_lines) if latest_diary else [],
+
+        "conv_status": (
+            "complete" if latest_conv and latest_conv.response_json.get("complete")
+            else (latest_conv.response_json.get("diagnosis") if latest_conv else None)
+        ),
+        "conv_reasoning": latest_conv.response_json.get("reasoning") if latest_conv else None,
+        "conv_chips": _conv_chips(latest_conv.response_json, latest_conv.subgoal_index) if latest_conv else [],
+    }
+    return state
+
+
 if __name__ == "__main__":
-    main()
+    import sys
+    if len(sys.argv) > 1 and sys.argv[1] == "state":
+        tl = load(Path(sys.argv[2]))
+        for t_str in sys.argv[3:]:
+            t = float(t_str)
+            print(f"--- state at t={t:.1f} ---")
+            for k, v in state_at(tl, t).items():
+                if k in ("local_image", "global_image"):
+                    print(f"  {k}: {v}")
+                elif k == "diary_entries":
+                    print(f"  diary_entries: {len(v)} entries")
+                elif k == "global_chips" or k == "conv_chips":
+                    print(f"  {k}: {[c['label'] for c in v]}")
+                else:
+                    s = repr(v)
+                    if len(s) > 90: s = s[:87] + "..."
+                    print(f"  {k}: {s}")
+    else:
+        main()
