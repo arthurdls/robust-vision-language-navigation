@@ -21,6 +21,15 @@ from pathlib import Path
 from typing import List
 
 
+# Scale applied to x/y/z components when displaying poses in diary lines.
+# The recording_log subgoal_rel_pose stores integrated dead-reckoning values
+# that are roughly 40x larger than the actual physical movement (because the
+# wire-level velocity scaling is not propagated into the stored pose). Scaling
+# down by 0.025 makes the displayed distances match the drone's real motion
+# at the clipped 0.2 m/s wire rate.
+DIARY_TRANSLATION_SCALE = 0.025
+
+
 @dataclass(frozen=True)
 class FrameEvent:
     t: float
@@ -365,6 +374,9 @@ def _pose_for_checkpoint(tl: "Timeline", subgoal_index: int, checkpoint_step: in
 
 def _format_pose(pose: tuple) -> str:
     x, y, z, yaw = pose
+    x *= DIARY_TRANSLATION_SCALE
+    y *= DIARY_TRANSLATION_SCALE
+    z *= DIARY_TRANSLATION_SCALE
     return f"[x: {x:.2f} m, y: {y:.2f} m, z: {z:.2f} m, yaw: {yaw:.1f}°]"
 
 
