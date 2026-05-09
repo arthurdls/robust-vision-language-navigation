@@ -49,3 +49,4 @@ results/hardware/playback.mp4
 *.log
 .DS_Store
 docs/
+cached_formulas/
