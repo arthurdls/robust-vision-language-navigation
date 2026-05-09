@@ -27,6 +27,7 @@ class FrameEvent:
     step: int
     frame_path: str
     subgoal_index: int
+    subgoal_rel_pose: tuple  # (x_m, y_m, z_m, yaw_deg) relative to subgoal start
 
 
 @dataclass(frozen=True)
@@ -87,12 +88,14 @@ def _load_frames(results_dir: Path, t0: dt.datetime) -> List[FrameEvent]:
             if not line:
                 continue
             r = json.loads(line)
+            sgrp = r.get("subgoal_rel_pose") or [0.0, 0.0, 0.0, 0.0]
             out.append(
                 FrameEvent(
                     t=_seconds_since(t0, _parse_iso(r["timestamp"])),
                     step=int(r["step"]),
                     frame_path=r["frame_path"],
                     subgoal_index=int(r.get("subgoal_index", 1)),
+                    subgoal_rel_pose=(float(sgrp[0]), float(sgrp[1]), float(sgrp[2]), float(sgrp[3])),
                 )
             )
     out.sort(key=lambda e: e.t)
@@ -342,15 +345,27 @@ def _format_bar_time(t: float, total: float) -> str:
     return f"{fmt(t)} / {fmt(total)}"
 
 
-def _diary_lines_to_entries(lines: List[str]) -> list:
-    """Convert raw diary.txt lines into structured entries for the JS template."""
-    entries = []
-    for ln in lines:
-        if ln.startswith("Checkpoint"):
-            entries.append({"kind": "checkpoint", "text": ln})
-        else:
-            entries.append({"kind": "step", "text": ln})
-    return entries
+
+def _pose_for_checkpoint(tl: "Timeline", subgoal_index: int, checkpoint_step: int) -> tuple:
+    """Return the subgoal_rel_pose of the latest frame in the given subgoal at or before checkpoint_step.
+
+    Scans all frames (no early break) because tl.frames is sorted by wall-clock t,
+    not by (subgoal_index, step), and step resets at each subgoal boundary.
+    """
+    best = (0.0, 0.0, 0.0, 0.0)
+    best_step = -1
+    for fr in tl.frames:
+        if fr.subgoal_index != subgoal_index:
+            continue
+        if fr.step <= checkpoint_step and fr.step > best_step:
+            best = fr.subgoal_rel_pose
+            best_step = fr.step
+    return best
+
+
+def _format_pose(pose: tuple) -> str:
+    x, y, z, yaw = pose
+    return f"[x: {x:.2f} m, y: {y:.2f} m, z: {z:.2f} m, yaw: {yaw:.1f}°]"
 
 
 def _global_chips(resp: dict) -> list:
@@ -406,13 +421,23 @@ def state_at(tl: Timeline, t: float) -> dict:
             if latest_global is None or c.t_global > latest_global.t_global:
                 latest_global = c
 
-    # Diary state: latest checkpoint with t_diary <= t.
-    # Same max-tracker pattern for the same reason.
-    latest_diary = None
+    # Diary: synthesize entries live so the panel never lags behind the local
+    # and global responses. For each checkpoint whose local response has landed
+    # by time t, append "Steps ~N [pose]: <response_local>". For each whose
+    # global response has landed and is non-empty, append the "Checkpoint ~N"
+    # line. Sort by landing time so the diary reads chronologically.
+    diary_events = []  # list of (landing_time, kind_str, text_str)
     for c in tl.checkpoints:
-        if c.t_diary <= t:
-            if latest_diary is None or c.t_diary > latest_diary.t_diary:
-                latest_diary = c
+        if c.t_local <= t:
+            pose = _pose_for_checkpoint(tl, c.subgoal_index, c.checkpoint_step)
+            line = f"Steps ~{c.checkpoint_step} {_format_pose(pose)}: {c.response_local_text}"
+            diary_events.append((c.t_local, "step", line))
+        if c.t_global <= t and c.response_global_json:
+            completion = c.response_global_json.get("completion_percentage", 0)
+            line = f"Checkpoint ~{c.checkpoint_step}: completion = {completion:.2f}"
+            diary_events.append((c.t_global, "checkpoint", line))
+    diary_events.sort(key=lambda x: x[0])
+    diary_entries = [{"kind": kind, "text": text} for _, kind, text in diary_events]
 
     # Sticky-latest convergence across all subgoals.
     # tl.convergences is sorted by t, so ordered scan is fine.
@@ -446,7 +471,7 @@ def state_at(tl: Timeline, t: float) -> dict:
         "global_reasoning": latest_global.response_global_json.get("reasoning") if latest_global else None,
         "global_chips": _global_chips(latest_global.response_global_json) if latest_global else [],
 
-        "diary_entries": _diary_lines_to_entries(latest_diary.diary_lines) if latest_diary else [],
+        "diary_entries": diary_entries,
 
         "conv_status": (
             "complete" if latest_conv and latest_conv.response_json.get("complete")
