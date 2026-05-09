@@ -17,7 +17,6 @@ Run as a CLI:
 from __future__ import annotations
 
 import argparse
-import os
 import subprocess
 from pathlib import Path
 from typing import Dict, List
@@ -184,16 +183,17 @@ def build(results_dir: Path, out_path: Path) -> None:
     # 5. Layout numbers (must match panel.html / spec)
     canvas_w, canvas_h = 1920, 1080
     pad = 8
-    inner_w = canvas_w - 2 * pad
-    right_col_w = int(round(0.34 * inner_w))         # 34% of inner width
-    # Right column is split 9fr / 16fr internally: phone gets 9/(9+16) and
-    # on-board gets 16/(9+16) of the column height. The column height is the
-    # canvas height minus topbar minus paddings minus gaps.
-    phone_h = int(round(right_col_w * 9 / 25))
-    onboard_h = int(round(right_col_w * 16 / 25))
-    # Topbar in panel.html is auto, ~30 px; right column starts after topbar + gap.
-    topbar_h = 30
     gap = 6
+    topbar_h = 30
+    inner_w = canvas_w - 2 * pad
+    right_col_w = int(round(0.34 * inner_w))             # 34% of inner width
+    # Right column is a 9fr / 16fr CSS grid that splits the COLUMN HEIGHT,
+    # not width. Column height = canvas - top/bottom pad - topbar - 1 gap (between
+    # topbar and the right column itself). One additional gap sits between the
+    # phone and on-board cells, so the two cell heights sum to col_h - gap.
+    col_h = canvas_h - 2 * pad - topbar_h - gap
+    phone_h = int(round((col_h - gap) * 9 / 25))
+    onboard_h = int(round((col_h - gap) * 16 / 25))
     pad_t_phone = pad + topbar_h + gap
     pad_t_onboard = pad_t_phone + phone_h + gap
 
