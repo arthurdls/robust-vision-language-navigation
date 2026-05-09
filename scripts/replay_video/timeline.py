@@ -433,23 +433,25 @@ def state_at(tl: Timeline, t: float) -> dict:
             if latest_global is None or c.t_global > latest_global.t_global:
                 latest_global = c
 
-    # Diary: synthesize entries live so the panel never lags behind the local
-    # and global responses. For each checkpoint whose local response has landed
-    # by time t, append "Steps ~N [pose]: <response_local>". For each whose
-    # global response has landed and is non-empty, append the "Checkpoint ~N"
-    # line. Sort by landing time so the diary reads chronologically.
-    diary_events = []  # list of (landing_time, kind_str, text_str)
+    # Diary: only emit a checkpoint's pair of entries (Steps + Checkpoint) once
+    # the global response has landed. This matches how the source diary.txt is
+    # constructed (both lines appear together after the global response is
+    # written) and keeps the diary's latest entry in step with the global pane,
+    # which also updates at t_global. Order chronologically by t_global, with
+    # the Steps line emitted just before the matching Checkpoint line.
+    diary_events = []  # list of (sort_key, kind_str, text_str)
     for c in tl.checkpoints:
-        if c.t_local <= t:
-            pose = _pose_for_checkpoint(tl, c.subgoal_index, c.checkpoint_step)
-            line = f"Steps ~{c.checkpoint_step} {_format_pose(pose)}: {c.response_local_text}"
-            diary_events.append((c.t_local, "step", line))
         if c.t_global <= t and c.response_global_json:
+            pose = _pose_for_checkpoint(tl, c.subgoal_index, c.checkpoint_step)
+            steps_line = f"Steps ~{c.checkpoint_step} {_format_pose(pose)}: {c.response_local_text}"
             completion = c.response_global_json.get("completion_percentage", 0)
-            line = f"Checkpoint ~{c.checkpoint_step}: completion = {completion:.2f}"
-            diary_events.append((c.t_global, "checkpoint", line))
-    diary_events.sort(key=lambda x: x[0])
-    diary_entries = [{"kind": kind, "text": text} for _, kind, text in diary_events]
+            checkpoint_line = f"Checkpoint ~{c.checkpoint_step}: completion = {completion:.2f}"
+            # Use t_global as the chronological key, with a tiebreak so Steps
+            # immediately precedes its matching Checkpoint line.
+            diary_events.append((c.t_global, 0, "step", steps_line))
+            diary_events.append((c.t_global, 1, "checkpoint", checkpoint_line))
+    diary_events.sort(key=lambda x: (x[0], x[1]))
+    diary_entries = [{"kind": kind, "text": text} for _, _, kind, text in diary_events]
 
     # Sticky-latest convergence across all subgoals.
     # tl.convergences is sorted by t, so ordered scan is fine.
