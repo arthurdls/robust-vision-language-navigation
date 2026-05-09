@@ -37,6 +37,7 @@ dependencies = [
     "tenacity",
     "imageio",
     "imageio-ffmpeg",
+    "playwright",
 ]
 
 [project.optional-dependencies]
