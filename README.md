@@ -23,75 +23,94 @@
 </p>
 
 <p align="center"><em>
-<b>RVLN</b> compiles free-form instructions into an LTL-NL automaton (left), executes each sub-goal with a frozen OpenVLA controller (center), and supervises progress with a VLM-based GoalAdherenceMonitor that maintains a running text diary over local and global image grids (right). On premature convergence, the supervisor issues corrective imperatives back to the VLA.
+<b>RVLN</b> compiles free-form instructions into an LTL-NL automaton (left), executes each sub-goal with a frozen OpenVLA controller (center), and supervises progress with a VLM-based GoalAdherenceMonitor that maintains a running text diary over local and global image grids (right). On premature convergence, the supervisor issues corrective imperatives back to the controller. Every signal exchanged between the supervisors and the controller is a natural-language string, so the loop is policy-agnostic, fully auditable, and can drive systems built entirely from foundation models.
 </em></p>
 
 ## Abstract
 
-Vision-Language-Action (VLA) policies have enabled language-conditioned control for UAVs, but they fail on long-horizon missions: they drift from multi-step instructions, hallucinate sub-goal completion before visual evidence supports it, and offer no introspective signal for detecting or correcting failures. We introduce **RVLN**, a hierarchical neuro-symbolic system that surrounds a frozen VLA controller with two complementary language-driven supervisors. An automatic NL-to-LTL-NL compiler translates free-form instructions into a Spot-compiled monitor automaton with human-readable predicates, while a **GoalAdherenceMonitor** periodically queries a VLM over local and global image grids, maintaining a running natural-language diary as structured short-term memory for completion assessment and corrective re-prompting. We evaluate on a 6-sub-goal urban UAV mission across seven ablation conditions, achieving **83% sub-goal success** versus 0--50% for all baselines.
+Vision-Language-Action (VLA) policies have enabled language-conditioned control for UAVs, but they fail on long-horizon missions: they drift from multi-step instructions, hallucinate sub-goal completion before visual evidence supports it, and offer no introspective signal for detecting or correcting failures. We introduce **RVLN**, a hierarchical neuro-symbolic system that closes the loop *at the language level*. An automatic NL-to-LTL-NL compiler translates free-form instructions into a deterministic monitor automaton with human-readable predicates, while a **GoalAdherenceMonitor** periodically queries a vision-language model over local two-frame and global nine-frame image grids, maintaining a running natural-language diary that gives the VLM short-term memory across checkpoints. RVLN removes the hand-authored LTL assumption of prior neuro-symbolic planners, detects and corrects premature VLA convergence via zero-shot VLM supervision, produces a human-readable audit log of every supervisory decision, and escalates to operators when progress plateaus. On a six-sub-goal urban UAV mission across seven ablation conditions, the full system is the only one to complete the task. We also demonstrate the language-level loop on real drone hardware: with the VLA replaced by a VLM controller emitting discrete drive actions, RVLN drives a real drone through all four sub-goals of an outdoor mission, suggesting the loop is policy-agnostic.
 
 ## Key Results
 
-**Preliminary** single-run results on a six-sub-goal urban UAV mission in UnrealZoo Downtown West (n=1 per condition). Full evaluation covers 3 maps, 5 tasks per map, 3 starting position variants = 315 total episodes across 7 conditions.
+**Preliminary** single-run results (n=1 per condition) on a six-sub-goal mission in UnrealZoo Downtown West:
 
-| | Condition | Success Rate | Steps | VLM Calls | Corrections | Time (s) |
-|:---:|-----------|:---:|:---:|:---:|:---:|:---:|
-| C0 | **Full System (RVLN)** | **5/6 (83%)** | 760 | 96 | 15 | 899 |
-| C1 | Naive VLA | 0/6 (0%) | 72 | 0 | 0 | 74 |
-| C2 | LLM Planner | 3/6 (50%) | 879 | 104 | 13 | 1126 |
-| C3 | Open-Loop LTL | 0/6 (0%) | 275 | 0 | 0 | 272 |
-| C4 | Single Frame | 2/6 (33%) | 1620 | 101 | 24 | 1741 |
-| C5 | Grid Only | 1/6 (17%) | 321 | 12 | 0 | 386 |
-| C6 | Text Only | 0/6 (0%) | 735 | 87 | 13 | 868 |
+> *"Go past the first streetlamp, then turn until you see the black car, then go to the black car, then turn toward the red car and go to the red car. Finally, land in front of the traffic light pole on the right."*
+
+| | Condition | Sub-goals | Task Success | Steps | VLM Calls | Corr. | Time (s) | Stop Reason |
+|:---:|-----------|:---:|:---:|:---:|:---:|:---:|:---:|:---|
+| **C0** | **Full System (RVLN)** | **6/6** | **✓** | 650 | 146 | 10 | 868 | monitor_complete |
+| C1 | Naive VLA | 0/6 | ✗ | 56 | 0 | 0 | 29 | convergence |
+| C2 | LLM Planner | 5/6 | ✗ | 758 | 179 | 25 | 1129 | ask_help (corr.) |
+| C3 | Open-Loop LTL | 1/6 | ✗ | 281 | 0 | 0 | 152 | auto-advance |
+| C4 | Single Frame | 3/6 | ✗ | 1180 | 149 | 27 | 1093 | ask_help (steps) |
+| C5 | Grid Only | 2/6 | ✗ | 949 | 141 | 42 | 1340 | ask_help (corr.) |
+| C6 | Text-Only Global | 1/6 | ✗ | 919 | 224 | 36 | 1062 | ask_help (corr.) |
+
+With n=1 per condition, hypothesis tests and significance language are inappropriate and we avoid them. What the table establishes is a qualitative pattern: only the full language-level loop completes the mission, and every component the ablations remove shows up as a different abort pattern on the same hard sub-goal.
 
 **Key findings:**
-- Task decomposition is strictly necessary: the naive VLA (C1) fails immediately.
-- Runtime monitoring is strictly necessary: open-loop LTL (C3) achieves 0% despite correct decomposition, converging prematurely on every sub-goal.
-- The LTL formalism outperforms LLM-only planning (C0: 83% vs C2: 50%).
-- Both text diary and image grids are independently necessary: removing either degrades performance to 0-17%.
+- **Decomposition is necessary.** C1 (Naive) collapses to the first action and stops after 56 steps with 0/6 sub-goals.
+- **Monitoring is necessary.** C3 (Open-Loop LTL), with the same decomposition as C0, false-converges through every sub-goal in 281 total steps and reaches only 1/6.
+- **The diary helps over single-frame checks.** C4 reaches 3/6 while consuming 1.8x more steps and 2.7x more corrections than C0.
+- **Visual grids matter.** C6 (text-only) reaches 1/6: a text-only LLM cannot visually confirm the drone has arrived at the intended target rather than a similar one.
+- **LTL formalism vs. flat list.** On a strictly sequential mission C2 also decomposes into all six sub-goals; the LTL chain and the flat list are formally similar here. The expressiveness advantage of LTL (OR branches, concurrent obligations) requires non-sequential structures left to future work.
 
-**Experimental design notes:**
-- Task category distribution is uneven across maps (Greek Island is ~80% constrained, Suburb Neighborhood is ~80% sequential). Per-category breakdowns should be interpreted alongside per-map results.
-- C1 and C3 require manual video review for task success and constraint adherence metrics.
-- Simulator stochasticity (propeller visual effects, rendering variations) cannot be fully controlled.
-- 45 episodes per condition provides borderline statistical power for moderate effect sizes.
+### Hardware demonstration
+
+A complementary hardware run drove a custom MiniNav quadcopter through a four-sub-goal outdoor mission with a VLM (gpt-5.4) replacing the OpenVLA controller, emitting discrete drive actions every ~3 seconds. Sub-goals 1, 2, and 3 each completed via `monitor_complete` at peak completion 1.00 with zero corrective re-prompts. The operator ended the run for time during sub-goal 4, with the drone in continuous forward progress toward the cardboard cutout (peak completion 0.47).
+
+This is preliminary single-mission evidence that the language-level loop is policy-agnostic: a VLM can stand in for the VLA without any change to the supervisory machinery, because everything the supervisors emit is already a natural-language string the VLM can act on directly.
+
+## Demos
+
+### Hardware: outdoor four-sub-goal mission (2x speed)
+
+<video src="https://github.com/arthurdls/robust-vision-language-navigation/raw/main/results/hardware/replay_synced_2x_compressed.mp4" controls width="100%"></video>
+
+[Watch on GitHub if the embed does not render](https://github.com/arthurdls/robust-vision-language-navigation/raw/main/results/hardware/replay_synced_2x_compressed.mp4) (1x version: [`replay_synced_compressed.mp4`](https://github.com/arthurdls/robust-vision-language-navigation/raw/main/results/hardware/replay_synced_compressed.mp4)).
+
+### Simulation: full system completing all six sub-goals (C0)
+
+<video src="https://github.com/arthurdls/robust-vision-language-navigation/raw/main/results/condition0/downtown_west/c0_full_system__streetlamp_to_cars__2026_05_07_03_16_45/playback.mp4" controls width="100%"></video>
+
+[Watch on GitHub if the embed does not render](https://github.com/arthurdls/robust-vision-language-navigation/raw/main/results/condition0/downtown_west/c0_full_system__streetlamp_to_cars__2026_05_07_03_16_45/playback.mp4). Per-condition recordings for C1-C6 are under `results/condition{N}/`.
 
 ## Contributions
 
-1. **RVLN**: a neuro-symbolic system for long-horizon UAV navigation combining automatic LTL-NL compilation with online VLM-based goal-adherence monitoring over a frozen VLA controller.
-2. **GoalAdherenceMonitor**: a zero-shot, prompt-only runtime supervisor that maintains a natural-language diary across checkpoints, enabling temporal reasoning about sub-goal progress without fine-tuning or failure datasets.
-3. **Seven-condition ablation study** demonstrating that every component (LTL decomposition, text diary, image grids, temporal context) contributes measurably.
-4. **Full codebase release** including the LTL planner, goal adherence monitor, and hardware interface for a custom quadcopter.
+1. **RVLN**, a neuro-symbolic system that combines automatic LTL-NL compilation with online VLM-based goal-adherence monitoring over a frozen VLA, structured around a language-level loop independent of the underlying policy.
+2. **GoalAdherenceMonitor**: a zero-shot, prompt-only supervisor that maintains a natural-language diary annotated with past-corrective markers, plus a peak-dropoff override that advances the automaton when the per-sub-goal peak completion has reached 0.9 and the latest estimate has dropped 0.25 below that peak.
+3. **A seven-condition ablation** on a six-sub-goal urban UAV mission. C0 completes the task; no baseline does.
+4. **A hardware demonstration** with the VLA surgically removed and gpt-5.4 emitting discrete drive actions, driving a real drone through all four sub-goals of an outdoor mission before the operator ended the run for time during the fourth.
+5. **Full codebase release** including the LTL planner, goal adherence monitor, hardware interface, and the run records that back every claim above (see `results/README.md` for the file-to-claim mapping).
 
 ## Method Overview
 
 RVLN operates as a five-stage pipeline at two timescales:
 
-1. **NL-to-LTL-NL Compilation**: A few-shot LLM call lifts free-form English into an LTL-NL formula with human-readable predicates, compiled into a deterministic monitor automaton via [Spot](https://spot.lre.epita.fr/).
+1. **NL-to-LTL-NL Compilation.** A few-shot LLM call lifts free-form English into an LTL-NL formula with natural-language atomic predicates, and the formula is compiled into a deterministic monitor automaton via a standard LTL-to-automaton tool (we use [Spot](https://spot.lre.epita.fr/)).
 
-2. **SubgoalConverter**: Each LTL-NL sub-goal is translated into a clean OpenVLA imperative by stripping visual stopping conditions (e.g., "turn right *until you see the red car*" becomes "turn right"). The GoalAdherenceMonitor enforces the original stopping condition externally.
+2. **SubgoalConverter.** Each LTL-NL sub-goal is translated into a clean OpenVLA imperative by stripping visual stopping conditions (e.g., "turn right *until you see the red car*" becomes "turn right"). The GoalAdherenceMonitor enforces the original stopping condition externally.
 
-3. **OpenVLA Execution**: The frozen 7B-parameter VLA controller generates actions from egocentric RGB frames and the converted imperative.
+3. **OpenVLA Execution.** The frozen 7B-parameter VLA controller (Flow-tuned for UAV) generates actions from egocentric RGB frames and the converted imperative.
 
-4. **GoalAdherenceMonitor**: At each checkpoint, two VLM queries run:
-   - *Local query*: a two-frame grid (previous + current) for change detection.
-   - *Global query*: a nine-frame grid across the trajectory, combined with the running text diary and displacement vector, for completion assessment.
-   - *Obstacle awareness*: the monitor proactively stops the drone when a collision with any physical obstruction appears imminent, then issues corrective commands to ascend above, route around, or retreat from the obstacle.
+4. **GoalAdherenceMonitor.** At each checkpoint two VLM queries run:
+   - *Local query*: a two-frame grid (previous + current) for change detection. The one-sentence response is appended to a running text diary.
+   - *Global query*: a nine-frame grid sampled across the trajectory, sent together with the diary, displacement vector, and sub-goal text, returns a JSON completion assessment.
+   - *Stall detection*: when completion plateaus over the last 10 checkpoints below the 0.5 floor, the monitor escalates to the operator.
 
-5. **Supervisor Mode**: On convergence or forced convergence, the VLM evaluates completion. If incomplete, a single-action corrective imperative is issued back to the VLA. Every issued correction is recorded as a **`[CONVERGENCE @ step N]: corrective issued (<diagnosis>, <pct>% complete) -- "<instruction>"`** marker in the running diary, and each subsequent convergence prompt instructs the VLM to switch axes (e.g., altitude or a different turn direction) when completion has not improved since the most recent marker, instead of reissuing the same command. For ablations whose convergence prompt omits the diary (C4 single-frame, C5 grid-only), the same past-correction record is forwarded as an explicit oldest-first block instead. The corrective-action record is persisted to `diary_summary.json` for offline analysis. The OpenVLA proprioceptive state is also reset on every new corrective so the VLA sees `[0, 0, 0, 0]` at the start of each instruction (the diary, displacement, and corrective record remain subgoal-relative). Stall detection escalates to the operator when progress plateaus. A complementary **peak-dropoff override** advances to the next sub-goal whenever the monitor's per-subgoal peak completion estimate previously reached 0.9 and the most recent estimate has dropped at least 0.25 below that peak: a peak that high means the goal was at some point near-complete (so it has probably been achieved), and a 0.25+ retreat means the agent has moved away and further correction is unlikely to help. The override runs in every monitor-bearing condition (C0, C2, C4, C5, C6) at both the periodic checkpoints and the convergence path.
+5. **Supervisor Mode.** On convergence (the drone stops moving) or a forced convergence, the VLM evaluates completion. If incomplete, a single-action corrective imperative (e.g. "Move closer to the black car") is issued back to the controller. Every issued correction is recorded as a `[CONVERGENCE @ step N]: corrective issued (<diagnosis>, <pct>% complete) -- "<instruction>"` marker in the running diary. The diary preface instructs the VLM to switch axes (e.g., altitude or a different turn direction) when completion has not improved since the most recent marker, instead of reissuing the same command. A complementary **peak-dropoff override** advances to the next sub-goal whenever the per-sub-goal peak completion estimate has previously reached 0.9 and the latest estimate has dropped at least 0.25 below that peak: a peak that high means the goal was at some point near-complete (so it has probably been achieved), and a 0.25+ retreat means the agent has moved away and further correction is unlikely to help.
 
 ```
-Instruction: "Go to the red building, then land near the tree, never fly over the highway"
+Instruction: "Go past the first streetlamp, then turn until you see the black car, ..."
     |
     v
-LTL Planner (LLM -> Spot automaton -> constraint classification)
+LTL Planner (LLM -> LTL-NL formula -> deterministic monitor automaton)
     |
-    v  subgoal: "approach the red building"
-    |  constraints: [AVOID: "Flying over the highway"]
+    v  subgoal: "go to the black car"
 SubgoalConverter (LLM -> short OpenVLA command)
     |
-    v  command: "fly toward building"
-OpenVLA Server (VLA model, returns drone actions)
+    v  command: "go to the black car"
+OpenVLA (VLA model, returns drone actions)
     |
     v  action: [dx, dy, dz, dyaw]
 Unreal Sim / MiniNav Hardware
@@ -100,10 +119,10 @@ Unreal Sim / MiniNav Hardware
     v                       v
 GoalAdherenceMonitor -----> Supervisor Mode
   |  checkpoint every       |  evaluate: complete / stopped short / overshot
-  |  N steps or N seconds   |  issue corrective command to OpenVLA
-  |                         |  if budget exhausted -> ask_help
-  |  stall detection:       |
-  |  completion plateau     |
+  |  N steps or N seconds   |  issue corrective command back to the controller
+  |  (local + global VLM)   |  if budget exhausted -> ask_help
+  |  stall detection:       |  peak-dropoff override:
+  |  completion plateau     |    peak >= 0.9 AND drop >= 0.25 -> advance
   |  -> operator escalation |
 ```
 
@@ -146,60 +165,38 @@ python tools/download_simulator.py     # -> runtime/unreal/
 conda activate rvln-server
 python scripts/start_server.py
 
-# Terminal 2: Run the full pipeline
+# Terminal 2: Run the full pipeline on the paper task
 conda activate rvln-sim
-python scripts/run_integration.py --task first_task.json
+python scripts/run_integration.py --task streetlamp_to_cars
 ```
 
 Most commands are also wrapped in the `Makefile` (`make setup`, `make download-weights`, `make server`, `make run`).
 
-### Reproducing the Full Evaluation
+### Reproducing the Paper
 
-The evaluation runs 7 conditions across 3 maps (45 tasks per condition = 315 total episodes). The orchestrator manages the simulator lifecycle automatically, starting and stopping it for each map.
-
-**Single machine (simulator + orchestrator on the same host):**
+The paper reports a single n=1 run per condition on the six-sub-goal `streetlamp_to_cars` task in UnrealZoo Downtown West.
 
 ```bash
-# Terminal 1: OpenVLA server (GPU required)
+# Terminal 1: OpenVLA server
 conda activate rvln-server
 python scripts/start_server.py
 
-# Terminal 2: Run all conditions on all maps
+# Terminal 2: All seven conditions
 conda activate rvln-sim
-python scripts/run_all_conditions.py
+python scripts/run_all_conditions.py --map downtown_west --task streetlamp_to_cars
 ```
 
 To run a subset:
 
 ```bash
-# One map, all conditions
+# Specific conditions on the paper task
+python scripts/run_all_conditions.py --map downtown_west --conditions 0,2,4
+
+# A different task or map
 python scripts/run_all_conditions.py --map greek_island
-
-# All maps, specific conditions
-python scripts/run_all_conditions.py --conditions 0,2,3
-
-# One map, specific conditions
-python scripts/run_all_conditions.py --map downtown_west --conditions 0,1,3
 ```
 
-**Two machines (orchestrator on one, simulator on another):**
-
-```bash
-# On the simulator machine (has the GPU + Unreal binaries):
-conda activate rvln-sim
-python scripts/start_sim_controller.py --port 9002
-
-# On the orchestrator machine:
-conda activate rvln-sim
-python scripts/run_all_conditions.py \
-  --sim-controller <SIM_HOST>:9002 \
-  --sim_host <SIM_HOST> \
-  --sim_api_port 9001
-```
-
-The sim controller will print the exact orchestrator command with the correct IP when it starts.
-
-Results are written to `results/condition<N>/<map_dir>/`. Completed tasks are tracked via `run_info.json`, so interrupted runs can be resumed by re-running the same command (already-completed tasks are skipped, aborted/crashed tasks are retried).
+Results are written to `results/condition<N>/<map_dir>/`. Completed tasks are tracked via `run_info.json`, so interrupted runs can be resumed by re-running the same command (already-completed tasks are skipped, aborted/crashed tasks are retried). The committed `results/` directory contains the exact run records that back every number in the paper; see `results/README.md`.
 
 ## Repository Structure
 
@@ -220,11 +217,12 @@ robust-vision-language-navigation/
     start_simulator.py      Launches Unreal binary + sim API server
     start_server.py         OpenVLA server
     run_hardware_openvla.py Real-drone pipeline (OpenVLA driver)
-    run_hardware_gpt.py     Real-drone pipeline (GPT-5.4 driver)
+    run_hardware_gpt.py     Real-drone pipeline (GPT-5.4 driver, used for the hardware demo)
     run_repl.py             Interactive drone REPL
     playback.py             FPV viewer and MP4 encoder
   tasks/                    Task JSON definitions
   tools/                    Setup, weight/simulator download scripts
+  results/                  Run records backing the paper claims (see results/README.md)
   tests/                    Test suite
 ```
 
@@ -236,7 +234,15 @@ The same pipeline runs on real drones via the MiniNav interface. The drone-facin
 # Dry run against simulated hardware
 python scripts/start_mock_hardware.py --host 127.0.0.1 --port 8080 --frame_port 8081
 
-# Live flight
+# Live flight: GPT-5.4-driven controller (the hardware demo in the paper)
+python scripts/run_hardware_gpt.py \
+  --preferred_server_host 192.168.0.101 \
+  --control_port 8080 \
+  --camera 0 \
+  --diary_mode time \
+  --diary_check_interval_s 3.0
+
+# Live flight: OpenVLA-driven controller
 python scripts/run_hardware_openvla.py \
   --preferred_server_host 192.168.0.101 \
   --control_port 8080 \
@@ -248,17 +254,7 @@ python scripts/run_hardware_openvla.py \
 
 The hardware interface supports interactive operator help (new instruction, replan, skip, abort), time-based asynchronous diary checkpoints, and external odometry via HTTP or UDP.
 
-**Pipelined VLM checkpoints.** With `--diary-mode time` and
-`--diary_check_interval_s` (e.g. 1 s), the goal-adherence monitor now
-dispatches VLM calls concurrently and writes `checkpoint_NNNN/` directories
-in strict dispatch order. With a 1 s dispatch interval and ~3 s per VLM
-roundtrip you should see roughly three calls in flight at any moment and a
-new checkpoint dir on disk every second once the pipeline has filled.
-Out-of-order returns from OpenAI are reordered before publish so the
-dashboard never visually regresses; hung calls are skipped after 30 s. The
-pool size and per-step timeout are configurable via
-`--monitor_max_inflight` and `--monitor_dispatch_timeout_s` (or the
-matching keys in `scripts/run_hardware_openvla.py`'s CONFIG).
+**Pipelined VLM checkpoints.** With `--diary-mode time` and `--diary_check_interval_s` (e.g. 3 s), the goal-adherence monitor dispatches VLM calls concurrently and writes `checkpoint_NNNN/` directories in strict dispatch order. Out-of-order returns from the LLM provider are reordered before publish so the dashboard never visually regresses; hung calls are skipped after 30 s. The pool size and per-step timeout are configurable via `--monitor_max_inflight` and `--monitor_dispatch_timeout_s`.
 
 ## Citation
 
@@ -266,16 +262,16 @@ If you find this work useful, please cite:
 
 ```bibtex
 @article{delossantos2026rvln,
-  title={Closing the Language-Level Loop: {LTL} Planning with Online Goal Adherence
-         Monitoring for {UAV} Navigation},
-  author={De Los Santos, Arthur and Chahine, Makram and Xiao, Wei and Rus, Daniela},
-  year={2026}
+  title  = {Closing the Language-Level Loop: {LTL} Planning with Online Goal Adherence
+            Monitoring for {UAV} Navigation},
+  author = {De Los Santos, Arthur and Chahine, Makram and Xiao, Wei and Rus, Daniela},
+  year   = {2026}
 }
 ```
 
 ## Acknowledgments
 
-This work was supported by the MIT Generative AI Impact Consortium (MGAIC), administered through the Distributed Robotics Lab at MIT CSAIL.
+This work was supported by the MIT Generative AI Impact Consortium (MGAIC) and by The Boeing Company, administered through the Distributed Robotics Lab at MIT CSAIL.
 
 ## License
 
