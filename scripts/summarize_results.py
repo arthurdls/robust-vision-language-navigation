@@ -41,6 +41,9 @@ from typing import Any, Dict, List, Optional
 logger = logging.getLogger(__name__)
 
 
+ANNOTATION_FIELDS = ("task_success", "subgoals_completed", "subgoals_total", "notes")
+
+
 CONDITION_LABELS: Dict[int, str] = {
     0: "C0 full system",
     1: "C1 naive (no decomp)",
@@ -161,6 +164,34 @@ def summarize(results_dir: Path) -> Dict[str, Any]:
     }
 
 
+def _is_empty(val: Any) -> bool:
+    return val is None or (isinstance(val, str) and val.strip() == "")
+
+
+def annotation_collisions(existing: Dict[str, Any], new: Dict[str, Any]) -> List[str]:
+    """Return human-readable lines for annotation fields that would be erased or changed.
+
+    A collision is any field where the existing value is non-empty and differs from
+    the new value. Going from empty to non-empty is not a collision (it's just data
+    arriving from annotations.csv).
+    """
+    by_cond_old = {r.get("condition"): r for r in existing.get("rows", [])}
+    issues: List[str] = []
+    for new_row in new.get("rows", []):
+        cond = new_row.get("condition")
+        old_row = by_cond_old.get(cond)
+        if not old_row:
+            continue
+        for field in ANNOTATION_FIELDS:
+            old_val = old_row.get(field)
+            new_val = new_row.get(field)
+            if _is_empty(old_val):
+                continue
+            if old_val != new_val:
+                issues.append(f"  C{cond} {field}: {old_val!r} -> {new_val!r}")
+    return issues
+
+
 def _fmt(val: Any, default: str = "-") -> str:
     if val is None:
         return default
@@ -222,6 +253,12 @@ def main() -> int:
         "--output_json", type=str, default=None,
         help="Where to write the JSON summary (default: <results_dir>/analysis_output.json).",
     )
+    parser.add_argument(
+        "--force", action="store_true",
+        help="Overwrite the output JSON even if doing so would erase or change "
+             "non-empty annotation fields (task_success, subgoals_*, notes) "
+             "present in the existing file.",
+    )
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="[%(levelname)s] %(message)s")
     results_dir = Path(args.results_dir).resolve()
@@ -233,6 +270,23 @@ def main() -> int:
     print_table(summary)
 
     out_path = Path(args.output_json) if args.output_json else results_dir / "analysis_output.json"
+    if out_path.exists() and not args.force:
+        try:
+            existing = json.loads(out_path.read_text())
+        except Exception as exc:
+            logger.warning("Could not parse existing %s (%s); proceeding to overwrite.", out_path, exc)
+            existing = None
+        if existing:
+            issues = annotation_collisions(existing, summary)
+            if issues:
+                print(
+                    f"Refusing to overwrite {out_path}: existing annotations would be "
+                    f"erased or changed.\nAffected fields:\n" + "\n".join(issues) + "\n\n"
+                    f"These fields are sourced from {summary['annotations_csv']}.\n"
+                    f"Move your hand-edits there and rerun, or pass --force to overwrite.",
+                    file=sys.stderr,
+                )
+                return 3
     out_path.write_text(json.dumps(summary, indent=2))
     print(f"Wrote machine-readable summary to {out_path}")
     return 0
