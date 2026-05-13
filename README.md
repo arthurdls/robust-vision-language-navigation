@@ -100,40 +100,18 @@ RVLN operates as a five-stage pipeline at two timescales:
 
 5. **Supervisor Mode.** On convergence (the drone stops moving) or a forced convergence, the VLM evaluates completion. If incomplete, a single-action corrective imperative (e.g. "Move closer to the black car") is issued back to the controller. Every issued correction is recorded as a `[CONVERGENCE @ step N]: corrective issued (<diagnosis>, <pct>% complete) -- "<instruction>"` marker in the running diary. The diary preface instructs the VLM to switch axes (e.g., altitude or a different turn direction) when completion has not improved since the most recent marker, instead of reissuing the same command. A complementary **peak-dropoff override** advances to the next sub-goal whenever the per-sub-goal peak completion estimate has previously reached 0.9 and the latest estimate has dropped at least 0.25 below that peak: a peak that high means the goal was at some point near-complete (so it has probably been achieved), and a 0.25+ retreat means the agent has moved away and further correction is unlikely to help.
 
-```
-Instruction: "Go past the first streetlamp, then turn until you see the black car, ..."
-    |
-    v
-LTL Planner (LLM -> LTL-NL formula -> deterministic monitor automaton)
-    |
-    v  subgoal: "go to the black car"
-SubgoalConverter (LLM -> short OpenVLA command)
-    |
-    v  command: "go to the black car"
-OpenVLA (VLA model, returns drone actions)
-    |
-    v  action: [dx, dy, dz, dyaw]
-Unreal Sim / MiniNav Hardware
-    ^                       |
-    |  periodic frames      |  convergence (drone stops)
-    v                       v
-GoalAdherenceMonitor -----> Supervisor Mode
-  |  checkpoint every       |  evaluate: complete / stopped short / overshot
-  |  N steps or N seconds   |  issue corrective command back to the controller
-  |  (local + global VLM)   |  if budget exhausted -> ask_help
-  |  stall detection:       |  peak-dropoff override:
-  |  completion plateau     |    peak >= 0.9 AND drop >= 0.25 -> advance
-  |  -> operator escalation |
-```
+### Foundation models used in the paper
+
+The paper holds the foundation models fixed across every condition: `gpt-4o` handles all text-only planning (the NL-to-LTL-NL compiler, the SubgoalConverter, and the C2 flat-list decomposer), and `gpt-5.4` handles every VLM call in the GoalAdherenceMonitor (local two-frame, global nine-frame, convergence, and the text-only variant in C6).
 
 ## Getting Started
 
 ### Prerequisites
 
-- **CUDA GPU** for the OpenVLA server (tested with A100 / RTX 4090)
+- **CUDA GPU(s)** for the OpenVLA server and the Unreal simulator. The paper runs used an RTX 5000 Ada for the OpenVLA server and an RTX 3060 for the simulator; a single GPU with comparable memory works too.
 - **conda** (Miniconda or Anaconda)
 - **~20 GB disk** for model weights + Unreal environment
-- **API keys** for OpenAI and/or Google (LLM / VLM calls)
+- **OpenAI API key** for the LLM / VLM calls (paper uses `gpt-4o` for planning and `gpt-5.4` for the GoalAdherenceMonitor)
 
 ### Installation
 
@@ -150,7 +128,7 @@ conda activate rvln-sim    && pip install -e .
 conda activate rvln-server && pip install -e ".[server]"
 
 # Configure API keys
-$EDITOR .env.local          # OPENAI_API_KEY, GOOGLE_API_KEY
+$EDITOR .env.local          # OPENAI_API_KEY
 
 # Download assets (~20 GB)
 conda activate rvln-sim
